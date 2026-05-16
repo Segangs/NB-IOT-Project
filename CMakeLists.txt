@@ -34,11 +34,16 @@ pico_sdk_init()
 
 # 6. 실행 파일 생성
 add_executable(nb_iot_project
-    main.c
+    iot_project.cpp
+    lib/LCD_I2C.cpp
+    lib/nec_receive.c
 )
 
+#7. nec라이브러리
+pico_generate_pio_header(nb_iot_project ${CMAKE_CURRENT_LIST_DIR}/lib/nec_receive.pio)
+
 # 필요한 라이브러리 연결
-target_link_libraries(nb_iot_project pico_stdlib hardware_uart)
+target_link_libraries(nb_iot_project pico_stdlib hardware_uart hardware_adc hardware_i2c hardware_pio)
 
 # USB 시리얼(stdio) 활성화 여부 선택 (printf 등을 USB로 보려면 1)
 pico_enable_stdio_usb(nb_iot_project 1)
