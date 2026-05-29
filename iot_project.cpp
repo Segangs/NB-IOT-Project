@@ -43,6 +43,7 @@ private:
     int buffer_idx;
     char device_imei[20] = "0";
     char device_imsi[20] = "0";
+    bool is_socket_open = false; // 소켓상태 (열림, 닫힘)
 
     LCD_I2C *p_lcd; // LCD 객체에 접근하기 위한 포인터 추가
 
@@ -57,16 +58,22 @@ public:
     // 모뎀 관련
     void modem_init();
     void modem_RSSIcheck();
+    bool modem_CheckNetwork();
 
     void modem_SendCmd(const char *cmd);
     void modem_SendCmdUserInput();
     void modem_ReadResponse(int check = 0);
     void modem_ClearRxBuffer();
 
+    void modem_SocketOpen(const char *ip, const char *port);
+    void modem_SocketSend(const char *data);
+    void modem_SocketClose();
+
     // LCD 관련
     void lcd_RSSICreateIcon();
     void lcd_print(const char *line1 = "", const char *line2 = "");
     void lcd_RSSIPrint(int csq);
+    void lcd_RSSIAnimation();
 };
 
 nb_iot::nb_iot(LCD_I2C *lcd_ptr) : p_lcd(lcd_ptr)
@@ -108,27 +115,68 @@ void nb_iot::modem_init()
     sleep_ms(2000); // 모뎀 부팅 대기
     gpio_put(PWR_ON_PIN, 0);
 
-    printf("PWR 1. 10s\n");
+    printf("PWR 1. 30s\n");
 
-    sleep_ms(10000); // 모뎀 부팅 대기
+    sleep_ms(30000); // 모뎀 부팅 대기
+    this->modem_SendCmd("AT+CMEE=1");
     // this->send_cmd("ATE1");
-    this->modem_SendCmd("AT+CFUN=4");
+    this->modem_SendCmd("AT+CFUN=1");
+    // sleep_ms(10000); // 모뎀 부팅 대기
+}
+
+// 모뎀 망등록 체크
+bool nb_iot::modem_CheckNetwork()
+{
+    printf("Checking Network Registration (AT+CEREG?)\n");
+    this->modem_SendCmd("AT+CEREG?");
+    sleep_ms(1000); // 모뎀 응답 대기
+    this->modem_ReadResponse();
+
+    // 1. 요청하신 "+CEREG: 5,5" 문자열이 버퍼에 있는지 다이렉트로 확인
+    if (strstr(this->rx_buffer, "+CEREG: 5,5") != NULL)
+    {
+        return true;
+    }
+
+    // 2. 혹시 모를 파싱 예외 처리 (sscanf 활용하여 stat이 1(홈망) 또는 5(로밍망)인지 체크)
+    char *p = strstr(this->rx_buffer, "+CEREG:");
+    if (p != NULL)
+    {
+        int n = 0, stat = 0;
+        if (sscanf(p, "+CEREG: %d,%d", &n, &stat) == 2)
+        {
+            if (stat == 1 || stat == 5)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // 모뎀 RSSI check
 void nb_iot::modem_RSSIcheck()
 {
     int csq = 99;
-    // 30초 체크
-    static absolute_time_t next_check = make_timeout_time_ms(30000);
 
-    if (!time_reached(next_check))
+    if (this->is_socket_open)
+    {
+        return;
+    }
+    static absolute_time_t next_check;
+
+    // 부팅시 실행은 30초 무시
+    static bool first_run = true;
+    if (!first_run && !time_reached(next_check))
     {
         return;
     }
 
+    // 30초 체크
+    first_run = false;
+
     // 다음 실행 시각 재설정
-    next_check = make_timeout_time_ms(10000);
+    next_check = make_timeout_time_ms(30000);
 
     modem_SendCmd("AT+CSQ");
     sleep_ms(100);
@@ -202,7 +250,98 @@ void nb_iot::modem_ClearRxBuffer()
     this->buffer_idx = 0;                                // 버퍼 idx를 초기화한ㄷㅏ..
 }
 
-// 모뎀 소켓 열기
+// 모뎀 TCP 소켓 열기
+void nb_iot::modem_SocketOpen(const char *ip, const char *port)
+{
+    this->lcd_print("Sock init..");
+    this->is_socket_open = true;
+    this->modem_SendCmd("AT+KTCPCLOSE=1");
+    sleep_ms(1000);
+
+    this->modem_SendCmd("AT+KTCPDEL=1");
+    sleep_ms(1000);
+
+    this->lcd_print("Sock init..", "AT+KCNXCFG");
+    printf("GPRS Connection Configuration : AT+KCNXCFG=1,GPRS,YOUR_APN_NAME_PLACEHOLDER\n");
+    this->modem_SendCmd("AT+KCNXCFG=1,\"GPRS\",\"YOUR_APN_NAME_PLACEHOLDER\"");
+    sleep_ms(2000);
+    this->modem_ReadResponse();
+
+    this->lcd_print("Sock init..", "AT+KTCPCFG");
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "AT+KTCPCFG=1,0,\"%s\",%s", ip, port);
+    printf("TCP Connection Configuration : (%s)\n", cmd);
+    this->modem_SendCmd(cmd);
+    sleep_ms(2000);
+    this->modem_ReadResponse();
+
+this->lcd_print("Sock init..", "AT+KTCPCNX");
+    printf("Start TCP Connection : AT+KTCPCNX=1\n");
+    this->modem_SendCmd("AT+KTCPCNX=1");
+    sleep_ms(5000);
+    this->modem_ReadResponse();
+
+    // 다이렉트 모드
+    this->lcd_print("Sock init..", "AT+KTCPSTART");
+    printf("Start a TCP Connection in Direct Data Flow : KTCPSTART=1\n");
+    this->modem_SendCmd("AT+KTCPSTART=1");
+    sleep_ms(2000);
+    this->modem_ReadResponse();
+    sleep_ms(5000);
+}
+
+// 모뎀 TCP 데이터 전송
+void nb_iot::modem_SocketSend(const char *data)
+{
+    // KCTPSTART로 보낼 때
+    this->lcd_print("Data >>>");
+    printf("\n데이터 송신: %s\n", data);
+    uart_puts(UART_ID, data);
+    uart_puts(UART_ID, "\n");
+    sleep_ms(100);
+
+    // KTCPSND로 보낼 때
+
+    // int len = strlen(data);
+    // char cmd[64];
+
+    // snprintf(cmd, sizeof(cmd), "AT+KTCPSND=1,%d", len);
+    // printf("데이터 송신 준비 요청: %s\n", cmd);
+    // this->modem_SendCmd(cmd);
+
+    // sleep_ms(200);
+    // this->modem_ReadResponse();
+
+    // printf("데이터 전송: %s\n", data);
+    // uart_puts(UART_ID, data);
+    // uart_puts(UART_ID, "--EOF--Pattern--");
+
+    // sleep_ms(500);
+    // this->modem_ReadResponse();
+}
+
+// 모뎀 TCP 소켓 닫기
+void nb_iot::modem_SocketClose()
+{
+    printf("\n소켓닫기...\n");
+    this->lcd_print("Sock Close..");
+
+    // printf("명령모드로 복귀 (+++)...\n");
+    // sleep_ms(1000);
+    // uart_puts(UART_ID, "+++");
+    // sleep_ms(1000);
+    // this->modem_ReadResponse();
+
+    this->modem_SendCmd("--EOF--Pattern--");
+    sleep_ms(1000);
+    this->modem_SendCmd("AT+KTCPCLOSE=1");
+    sleep_ms(1000);
+    this->modem_SendCmd("AT+KTCPDEL=1");
+    this->lcd_print("Sock Closed");
+    sleep_ms(1000);
+    this->modem_ReadResponse();
+    this->is_socket_open = false;
+}
 
 // LCD RSSI Icon CREATE
 void nb_iot::lcd_RSSICreateIcon()
@@ -246,6 +385,47 @@ void nb_iot::lcd_RSSIPrint(int csq)
     }
 }
 
+void nb_iot::lcd_RSSIAnimation()
+{
+    static absolute_time_t next_anim = make_timeout_time_ms(0);
+    static int frame = 0;
+
+    if (!time_reached(next_anim)) // 400ms가 지나지 않았다면 아무것도 안 하고 리턴
+    {
+        return;
+    }
+    next_anim = make_timeout_time_ms(400); // 다음 프레임 시간 설정(400ms 뒤)
+
+    p_lcd->SetCursor(0, 13);
+    p_lcd->PrintCustomChar(0);
+
+    int anim_stage = (frame % 4); // 0, 1, 2, 3 반복
+    if (anim_stage == 0)
+    {
+        p_lcd->SetCursor(0, 14);
+        p_lcd->PrintString("\x01 "); // 1칸
+    }
+
+    else if (anim_stage == 1)
+    {
+        p_lcd->SetCursor(0, 14);
+        p_lcd->PrintString("\x02 "); // 2칸
+    }
+
+    else if (anim_stage == 2)
+    {
+        p_lcd->SetCursor(0, 14);
+        p_lcd->PrintString("\x02\x03"); // 3칸
+    }
+
+    else if (anim_stage == 3)
+    {
+        p_lcd->SetCursor(0, 14);
+        p_lcd->PrintString("\x02\x04"); // 4칸 완충
+    }
+
+    frame++;
+}
 // LCD 두줄 출력
 void nb_iot::lcd_print(const char *line1, const char *line2)
 {
@@ -268,12 +448,40 @@ int main()
 
     LCD_I2C lcd(LCD_ADDR, 16, 2, I2C_PORT, SDA_PIN, SCL_PIN); // LCD 초기화
 
-
     nb_iot iot(&lcd);
-    iot.modem_init();
 
-    sleep_ms(5000);
+    iot.modem_init();
+    iot.modem_RSSIcheck();
     iot.lcd_print("Ready");
+    sleep_ms(3000);
+
+    absolute_time_t next_net_check = make_timeout_time_ms(0); // 켜지자마자 첫 검사 수행
+    int retry_cnt = 0;
+    while (true)
+    {
+        // 1. 💡 400ms 마다 LCD 애니메이션 프레임을 업데이트합니다. (Non-blocking)
+        iot.lcd_RSSIAnimation();
+        // 2. 💡 5초(5000ms)마다 한 번씩 모뎀에게 망 등록이 되었는지 물어봅니다.
+        if (time_reached(next_net_check))
+        {
+            retry_cnt++;
+            printf("망 등록 상태 확인 중... (시도 횟수: %d)\n", retry_cnt);
+            iot.lcd_print("Net Check..");
+
+            if (iot.modem_CheckNetwork())
+            {
+                iot.lcd_print("Net Ready..");
+                printf("\n🎉 망 등록 성공! 소켓 통신을 시작합니다. 🎉\n");
+                break; // 망을 잡았으니 루프를 탈출하여 다음 리모컨 로직으로 진행!
+            }
+
+            // 아직 못 잡았다면 다음 검사 시간을 5초 뒤로 예약
+            next_net_check = make_timeout_time_ms(5000);
+        }
+
+        // 미세한 대기로 CPU 과부하 방지
+        sleep_us(100);
+    }
 
     printf("--- IR Receiver NEC Test Start ---\n");
 
@@ -284,7 +492,6 @@ int main()
 
     nec_rx_init(pio, rx_pin);
     printf("Initialized NEC IR Receiver on GP17\n");
-    printf("Press any button on your remote control...\n");
 
     // 변수 선언 (리모컨 주소값과 데이터값이 저장될 공간)
     uint8_t address = 0;
@@ -293,14 +500,14 @@ int main()
     while (true)
     {
         iot.modem_SendCmdUserInput();
-        // iot.modem_ReadResponse();
+        iot.modem_ReadResponse();
         iot.modem_RSSIcheck();
-        // sleep_us(10);
+        sleep_us(10);
 
-        // 2) 읽어온 32비트 데이터를 라이브러리 함수를 통해 주소와 데이터로 분해(디코딩)합니다.
+        // IR 리모컨 데이터가 수신되었는지 확인
         if (!pio_sm_is_rx_fifo_empty(pio, sm))
         {
-            uint32_t rx_frame = pio_sm_get_blocking(pio, sm); // 데이터가 있는 게 확인됐으니 바로 읽힘
+            uint32_t rx_frame = pio_sm_get_blocking(pio, sm);
 
             uint8_t address = 0;
             uint8_t data = 0;
@@ -308,8 +515,79 @@ int main()
             // 읽어온 데이터를 디코딩
             if (nec_decode_frame(rx_frame, &address, &data))
             {
-                printf("Received Code -> Address: 0x%02X (%d), Data: 0x%02X (%d)\n",
-                       address, address, data, data);
+                printf("Received Code -> Address: 0x%02X, Data: 0x%02X\n", address, data);
+
+                // 리모컨 키 코드에 따른 제어 블록
+                switch (data)
+                {
+                case 0x45: // POWER 버튼
+                    printf("[POWER] 소켓 오픈 요청\n");
+                    iot.modem_SocketOpen("segang.duckdns.org", "1818");
+                    iot.lcd_print("Connected");
+                    break;
+
+                case 0x47: // MUTE 버튼
+                    printf("[MUTE] 소켓 닫기 요청\n");
+                    iot.modem_SocketClose();
+                    iot.lcd_print("Ready");
+                    break;
+
+                // 숫자 버튼 처리
+                case 0x16:
+                    printf("[0] 전송\n");
+                    iot.modem_SocketSend("0");
+                    iot.lcd_print("Send: 0");
+                    break;
+                case 0x0C:
+                    printf("[1] 전송\n");
+                    iot.modem_SocketSend("11");
+                    iot.lcd_print("Send: 1");
+                    break;
+                case 0x18:
+                    printf("[2] 전송\n");
+                    iot.modem_SocketSend("21");
+                    iot.lcd_print("Send: 2");
+                    break;
+                case 0x5E:
+                    printf("[3] 전송\n");
+                    iot.modem_SocketSend("3");
+                    iot.lcd_print("Send: 3");
+                    break;
+                case 0x08:
+                    printf("[4] 전송\n");
+                    iot.modem_SocketSend("10");
+                    iot.lcd_print("Send: 4");
+                    break;
+                case 0x1C:
+                    printf("[5] 전송\n");
+                    iot.modem_SocketSend("20");
+                    iot.lcd_print("Send: 5");
+                    break;
+                case 0x5A:
+                    printf("[6] 전송\n");
+                    iot.modem_SocketSend("6");
+                    iot.lcd_print("Send: 6");
+                    break;
+                case 0x42:
+                    printf("[7] 전송\n");
+                    iot.modem_SocketSend("7");
+                    iot.lcd_print("Send: 7");
+                    break;
+                case 0x52:
+                    printf("[8] 전송\n");
+                    iot.modem_SocketSend("8");
+                    iot.lcd_print("Send: 8");
+                    break;
+                case 0x4A:
+                    printf("[9] 전송\n");
+                    iot.modem_SocketSend("9");
+                    iot.lcd_print("Send: 9");
+                    break;
+
+                default:
+                    printf("미정의 버튼 입력: 0x%02X\n", data);
+                    break;
+                }
             }
         }
     }
