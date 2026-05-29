@@ -12,13 +12,17 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
+
 cmake_minimum_required(VERSION 3.13)
 
-# 1. 보드 및 플랫폼 설정 (반드시 pico_sdk_import.cmake 이전에 설정)
-set(PICO_BOARD pico2_w)        # Pico 2 W 모델 명시
-set(PICO_PLATFORM rp2350)      # RP2350 칩셋 플랫폼 명시
+# 1. 보드 및 플랫폼 설정 
+set(PICO_BOARD pico2_w)        
+set(PICO_PLATFORM rp2350)      
 
-# 2. SDK 경로 설정 (프로젝트 폴더 바로 아래의 pico-sdk)
+# 💡 [여기가 핵심!] SDK 환경을 불러오기 전에 프리토스 소스 경로를 강력하게 주입합니다.
+set(PICO_FREERTOS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS-Kernel" CACHE PATH "FreeRTOS Kernel Path" FORCE)
+
+# 2. SDK 경로 설정 
 set(PICO_SDK_PATH "${CMAKE_CURRENT_SOURCE_DIR}/pico-sdk")
 
 # 3. Pico SDK 설정을 불러옴
@@ -32,22 +36,42 @@ set(CMAKE_CXX_STANDARD 17)
 # 5. Pico SDK 초기화
 pico_sdk_init()
 
+# ====================================================================================
+# [참고 반영] FreeRTOS 경로 지정 및 전용 포트 임포트
+# ====================================================================================
+# 1) FreeRTOS 설정 폴더 경로 지정 및 등록
+set(FREERTOS_CONFIG_DIR "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Config" CACHE STRING "FreeRTOS Config Path")
+include_directories("${FREERTOS_CONFIG_DIR}")
+
+# 2) FreeRTOS 커널 폴더 경로 지정
+set(FREERTOS_KERNEL_PATH "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Kernel" CACHE STRING "FreeRTOS Kernel Path")
+
+# 3) RP2350 전용 FreeRTOS 임포트 스크립트 실행 (헤더 경로 자동 매핑)
+include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/Community-Supported-Ports/GCC/RP2350_ARM_NTZ/FreeRTOS_Kernel_import.cmake)
+# ====================================================================================
+
+
+
 # 6. 실행 파일 생성
 add_executable(nb_iot_project
-    iot_project.cpp
+    main.cpp
     lib/LCD_I2C.cpp
-    lib/nec_receive.c
 )
 
-#7. nec라이브러리
-pico_generate_pio_header(nb_iot_project ${CMAKE_CURRENT_LIST_DIR}/lib/nec_receive.pio)
+# 7. 라이브러리 연결
+target_link_libraries(nb_iot_project 
+    pico_stdlib
+    hardware_uart
+    hardware_adc
+    hardware_i2c
+    hardware_pio
+    pico_multicore      
+    FreeRTOS-Kernel
+    FreeRTOS-Kernel-Heap4
+)
 
-# 필요한 라이브러리 연결
-target_link_libraries(nb_iot_project pico_stdlib hardware_uart hardware_adc hardware_i2c hardware_pio)
-
-# USB 시리얼(stdio) 활성화 여부 선택 (printf 등을 USB로 보려면 1)
+# stdio 설정
 pico_enable_stdio_usb(nb_iot_project 1)
 pico_enable_stdio_uart(nb_iot_project 0)
 
-# uf2, bin, elf, hex 파일 생성을 위한 추가 출력 설정
 pico_add_extra_outputs(nb_iot_project)
