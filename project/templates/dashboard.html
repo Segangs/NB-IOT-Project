@@ -763,7 +763,7 @@
         }
 
         // Initial load of dashboard data (automatic polling disabled by request)
-        updateDashboard();
+        window.onload = updateDashboard;
 
         // ---------------- Pico Chatbot Script (Mocking Owly AI Chatbot) ----------------
         const chatBox = document.getElementById('chat-box');
