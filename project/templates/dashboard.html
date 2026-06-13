@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
     /* Metric Cards Grid */
     .metric-card {
@@ -424,6 +425,11 @@
             grid-template-columns: 1fr;
         }
     }
+
+    @keyframes pulse-live {
+        0%, 100% { opacity: 0.3; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1.1); }
+    }
 </style>
 {% endblock %}
 
@@ -433,9 +439,10 @@
         <div>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <h1 style="margin: 0; font-size: 1.75rem; font-family: var(--font-title); font-weight: 700; line-height: 1.2;">실시간 관제 대시보드</h1>
-                <button onclick="updateDashboard()" style="background-color: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: var(--secondary); padding: 0.35rem 0.75rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.backgroundColor='rgba(56, 189, 248, 0.2)'" onmouseout="this.style.backgroundColor='rgba(56, 189, 248, 0.1)'">
-                    <i class="fa-solid fa-rotate"></i> 새로고침
-                </button>
+                <div style="background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--success); padding: 0.35rem 0.75rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem;">
+                    <span style="width: 8px; height: 8px; background-color: var(--success); border-radius: 50%; display: inline-block; animation: pulse-live 1.5s infinite; box-shadow: 0 0 8px var(--success);"></span>
+                    실시간 자동 갱신
+                </div>
             </div>
             <p style="margin: 3px 0 0 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.2;">안녕하세요, {{ user_name }}님! 안전하고 쾌적하게 설비를 모니터링하세요. ❄️</p>
         </div>
@@ -764,6 +771,45 @@
 
         // Initial load of dashboard data (automatic polling disabled by request)
         window.onload = updateDashboard;
+
+        // ---------------- Supabase Realtime Subscription ----------------
+        const supabaseUrl = "{{ supabase_url }}";
+        const supabaseKey = "{{ supabase_key }}";
+        
+        if (supabaseUrl && supabaseKey) {
+            const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+            
+            // Subscribe to database changes
+            const channel = supabaseClient
+                .channel('dashboard-realtime')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'sensorvalue' },
+                    (payload) => {
+                        console.log('Realtime sensorvalue update:', payload);
+                        updateDashboard();
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'device_boot_logs' },
+                    (payload) => {
+                        console.log('Realtime device_boot_logs update:', payload);
+                        updateDashboard();
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'usersettings' },
+                    (payload) => {
+                        console.log('Realtime usersettings update:', payload);
+                        updateDashboard();
+                    }
+                )
+                .subscribe((status) => {
+                    console.log('Supabase Realtime subscription status:', status);
+                });
+        }
 
         // ---------------- Pico Chatbot Script (Mocking Owly AI Chatbot) ----------------
         const chatBox = document.getElementById('chat-box');

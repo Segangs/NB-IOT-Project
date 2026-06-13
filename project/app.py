@@ -319,7 +319,12 @@ def dashboard():
         return redirect(url_for("login"))
     
     user_name = session.get("user_name", "사용자")
-    return render_template("dashboard.html", user_name=user_name)
+    return render_template(
+        "dashboard.html", 
+        user_name=user_name, 
+        supabase_url=SUPABASE_URL, 
+        supabase_key=SUPABASE_KEY
+    )
 
 # ----------------- Authentication -----------------
 @app.route("/auth/login", methods=["GET", "POST"])
@@ -826,10 +831,38 @@ def device_status():
         users_res = supabase.table("users").select("userId, userName").execute()
         user_map = {u["userId"]: u["userName"] for u in (users_res.data or [])}
         
+        # Collect cmdIds for batch query
+        cmd_ids = []
+        for log in boot_logs:
+            reason = log.get("bootReasonCode")
+            cmd_id = log.get("cmdId")
+            if reason == 1 and cmd_id:
+                cmd_ids.append(cmd_id)
+                
+        cmd_time_map = {}
+        if cmd_ids:
+            try:
+                cmd_res = supabase.table("deviceCmds").select("cmdId, created_at").in_("cmdId", cmd_ids).execute()
+                for cmd_row in (cmd_res.data or []):
+                    c_id = cmd_row.get("cmdId")
+                    c_at = cmd_row.get("created_at")
+                    if c_at:
+                        try:
+                            # Format creation time
+                            dt = datetime.fromisoformat(c_at.replace("Z", "+00:00"))
+                            formatted_c_at = dt.strftime("%m/%d %H:%M")
+                        except:
+                            formatted_c_at = c_at
+                        cmd_time_map[c_id] = formatted_c_at
+            except Exception as e:
+                print(f"Error fetching deviceCmds: {e}")
+
         formatted_logs = []
         for log in boot_logs:
             d_id = log.get("deviceId")
             u_id = log.get("userId")
+            c_id = log.get("cmdId")
+            reason_code = log.get("bootReasonCode")
             
             # Format time
             btime = log.get("boottime", "")
@@ -839,8 +872,11 @@ def device_status():
             except:
                 formatted_time = btime
                 
+            cmd_submitted_time = cmd_time_map.get(c_id) if c_id else None
+                
             formatted_logs.append({
                 "id": log.get("id"),
+                "device_id": d_id,
                 "time": formatted_time,
                 "user_name": user_map.get(u_id, "외부인(OAuth)"),
                 "imei": dev_map.get(d_id, "Unknown IMEI"),
@@ -851,7 +887,10 @@ def device_status():
                 "at_status": "정상(OK)" if log.get("at_status") == 0 else "이상",
                 "cpin_status": "정상(READY)" if log.get("cpin_status") == 0 else "이상",
                 "csq_rssi": log.get("csq_rssi", 99),
-                "temp_sensor_status": "정상" if log.get("temp_sensor_status") == 0 else "이상"
+                "temp_sensor_status": "정상" if log.get("temp_sensor_status") == 0 else "이상",
+                "boot_reason_code": reason_code,
+                "cmd_id": c_id,
+                "cmd_submitted_time": cmd_submitted_time
             })
             
     except Exception as err:
@@ -859,6 +898,35 @@ def device_status():
         flash(f"기기 상태 로그를 가져오는 동안 에러 발생: {err}", "danger")
         
     return render_template("device_status.html", logs=formatted_logs)
+
+# ----------------- Send Control Command to DeviceCmds -----------------
+@app.route("/send-command", methods=["POST"])
+def send_command():
+    if not is_logged_in():
+        return jsonify({"success": False, "error": "로그인이 필요합니다."}), 401
+        
+    try:
+        data = request.get_json() or {}
+        device_id = data.get("deviceId")
+        cmd_code = data.get("cmd")
+        
+        if not device_id or cmd_code is None:
+            return jsonify({"success": False, "error": "잘못된 요청 파라미터입니다."}), 400
+            
+        insert_data = {
+            "deviceId": int(device_id),
+            "cmd": int(cmd_code),
+            "status": 0
+        }
+        
+        res = supabase.table("deviceCmds").insert(insert_data).execute()
+        if not res.data:
+            return jsonify({"success": False, "error": "명령 전송에 실패했습니다."}), 500
+            
+        return jsonify({"success": True, "message": "명령 전송 완료 (대기 중)"})
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # ----------------- Temperature Status (온도 상태 상세 비교) -----------------
 @app.route("/temp-status")
@@ -954,13 +1022,14 @@ def device_temp_history(device_id):
         
     try:
         # 1. Fetch device data
-        dev_res = supabase.table("device").select("deviceId, userId, deviceIMEI").eq("deviceId", device_id).execute()
+        dev_res = supabase.table("device").select("deviceId, userId, deviceIMEI, userWorkplaceId").eq("deviceId", device_id).execute()
         if not dev_res.data:
             flash("해당 기기를 찾을 수 없습니다.", "danger")
             return redirect(url_for("temp_status"))
         dev = dev_res.data[0]
         imei = dev.get("deviceIMEI", "Unknown IMEI")
         u_id = dev.get("userId")
+        current_workplace_id = dev.get("userWorkplaceId")
         
         # 2. Fetch owner userName
         user_name = "외부인(OAuth)"
@@ -969,29 +1038,73 @@ def device_temp_history(device_id):
             if u_res.data:
                 user_name = u_res.data[0].get("userName", "외부인(OAuth)")
                 
-        # 3. Fetch modelName and userMachineId
+        # 3. Fetch workplaces and user machines for dropdown lists
+        workplaces = []
+        user_machines_list = []
+        if u_id:
+            # Fetch workplaces belonging to u_id (include WorkplaceName)
+            wp_res = supabase.table("userworkplace").select("userWorkplaceId, WorkplaceAddress, WorkplaceName").eq("userId", u_id).execute()
+            workplaces = wp_res.data or []
+            
+            # Fetch devices belonging to u_id
+            devs_res = supabase.table("device").select("deviceId, userWorkplaceId").eq("userId", u_id).execute()
+            devices = devs_res.data or []
+            dev_ids = [d["deviceId"] for d in devices]
+            
+            if dev_ids:
+                # Fetch usermachine records linked to user's devices
+                um_all_res = supabase.table("usermachine").select("userMachineId, deviceId, userMachineName").in_("deviceId", dev_ids).execute()
+                um_all = um_all_res.data or []
+                
+                workplace_map = {w["userWorkplaceId"]: w["WorkplaceAddress"] for w in workplaces}
+                workplace_name_map = {w["userWorkplaceId"]: (w.get("WorkplaceName") or "알 수 없는 영업장") for w in workplaces}
+                dev_workplace_map = {d["deviceId"]: d["userWorkplaceId"] for d in devices}
+                
+                for um in um_all:
+                    d_id = um.get("deviceId")
+                    w_id = dev_workplace_map.get(d_id)
+                    w_addr = workplace_map.get(w_id, "알 수 없는 영업장")
+                    w_name = workplace_name_map.get(w_id, "알 수 없는 영업장")
+                    user_machines_list.append({
+                        "userMachineId": um.get("userMachineId"),
+                        "deviceId": d_id,
+                        "userMachineName": um.get("userMachineName") or "알 수 없는 기기",
+                        "userWorkplaceId": w_id,
+                        "workplaceAddress": w_addr,
+                        "workplaceName": w_name
+                    })
+        
+        # Determine current workplace Info
+        workplace_map = {w["userWorkplaceId"]: w["WorkplaceAddress"] for w in workplaces}
+        workplace_name_map = {w["userWorkplaceId"]: (w.get("WorkplaceName") or "알 수 없는 영업장") for w in workplaces}
+        current_workplace_address = workplace_map.get(current_workplace_id, "알 수 없는 영업장")
+        current_workplace_name = workplace_name_map.get(current_workplace_id, "알 수 없는 영업장")
+                
+        # 4. Fetch modelName, userMachineId, and userMachineName
         model_name = "알 수 없는 기기"
         user_machine_id = None
-        um_res = supabase.table("usermachine").select("userMachineId, machineId").eq("deviceId", device_id).execute()
+        user_machine_name = "알 수 없는 기기"
+        um_res = supabase.table("usermachine").select("userMachineId, machineId, userMachineName").eq("deviceId", device_id).execute()
         if um_res.data:
             um = um_res.data[0]
             user_machine_id = um.get("userMachineId")
+            user_machine_name = um.get("userMachineName") or "알 수 없는 기기"
             m_res = supabase.table("machine").select("modelName").eq("machineId", um.get("machineId")).execute()
             if m_res.data:
                 model_name = m_res.data[0].get("modelName", "알 수 없는 기기")
                 
-        # 4. Fetch upper limit value
+        # 5. Fetch upper limit value
         upper_limit = 30.0
         if user_machine_id:
             us_res = supabase.table("usersettings").select("tempUpperLimitValue").eq("userMachineId", user_machine_id).execute()
             if us_res.data:
                 upper_limit = float(us_res.data[0].get("tempUpperLimitValue") or 30.0)
                 
-        # 5. Fetch sensors for this device
+        # 6. Fetch sensors for this device
         s_res = supabase.table("sensor").select("sensorId").eq("deviceId", device_id).execute()
         sensor_ids = [s["sensorId"] for s in (s_res.data or [])]
         
-        # 6. Fetch last 50 sensor values
+        # 7. Fetch last 50 sensor values
         formatted_history = []
         chart_labels = []
         chart_values = []
@@ -1031,7 +1144,11 @@ def device_temp_history(device_id):
             "imei": imei,
             "user_name": user_name,
             "model_name": model_name,
-            "upper_limit": upper_limit
+            "upper_limit": upper_limit,
+            "workplace_id": current_workplace_id,
+            "workplace_address": current_workplace_address,
+            "workplace_name": current_workplace_name,
+            "machine_name": user_machine_name
         }
         
     except Exception as err:
@@ -1043,7 +1160,9 @@ def device_temp_history(device_id):
         device=device_info, 
         history=formatted_history,
         chart_labels=chart_labels,
-        chart_values=chart_values
+        chart_values=chart_values,
+        workplaces=workplaces,
+        user_machines=user_machines_list
     )
 
 # ----------------- National Temperatures (전국 평균 온도 상세) -----------------

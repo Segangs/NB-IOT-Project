@@ -1,0 +1,490 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .status-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .status-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .status-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.85rem;
+    }
+
+    .status-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .status-table td {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        color: var(--text-main);
+    }
+
+    .status-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .status-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .btn-back {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-back:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--text-muted);
+    }
+
+    /* Status badges & pills */
+    .badge-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-pill.success {
+        background-color: rgba(16, 185, 129, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .badge-pill.danger {
+        background-color: rgba(239, 68, 68, 0.12);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .badge-pill.warning {
+        background-color: rgba(245, 158, 11, 0.12);
+        color: var(--accent);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .signal-indicator {
+        font-weight: 600;
+        font-family: monospace;
+    }
+
+    /* Modal overlay */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(15, 23, 42, 0.8);
+        backdrop-filter: blur(8px);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+    }
+
+    .modal-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    /* Modal window */
+    .modal-window {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        width: 90%;
+        max-width: 450px;
+        padding: 2rem;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+        transform: scale(0.9);
+        transition: all 0.3s ease;
+    }
+
+    .modal-overlay.active .modal-window {
+        transform: scale(1);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .modal-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-main);
+        font-family: var(--font-title);
+    }
+
+    .modal-close {
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        font-size: 1.25rem;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+
+    .modal-close:hover {
+        color: var(--text-main);
+    }
+
+    .modal-body {
+        margin-bottom: 2rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+    }
+
+    .form-select {
+        width: 100%;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-family: var(--font-family);
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .form-select:focus {
+        border-color: var(--primary);
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+    }
+
+    .btn-secondary {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-primary {
+        background-color: var(--primary);
+        border: none;
+        color: white;
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+        box-shadow: 0 4px 6px -1px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+        background-color: #1d4ed8;
+    }
+
+    /* Button styled specifically for table command */
+    .btn-action-cmd {
+        background-color: rgba(37, 99, 235, 0.1);
+        border: 1px solid rgba(37, 99, 235, 0.2);
+        color: #60a5fa;
+        padding: 0.3rem 0.75rem;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .btn-action-cmd:hover {
+        background-color: var(--primary);
+        color: white;
+        border-color: var(--primary);
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>기기 상태 (부팅 로그)</h1>
+    <p>Pico W 단말기의 부팅 및 하드웨어 부팅 로그 수신 데이터 스트림입니다. 🔌</p>
+{% endblock %}
+
+{% block content %}
+    <div class="status-header-actions">
+        <h2 style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 600;">하드웨어 및 네트워크 진단 데이터 (최근 100건)</h2>
+        <a href="/dashboard" class="btn-back">
+            <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+        </a>
+    </div>
+
+    <div class="status-card" style="overflow-x: auto;">
+        <table class="status-table">
+            <thead>
+                <tr>
+                    <th>시간 (KST)</th>
+                    <th>이름</th>
+                    <th>이유</th>
+                    <th>단말 IMEI 식별코드</th>
+                    <th>피코 전압</th>
+                    <th>단말 내부 온도</th>
+                    <th>플래시 무결성</th>
+                    <th>RAM 테스트</th>
+                    <th>AT 상태</th>
+                    <th>CPIN 상태</th>
+                    <th>CSQ RSSI 신호</th>
+                    <th>온도 센서 회로</th>
+                    <th>제어</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if logs %}
+                    {% for log in logs %}
+                        <tr>
+                            <td style="color: var(--text-muted); white-space: nowrap;">{{ log.time }}</td>
+                            <td style="font-weight: 500;">{{ log.user_name }}</td>
+                            
+                            <!-- Boot Reason -->
+                            <td>
+                                {% if log.boot_reason_code == 0 %}
+                                    <span class="badge-pill success">정상</span>
+                                {% elif log.boot_reason_code == 1 %}
+                                    <span class="badge-pill warning" title="명령 제출 시간: {{ log.cmd_submitted_time or '알 수 없음' }}">
+                                        명령{% if log.cmd_submitted_time %} ({{ log.cmd_submitted_time }}){% endif %}
+                                    </span>
+                                {% elif log.boot_reason_code == 2 %}
+                                    <span class="badge-pill danger">워치독</span>
+                                {% elif log.boot_reason_code == 3 %}
+                                    <span class="badge-pill danger">전원끊김</span>
+                                {% else %}
+                                    <span class="badge-pill success">정상</span>
+                                {% endif %}
+                            </td>
+                            
+                            <td style="font-family: monospace; color: var(--text-muted);">{{ log.imei }}</td>
+                            
+                            <!-- Pico Voltage -->
+                            <td>
+                                {% if log.pico_voltage >= 3.1 %}
+                                    <span class="badge-pill success">{{ log.pico_voltage }}V</span>
+                                {% elif log.pico_voltage >= 2.8 %}
+                                    <span class="badge-pill warning">{{ log.pico_voltage }}V</span>
+                                {% else %}
+                                    <span class="badge-pill danger">{{ log.pico_voltage }}V</span>
+                                {% endif %}
+                            </td>
+                            
+                            <!-- Terminal Temp -->
+                            <td>
+                                <span class="badge-pill {% if log.temperature <= 50.0 %}success{% else %}danger{% endif %}">
+                                    {{ log.temperature }}°C
+                                </span>
+                            </td>
+                            
+                            <!-- Flash Integrity -->
+                            <td>
+                                <span class="badge-pill {% if log.flash_integrity == '정상' %}success{% else %}danger{% endif %}">
+                                    {{ log.flash_integrity }}
+                                </span>
+                            </td>
+                            
+                            <!-- RAM Test -->
+                            <td>
+                                <span class="badge-pill {% if log.ram_test == '정상' %}success{% else %}danger{% endif %}">
+                                    {{ log.ram_test }}
+                                </span>
+                            </td>
+                            
+                            <!-- AT Status -->
+                            <td>
+                                <span class="badge-pill {% if log.at_status == '정상(OK)' %}success{% else %}danger{% endif %}">
+                                    {% if log.at_status == '정상(OK)' %}OK{% else %}불량{% endif %}
+                                </span>
+                            </td>
+                            
+                            <!-- CPIN Status -->
+                            <td>
+                                <span class="badge-pill {% if log.cpin_status == '정상(READY)' %}success{% else %}danger{% endif %}">
+                                    {% if log.cpin_status == '정상(READY)' %}READY{% else %}불량{% endif %}
+                                </span>
+                            </td>
+                            
+                            <!-- CSQ RSSI -->
+                            <td>
+                                {% if log.csq_rssi == 99 %}
+                                    <span class="badge-pill danger">신호 없음 (99)</span>
+                                {% else %}
+                                    <span class="badge-pill {% if log.csq_rssi >= 15 %}success{% elif log.csq_rssi >= 10 %}warning{% else %}danger{% endif %}">
+                                        {{ log.csq_rssi }} / 31
+                                    </span>
+                                {% endif %}
+                            </td>
+                            
+                            <!-- Temp Sensor Circuit -->
+                            <td>
+                                <span class="badge-pill {% if log.temp_sensor_status == '정상' %}success{% else %}danger{% endif %}">
+                                    {{ log.temp_sensor_status }}
+                                </span>
+                            </td>
+                            
+                            <!-- Control / Command -->
+                            <td>
+                                {% if log.device_id and log.device_id != 1 %}
+                                    <button class="btn-action-cmd" onclick="openCmdModal('{{ log.device_id }}', '{{ log.imei }}')">
+                                        <i class="fa-solid fa-paper-plane"></i> 명령 전송
+                                    </button>
+                                {% else %}
+                                    <span style="color: var(--text-muted); font-size: 0.8rem;">제어 불가</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="13" style="text-align: center; color: var(--text-muted); padding: 4rem;">
+                            기기 상태 부팅 로그 데이터가 존재하지 않습니다.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Command Modal -->
+    <div id="cmdModal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <h3 class="modal-title">기기 제어 명령 전송</h3>
+                <button class="modal-close" onclick="closeCmdModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">대상 단말 IMEI</label>
+                    <input type="text" id="modalImei" class="form-select" style="background: rgba(255,255,255,0.03);" readonly>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">제어 명령 선택</label>
+                    <select id="modalCmdSelect" class="form-select">
+                        <option value="10">코드 10: 시스템 재부팅 (Reboot)</option>
+                    </select>
+                </div>
+                <input type="hidden" id="modalDeviceId">
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeCmdModal()">취소</button>
+                <button class="btn-primary" onclick="submitCommand()">전송</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openCmdModal(deviceId, imei) {
+            document.getElementById('modalDeviceId').value = deviceId;
+            document.getElementById('modalImei').value = imei;
+            document.getElementById('cmdModal').classList.add('active');
+        }
+
+        function closeCmdModal() {
+            document.getElementById('cmdModal').classList.remove('active');
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('cmdModal');
+            if (event.target == modal) {
+                closeCmdModal();
+            }
+        }
+
+        function submitCommand() {
+            const deviceId = document.getElementById('modalDeviceId').value;
+            const cmd = document.getElementById('modalCmdSelect').value;
+            const imei = document.getElementById('modalImei').value;
+
+            if (!deviceId || !cmd) {
+                alert('파라미터가 유효하지 않습니다.');
+                return;
+            }
+
+            fetch('/send-command', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    deviceId: deviceId,
+                    cmd: cmd
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`[${imei}] 명령이 성공적으로 대기열에 추가되었습니다.\n단말이 다음 온도 전송(최대 5분) 시 명령을 가져와서 재부팅합니다.`);
+                    closeCmdModal();
+                } else {
+                    alert('에러: ' + (data.error || '명령 전송 실패'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('서버 통신 실패');
+            });
+        }
+    </script>
+{% endblock %}
