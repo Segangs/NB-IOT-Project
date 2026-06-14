@@ -475,7 +475,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`[${imei}] 명령이 성공적으로 대기열에 추가되었습니다.\n단말이 다음 온도 전송(최대 5분) 시 명령을 가져와서 재부팅합니다.`);
+                    alert(`[${imei}] 명령이 성공적으로 대기열에 추가되었습니다.\n단말이 다음 온도 전송(최대 20분) 시 명령을 가져와서 재부팅합니다.`);
                     closeCmdModal();
                 } else {
                     alert('에러: ' + (data.error || '명령 전송 실패'));
