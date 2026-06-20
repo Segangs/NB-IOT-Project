@@ -10,6 +10,8 @@ std::array<uint8_t, 8> RSSI12  = {0b00000, 0b00000, 0b00000, 0b00000, 0b00011, 0
 std::array<uint8_t, 8> RSSI03  = {0b00000, 0b00000, 0b11000, 0b11000, 0b11000, 0b11000, 0b11000, 0b11000};
 std::array<uint8_t, 8> RSSI34  = {0b00011, 0b00011, 0b11011, 0b11011, 0b11011, 0b11011, 0b11011, 0b11011};
 
+extern int g_sensor_count;
+
 void lcd_custom_init(LCD_I2C *lcd)
 {
     lcd->BacklightOn();
@@ -123,10 +125,19 @@ void vLcdTask(void *pvParameters)
             // Pin 'Boot..' to top row, place detailed diagnostic text on bottom row, hide temp
             lcd_display_print(lcd, "Boot..", params->status_text);
         } else {
-            // 💡 온도는 10초(10,000ms)에 한 번씩만 갱신하여 표시 (Flicker 방지)
+            // 💡 온도는 일정 주기(단일 센서는 10초, 듀얼 센서는 4초)마다 갱신하여 표시 (Flicker 방지)
             uint32_t now_ms = to_ms_since_boot(get_absolute_time());
-            if (now_ms - last_temp_update_ms >= 10000 || last_temp_update_ms == 0) {
-                displayed_temp = params->current_temperature;
+            static int active_channel = 0;
+            uint32_t update_interval = (g_sensor_count >= 2) ? 4000 : 10000;
+            
+            if (now_ms - last_temp_update_ms >= update_interval || last_temp_update_ms == 0) {
+                if (g_sensor_count >= 2) {
+                    active_channel = (active_channel == 0) ? 1 : 0;
+                    displayed_temp = (active_channel == 0) ? params->current_temperature : params->current_temperature_ch1;
+                } else {
+                    active_channel = 0;
+                    displayed_temp = params->current_temperature;
+                }
                 last_temp_update_ms = now_ms;
             }
             
@@ -134,15 +145,21 @@ void vLcdTask(void *pvParameters)
             char temp_str[16];
             if (displayed_temp <= -990.0f) {
                 int err_code = (int)(-displayed_temp - 990.0f);
-                if (err_code == 1) {
-                    snprintf(temp_str, sizeof(temp_str), "Err: Cut");
-                } else if (err_code == 2) {
-                    snprintf(temp_str, sizeof(temp_str), "Err: Short");
+                const char* err_name = "Limit";
+                if (err_code == 1) err_name = "Cut";
+                else if (err_code == 2) err_name = "Short";
+                
+                if (g_sensor_count >= 2) {
+                    snprintf(temp_str, sizeof(temp_str), "C%d: %s", active_channel, err_name);
                 } else {
-                    snprintf(temp_str, sizeof(temp_str), "Err: Limit");
+                    snprintf(temp_str, sizeof(temp_str), "Err: %s", err_name);
                 }
             } else {
-                snprintf(temp_str, sizeof(temp_str), "%.1f\xDF""C", displayed_temp);
+                if (g_sensor_count >= 2) {
+                    snprintf(temp_str, sizeof(temp_str), "C%d: %.1f\xDF""C", active_channel, displayed_temp);
+                } else {
+                    snprintf(temp_str, sizeof(temp_str), "%.1f\xDF""C", displayed_temp);
+                }
             }
             
             lcd_display_print(lcd, params->status_text, temp_str);

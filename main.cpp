@@ -23,6 +23,83 @@
 int g_boot_reason_code = 0;
 int g_boot_cmd_id = 0;
 
+// Sensor cache structure and variables
+struct SensorInfo {
+    int sensor_id = -1;
+    char sensor_type[32] = {0};
+    char sensor_memo[32] = {0};
+};
+
+SensorInfo g_sensors[2];
+int g_sensor_count = 0;
+
+// Helper to parse sensor JSON list returned by Supabase
+int parse_sensors_json(const char *json, SensorInfo *sensors, int max_sensors) {
+    int count = 0;
+    const char *ptr = json;
+    
+    while (count < max_sensors) {
+        ptr = strstr(ptr, "\"sensorId\"");
+        if (!ptr) break;
+        
+        ptr = strchr(ptr, ':');
+        if (!ptr) break;
+        ptr++; // Skip ':'
+        
+        while (*ptr == ' ' || *ptr == '\t') ptr++;
+        sensors[count].sensor_id = atoi(ptr);
+        
+        ptr = strstr(ptr, "\"sensorType\"");
+        if (!ptr) break;
+        
+        ptr = strchr(ptr, ':');
+        if (!ptr) break;
+        ptr++;
+        while (*ptr == ' ' || *ptr == '\t') ptr++;
+        
+        if (*ptr == '"') {
+            ptr++;
+            const char *end = strchr(ptr, '"');
+            if (end) {
+                int len = end - ptr;
+                if (len > 31) len = 31;
+                strncpy(sensors[count].sensor_type, ptr, len);
+                sensors[count].sensor_type[len] = '\0';
+                ptr = end + 1;
+            }
+        } else if (strncmp(ptr, "null", 4) == 0) {
+            strcpy(sensors[count].sensor_type, "null");
+            ptr += 4;
+        }
+        
+        ptr = strstr(ptr, "\"sensorMemo\"");
+        if (!ptr) break;
+        
+        ptr = strchr(ptr, ':');
+        if (!ptr) break;
+        ptr++;
+        while (*ptr == ' ' || *ptr == '\t') ptr++;
+        
+        if (*ptr == '"') {
+            ptr++;
+            const char *end = strchr(ptr, '"');
+            if (end) {
+                int len = end - ptr;
+                if (len > 31) len = 31;
+                strncpy(sensors[count].sensor_memo, ptr, len);
+                sensors[count].sensor_memo[len] = '\0';
+                ptr = end + 1;
+            }
+        } else if (strncmp(ptr, "null", 4) == 0) {
+            strcpy(sensors[count].sensor_memo, "null");
+            ptr += 4;
+        }
+        
+        count++;
+    }
+    return count;
+}
+
 // Buzzer Global Control Settings (Default threshold: -10.0C)
 volatile float g_temp_upper_limit = DEFAULT_TEMP_UPPER_LIMIT;
 volatile bool g_buzzer_trigger = false;
@@ -152,100 +229,109 @@ void vPeriodicModemTask(void *pvParameters)
         // 2. Transmit Temperature Telemetry JSON (Every 20 minutes as configured)
         if (current_time_ms - last_temp_send_time_ms >= (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000))
         {
-            if (lcd_params.current_temperature > -990.0f)
+            printf("[PeriodicModemTask] 주기적 온도 HTTPS 전송 시도...\n");
+            
+            // 💡 [핵심] 망 등록 상태(CEREG) 및 신호 세기(CSQ)를 1회 즉각 확인하여 통신 상태가 좋은지 판별합니다.
+            int cereg_val = modem.check_network_registration();
+            int csq_val = modem.check_rssi_csq();
+            lcd_params.current_csq = csq_val;
+            lcd_params.is_searching_network = (csq_val == 99 || csq_val == 0);
+            
+            bool network_good = ((cereg_val == 1 || cereg_val == 5) && (csq_val != 99 && csq_val > 0));
+            
+            if (network_good)
             {
-                printf("[PeriodicModemTask] 주기적 온도 HTTPS 전송 시도...\n");
+                printf("[PeriodicModemTask] 통신 상태 양호 (CEREG: %d, CSQ: %d). HTTPS 전송 시작...\n", cereg_val, csq_val);
+                lcd_params.is_transmitting = true;
+                vTaskDelay(pdMS_TO_TICKS(1000)); // 물리 안정화 지연
                 
-                // 💡 [핵심] 망 등록 상태(CEREG) 및 신호 세기(CSQ)를 1회 즉각 확인하여 통신 상태가 좋은지 판별합니다.
-                int cereg_val = modem.check_network_registration();
-                int csq_val = modem.check_rssi_csq();
-                lcd_params.current_csq = csq_val;
-                lcd_params.is_searching_network = (csq_val == 99 || csq_val == 0);
+                bool all_sends_success = true;
                 
-                bool network_good = ((cereg_val == 1 || cereg_val == 5) && (csq_val != 99 && csq_val > 0));
-                bool send_success = false;
-                char response_buf[256];
-                response_buf[0] = '\0';
-
-                if (network_good)
+                for (int i = 0; i < g_sensor_count; i++)
                 {
-                    printf("[PeriodicModemTask] 통신 상태 양호 (CEREG: %d, CSQ: %d). HTTPS 전송 시작...\n", cereg_val, csq_val);
-                    lcd_params.is_transmitting = true;
-                    vTaskDelay(pdMS_TO_TICKS(1000)); // 물리 안정화 지연
+                    float send_val = (i == 0) ? lcd_params.current_temperature : lcd_params.current_temperature_ch1;
+                    int sensor_id = g_sensors[i].sensor_id;
                     
-                    char payload[256];
-                    snprintf(payload, sizeof(payload), 
-                        "{\"p_imei\":\"%s\",\"p_value\":%.2f}", 
-                        modem.get_imei(), lcd_params.current_temperature);
-                    if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT))
+                    if (send_val > -990.0f)
                     {
-                        if (modem.modem_HttpPost("/rest/v1/rpc/t", payload, response_buf, sizeof(response_buf)))
+                        char payload[256];
+                        snprintf(payload, sizeof(payload), 
+                            "{\"p_sensor_id\":%d,\"p_value\":%.2f}", 
+                            sensor_id, send_val);
+                        
+                        char response_buf[256];
+                        response_buf[0] = '\0';
+                        bool send_success = false;
+                        
+                        if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT))
                         {
-                            send_success = true;
+                            if (modem.modem_HttpPost("/rest/v1/rpc/t", payload, response_buf, sizeof(response_buf)))
+                            {
+                                send_success = true;
+                            }
+                            modem.modem_HttpClose();
                         }
-                        modem.modem_HttpClose();
+                        else
+                        {
+                            modem.modem_HttpClose(); 
+                        }
+                        
+                        if (send_success)
+                        {
+                            printf("[PeriodicModemTask] 센서 ID %d 데이터 전송 성공.\n", sensor_id);
+                            
+                            // Parse command and command ID from response
+                            if (response_buf[0] != '\0')
+                            {
+                                int cmd = extract_json_int(response_buf, "cmd");
+                                int cmdId = extract_json_int(response_buf, "cmdId");
+                                if (cmd != -1 && cmdId != -1)
+                                {
+                                    printf("[PeriodicModemTask] 기기 제어 명령 감지: cmd=%d, cmdId=%d\n", cmd, cmdId);
+                                    if (cmd == 10)
+                                    {
+                                        printf("[PeriodicModemTask] ⚠️ 'reboot' 명령 실행 (100ms 후 리셋)...\n");
+                                        vTaskDelay(pdMS_TO_TICKS(500)); // 로그 출력 보장을 위한 500ms 지연
+                                        safe_reboot(100);
+                                    }
+                                }
+                            }
+                            
+                            flash_log_write(send_val, lcd_params.current_vsys_voltage, 1, 0, 200, 0);
+                        }
+                        else
+                        {
+                            printf("[PeriodicModemTask] 센서 ID %d 데이터 전송 실패.\n", sensor_id);
+                            all_sends_success = false;
+                            flash_log_write(send_val, lcd_params.current_vsys_voltage, 0, 0, -2, 0);
+                        }
                     }
                     else
                     {
-                        modem.modem_HttpClose(); 
+                        printf("[PeriodicModemTask] 센서 ID %d 온도 비정상(센서 결함)으로 전송 생략.\n", sensor_id);
+                        int ntc_err = (send_val <= -990.0f) ? (int)(-990.0f - send_val) : 99;
+                        flash_log_write(send_val, lcd_params.current_vsys_voltage, 0, ntc_err, 0, 101);
                     }
-                    lcd_params.is_transmitting = false;
                 }
-                else
+                
+                lcd_params.is_transmitting = false;
+                
+                if (all_sends_success)
                 {
-                    printf("[PeriodicModemTask] 통신 상태 불량 (CEREG: %d, CSQ: %d). 전송 보류.\n", cereg_val, csq_val);
-                }
-
-                if (send_success)
-                {
-                    printf("[PeriodicModemTask] 온도 데이터 전송 성공. 다음 주기까지 20분 대기.\n");
-                    
-                    // Parse command and command ID from response
-                    if (response_buf[0] != '\0')
-                    {
-                        int cmd = extract_json_int(response_buf, "cmd");
-                        int cmdId = extract_json_int(response_buf, "cmdId");
-                        if (cmd != -1 && cmdId != -1)
-                        {
-                            printf("[PeriodicModemTask] 기기 제어 명령 감지: cmd=%d, cmdId=%d\n", cmd, cmdId);
-                            if (cmd == 10)
-                            {
-                                printf("[PeriodicModemTask] ⚠️ 'reboot' 명령 실행 (100ms 후 리셋)...\n");
-                                vTaskDelay(pdMS_TO_TICKS(500)); // 로그 출력 보장을 위한 500ms 지연
-                                safe_reboot(100);
-                            }
-                            else
-                            {
-                                printf("[PeriodicModemTask] 지원되지 않는 명령 코드: %d\n", cmd);
-                            }
-                        }
-                    }
-                    
-                    // 로컬 플래시에 전송 성공 로그 기록 (HTTP 응답 성공코드: 200)
-                    flash_log_write(lcd_params.current_temperature, lcd_params.current_vsys_voltage, 1, 0, 200, 0);
-                    
+                    printf("[PeriodicModemTask] 모든 센서 데이터 전송 성공. 다음 주기까지 20분 대기.\n");
                     last_temp_send_time_ms = current_time_ms; // 성공 시에만 20분 타이머 리셋
                 }
                 else
                 {
-                    printf("[PeriodicModemTask] 온도 데이터 전송 실패/보류. 1분 뒤 재시도 예약.\n");
-                    
-                    // 로컬 플래시에 전송 실패 로그 기록 (-1: 망 없음, -2: HTTP 포스트 실패)
-                    int16_t modem_err = network_good ? -2 : -1;
-                    flash_log_write(lcd_params.current_temperature, lcd_params.current_vsys_voltage, 0, 0, modem_err, 0);
-                    
-                    // 실패/보류 시 다음 시도를 1분 뒤로 지연시킵니다.
+                    printf("[PeriodicModemTask] 일부 센서 전송 실패. 1분 뒤 재시도 예약.\n");
                     last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
                 }
             }
             else
             {
-                // 온도가 비정상인 경우는 전송하지 않고 다음 20분 주기로 넘어감
-                printf("[PeriodicModemTask] 온도 비정상(센서 결함)으로 전송 생략. 에러 로그 기록.\n");
-                int ntc_err = (lcd_params.current_temperature <= -990.0f) ? (int)(-990.0f - lcd_params.current_temperature) : 99;
-                flash_log_write(lcd_params.current_temperature, lcd_params.current_vsys_voltage, 0, ntc_err, 0, 101); // 101: 센서 고장 코드
-                
-                last_temp_send_time_ms = current_time_ms;
+                printf("[PeriodicModemTask] 통신 상태 불량 (CEREG: %d, CSQ: %d). 전송 보류. 1분 뒤 재시도 예약.\n", cereg_val, csq_val);
+                flash_log_write(0.0f, lcd_params.current_vsys_voltage, 0, 0, -1, 0);
+                last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
             }
         }
 
@@ -436,31 +522,47 @@ void vSensorTask(void *pvParameters)
         lcd_params.current_vsys_voltage = vsys_vol;
         lcd_params.is_vsys_stable = vsys_stable;
 
-        float ntc_temp = 0.0f;
-        int status = check_ntc_status(ntc_temp);
+        float ntc_temp_ch0 = 0.0f;
+        float ntc_temp_ch1 = 0.0f;
+        int status_ch0 = 0;
+        int status_ch1 = 0;
         
-        if (status == 0) {
-            lcd_params.current_temperature = ntc_temp;
-            
-            // Check if temperature exceeds the upper limit (-9.0C)
-            if (ntc_temp > g_temp_upper_limit) {
-                g_buzzer_trigger = true;
-            } else {
-                g_buzzer_trigger = false;
-            }
-            
-            // Print temperature reading strictly every 60 seconds (1s loop * 60 cycles)
-            if (serial_print_counter % 60 == 0) {
-                printf("[Sensor] 현재 측정 온도: %.2f °C | VSYS: %.2fV (%s) | Trigger: %d | Limit: %.1f C\n", 
-                       ntc_temp, vsys_vol, vsys_stable ? "정상" : "이상", g_buzzer_trigger, g_temp_upper_limit);
-            }
+        check_ntc_status_dual(ntc_temp_ch0, status_ch0, ntc_temp_ch1, status_ch1);
+        
+        // Ch0 파라미터 매핑
+        if (status_ch0 == 0) {
+            lcd_params.current_temperature = ntc_temp_ch0;
         } else {
-            lcd_params.current_temperature = -990.0f - (float)status;
-            g_buzzer_trigger = false; // Mute alert if sensor fails
-            
-            if (serial_print_counter % 300 == 0) {
-                printf("[Sensor] 센서 회로 결함 감지! 상태코드: %d | VSYS: %.2fV (%s)\n", 
-                       status, vsys_vol, vsys_stable ? "정상" : "이상");
+            lcd_params.current_temperature = -990.0f - (float)status_ch0;
+        }
+        lcd_params.status_ch0 = status_ch0;
+
+        // Ch1 파라미터 매핑
+        if (status_ch1 == 0) {
+            lcd_params.current_temperature_ch1 = ntc_temp_ch1;
+        } else {
+            lcd_params.current_temperature_ch1 = -990.0f - (float)status_ch1;
+        }
+        lcd_params.status_ch1 = status_ch1;
+
+        // 경보 여부 판단 (활성화된 센서 중 하나라도 임계치를 넘으면 발생)
+        bool alarm_active = false;
+        if (status_ch0 == 0 && ntc_temp_ch0 > g_temp_upper_limit) {
+            alarm_active = true;
+        }
+        if (g_sensor_count >= 2 && status_ch1 == 0 && ntc_temp_ch1 > g_temp_upper_limit) {
+            alarm_active = true;
+        }
+        g_buzzer_trigger = alarm_active;
+
+        // 시리얼 로그 출력 (1분 주기)
+        if (serial_print_counter % 60 == 0) {
+            if (g_sensor_count >= 2) {
+                printf("[Sensor] Ch0: %.2f °C (St:%d) | Ch1: %.2f °C (St:%d) | VSYS: %.2fV (%s) | Alarm: %d | Limit: %.1f C\n", 
+                       ntc_temp_ch0, status_ch0, ntc_temp_ch1, status_ch1, vsys_vol, vsys_stable ? "정상" : "이상", g_buzzer_trigger, g_temp_upper_limit);
+            } else {
+                printf("[Sensor] Ch0: %.2f °C (St:%d) | VSYS: %.2fV (%s) | Alarm: %d | Limit: %.1f C\n", 
+                       ntc_temp_ch0, status_ch0, vsys_vol, vsys_stable ? "정상" : "이상", g_buzzer_trigger, g_temp_upper_limit);
             }
         }
         
@@ -630,9 +732,13 @@ void vBootTask(void *pvParameters)
     strcpy(lcd_params.status_text, "Check Sensor");
     vTaskDelay(pdMS_TO_TICKS(1000));
     
-    float ntc_temp = 0.0f;
-    int ntc_status = check_ntc_status(ntc_temp);
-    printf("[Boot] NTC 온도센서 상태코드: %d\n", ntc_status);
+    float ntc_temp_ch0 = 0.0f;
+    float ntc_temp_ch1 = 0.0f;
+    int status_ch0 = 0;
+    int status_ch1 = 0;
+    check_ntc_status_dual(ntc_temp_ch0, status_ch0, ntc_temp_ch1, status_ch1);
+    int ntc_status = status_ch0;
+    printf("[Boot] NTC 온도센서 Ch0 상태코드: %d, Ch1 상태코드: %d\n", status_ch0, status_ch1);
 
     // ====================================================================================
     // Phase 4: Construct JSON & HTTPS Transmit
@@ -651,13 +757,52 @@ void vBootTask(void *pvParameters)
         flash_integrity_val, ram_test_val, at_status, cpin_status, csq_val,
         oper_name, ntc_status, g_boot_reason_code, g_boot_cmd_id);
 
+    bool boot_report_success = false;
     if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT)) {
-        modem.modem_HttpPost("/rest/v1/rpc/b", json_payload);
+        if (modem.modem_HttpPost("/rest/v1/rpc/b", json_payload)) {
+            boot_report_success = true;
+        }
         modem.modem_HttpClose();
         printf("[Boot] 자가 진단 보고 데이터 HTTPS 송출 완료.\n");
     } else {
         printf("[Boot] 에러: 자가 진단 HTTPS 데이터 송출 실패.\n");
         modem.modem_HttpClose();
+    }
+
+    // 💡 부팅 로그 전송 성공 시, 기기의 센서 목록을 Supabase로부터 조회하여 로컬 RAM에 캐싱
+    if (boot_report_success) {
+        printf("[Boot] Supabase로부터 디바이스 센서 매핑 정보 조회 시작...\n");
+        char sensor_req_payload[128];
+        snprintf(sensor_req_payload, sizeof(sensor_req_payload), "{\"p_imei\":\"%s\"}", modem.get_imei());
+        
+        char response_buf[512];
+        response_buf[0] = '\0';
+        bool sensor_fetch_success = false;
+
+        if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT)) {
+            if (modem.modem_HttpPost("/rest/v1/rpc/get_device_sensors", sensor_req_payload, response_buf, sizeof(response_buf))) {
+                sensor_fetch_success = true;
+            }
+            modem.modem_HttpClose();
+        }
+
+        if (sensor_fetch_success && response_buf[0] != '\0') {
+            g_sensor_count = parse_sensors_json(response_buf, g_sensors, 2);
+        }
+    }
+
+    // 센서 조회 실패했거나 매핑된 센서가 없을 때의 안전 폴백 (기본 1개 센서 동작)
+    if (g_sensor_count == 0) {
+        g_sensors[0].sensor_id = 1; // Default sensor id
+        strcpy(g_sensors[0].sensor_type, "Temp");
+        strcpy(g_sensors[0].sensor_memo, "Default");
+        g_sensor_count = 1;
+        printf("[Boot] DB 센서 매핑 조회 실패 또는 센서 없음. 기본값(ID:1)으로 폴백 설정 완료.\n");
+    } else {
+        printf("[Boot] DB 센서 매핑 정보 캐싱 완료 (총 %d개):\n", g_sensor_count);
+        for (int i = 0; i < g_sensor_count; i++) {
+            printf("  - Sensor %d: ID=%d, Type=%s, Memo=%s\n", i + 1, g_sensors[i].sensor_id, g_sensors[i].sensor_type, g_sensors[i].sensor_memo);
+        }
     }
     
     lcd_params.is_transmitting = false;
@@ -670,7 +815,8 @@ void vBootTask(void *pvParameters)
     strcpy(lcd_params.status_text, "Ready");
     lcd_params.current_csq = csq_val;
     lcd_params.is_searching_network = (csq_val == 99 || csq_val == 0);
-    lcd_params.current_temperature = (ntc_status == 0) ? ntc_temp : (-990.0f - (float)ntc_status);
+    lcd_params.current_temperature = (status_ch0 == 0) ? ntc_temp_ch0 : (-990.0f - (float)status_ch0);
+    lcd_params.current_temperature_ch1 = (status_ch1 == 0) ? ntc_temp_ch1 : (-990.0f - (float)status_ch1);
     
     printf("[BootTask] 자가 진단 및 보고 스레드 완료 성공. 자가 소멸합니다.\n");
     

@@ -435,7 +435,6 @@
 
 {% block navbar_header %}
     <div style="display: flex; align-items: center; gap: 0.75rem;">
-        <img src="/static/1_logo2.png" alt="Owly Logo" style="width: 48px; height: 48px; object-fit: cover; border-radius: 50%; border: 2px solid var(--secondary); box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);">
         <div>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <h1 style="margin: 0; font-size: 1.75rem; font-family: var(--font-title); font-weight: 700; line-height: 1.2;">실시간 관제 대시보드</h1>
@@ -560,8 +559,10 @@
             <div class="card chatbot-card">
                 <div class="card-header" style="margin-bottom: 0.5rem;">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <img src="/static/1_chat.png" alt="Owly" style="width: 28px; height: 28px; object-fit: cover; border-radius: 50%; border: 1px solid var(--secondary);">
-                        <h2 class="card-title" style="font-size: 1rem; margin: 0;">오울리 AI 도우미</h2>
+                        <div style="width: 28px; height: 28px; border-radius: 50%; background-color: rgba(56, 189, 248, 0.1); border: 1px solid var(--secondary); display: flex; align-items: center; justify-content: center;">
+                            <i class="fa-solid fa-robot" style="color: var(--secondary); font-size: 0.85rem;"></i>
+                        </div>
+                        <h2 class="card-title" style="font-size: 1rem; margin: 0;">Pico AI 도우미</h2>
                     </div>
                     <div class="chatbot-status">
                         <span class="status-dot"></span>온라인
@@ -570,9 +571,11 @@
                 
                 <div class="chatbot-body" id="chat-box">
                     <div class="chat-bubble bot">
-                        <img src="/static/1_chat.png" alt="Owly" style="width: 32px; height: 32px; object-fit: cover; border-radius: 50%; flex-shrink: 0; margin-top: 2px;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background-color: var(--secondary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                            <i class="fa-solid fa-robot" style="color: #0f172a; font-size: 1rem;"></i>
+                        </div>
                         <div>
-                            안녕하세요! 저는 PicoTeam의 마스코트이자 AI 관제 비서인 **오울리(Owly)**입니다! 🦉❄️
+                            안녕하세요! 저는 PicoTeam의 실시간 설비 모니터링을 돕는 AI 관제 비서입니다! 🤖❄️
                             현재 연동된 Supabase 로그를 분석하여 기기 상태와 제어 조치 방안을 답변해 드릴 수 있습니다.
                             <div class="chat-time">지금</div>
                         </div>
@@ -828,7 +831,9 @@
             
             if (sender === 'bot') {
                 bubble.innerHTML = `
-                    <img src="/static/1_chat.png" alt="Owly" style="width: 32px; height: 32px; object-fit: cover; border-radius: 50%; flex-shrink: 0; margin-top: 2px;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: var(--secondary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;">
+                        <i class="fa-solid fa-robot" style="color: #0f172a; font-size: 1rem;"></i>
+                    </div>
                     <div>
                         ${text}
                         <div class="chat-time">${timeStr}</div>

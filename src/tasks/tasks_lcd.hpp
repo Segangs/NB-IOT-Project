@@ -35,7 +35,10 @@ struct LcdTaskParams {
     volatile bool is_transmitting;
     volatile bool is_booting;
     volatile bool is_modem_busy; // Core 0 & Core 1 UART 경합 방지용 플래그
-    volatile float current_temperature;
+    volatile float current_temperature; // Ch0
+    volatile float current_temperature_ch1; // Ch1
+    volatile int status_ch0;
+    volatile int status_ch1;
     volatile float current_vsys_voltage;
     volatile bool is_vsys_stable;
     char status_text[16];

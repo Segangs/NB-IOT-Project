@@ -148,7 +148,7 @@ bool test_ram_integrity()
     return ok;
 }
 
-int check_ntc_status(float &ntc_temp)
+void check_ntc_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, int &status_ch1)
 {
     // 1. 과거 코드에서 검증된 정석 상수 선언
     const float VCC_val = 3.3f;
@@ -158,9 +158,6 @@ int check_ntc_status(float &ntc_temp)
     const float ROOM_TEMP_K_val = 298.15f;
 
     bool read_ok = false;
-    float temperature = -999.0f;
-    int status_code = 0;
-
     float raw_ch0 = 0.0f, volt_ch0 = 0.0f;
     float raw_ch1 = 0.0f, volt_ch1 = 0.0f;
     
@@ -196,69 +193,95 @@ int check_ntc_status(float &ntc_temp)
     }
     
     if (!read_ok) {
-        ntc_temp = -999.0f;
-        return 4; // Mutex error
+        temp_ch0 = -999.0f;
+        status_ch0 = 4; // Mutex error
+        temp_ch1 = -999.0f;
+        status_ch1 = 4;
+        return;
     }
     
-    // 현재 사용 중인 NTC 핀/채널의 값 매핑
-    float raw_avg = 0.0f;
-    float voltage = 0.0f;
-    if (ADC_NTC_CHANNEL == 0) {
-        raw_avg = raw_ch0;
-        voltage = volt_ch0;
+    // --- Channel 0 계산 ---
+    status_ch0 = 0;
+    float r_sensor_ch0 = 0.0f;
+    if (volt_ch0 <= 0.05f) {
+        status_ch0 = 1; // Open circuit
+    } else if (volt_ch0 >= 3.25f) {
+        status_ch0 = 2; // Short circuit
     } else {
-        raw_avg = raw_ch1;
-        voltage = volt_ch1;
-    }
-
-    float raw_temp = -999.0f;
-    float r_sensor = 0.0f;
-    
-    // 하드웨어 연결 상태 판정 (전압 기준으로 판정하여 단선/쇼트를 더욱 정확하고 안전하게 판별)
-    if (voltage <= 0.05f) {
-        status_code = 1; // Open circuit
-    } else if (voltage >= 3.25f) {
-        status_code = 2; // Short circuit
-    } else {
-        r_sensor = R_FIXED_val * (VCC_val / voltage - 1.0f);
+        r_sensor_ch0 = R_FIXED_val * (VCC_val / volt_ch0 - 1.0f);
         
         // B-parameter 변환
-        float temp_k = r_sensor / R_ROOM_TEMP_val;
+        float temp_k = r_sensor_ch0 / R_ROOM_TEMP_val;
         temp_k = log(temp_k);                      
         temp_k /= B_COEFFICIENT_val;               
         temp_k += 1.0f / ROOM_TEMP_K_val;          
         temp_k = 1.0f / temp_k;                    
-        temperature = temp_k - 273.15f + NTC_TEMP_OFFSET;            
-        raw_temp = temperature;
+        temp_ch0 = temp_k - 273.15f + NTC_TEMP_OFFSET;            
         
-        if (temperature < NTC_TEMP_MIN || temperature > NTC_TEMP_MAX) {
-            status_code = 3; // Out of range
+        if (temp_ch0 < NTC_TEMP_MIN || temp_ch0 > NTC_TEMP_MAX) {
+            status_ch0 = 3; // Out of range
+        }
+    }
+
+    // --- Channel 1 계산 ---
+    status_ch1 = 0;
+    float r_sensor_ch1 = 0.0f;
+    if (volt_ch1 <= 0.05f) {
+        status_ch1 = 1; // Open circuit
+    } else if (volt_ch1 >= 3.25f) {
+        status_ch1 = 2; // Short circuit
+    } else {
+        r_sensor_ch1 = R_FIXED_val * (VCC_val / volt_ch1 - 1.0f);
+        
+        // B-parameter 변환
+        float temp_k = r_sensor_ch1 / R_ROOM_TEMP_val;
+        temp_k = log(temp_k);                      
+        temp_k /= B_COEFFICIENT_val;               
+        temp_k += 1.0f / ROOM_TEMP_K_val;          
+        temp_k = 1.0f / temp_k;                    
+        temp_ch1 = temp_k - 273.15f + NTC_TEMP_OFFSET;            
+        
+        if (temp_ch1 < NTC_TEMP_MIN || temp_ch1 > NTC_TEMP_MAX) {
+            status_ch1 = 3; // Out of range
         }
     }
     
     // 💡 소프트웨어 저주파 통과 필터 (Low Pass Filter) 적용
-    static float filtered_temp = -999.0f;
-    if (status_code == 0) {
-        if (filtered_temp <= -990.0f) {
-            filtered_temp = temperature; // 초기화
+    static float filtered_temp_ch0 = -999.0f;
+    static float filtered_temp_ch1 = -999.0f;
+    const float alpha = 0.15f;
+
+    // Ch0 필터링
+    if (status_ch0 == 0) {
+        if (filtered_temp_ch0 <= -990.0f) {
+            filtered_temp_ch0 = temp_ch0; // 초기화
         } else {
-            const float alpha = 0.15f;
-            filtered_temp = (alpha * temperature) + ((1.0f - alpha) * filtered_temp);
+            filtered_temp_ch0 = (alpha * temp_ch0) + ((1.0f - alpha) * filtered_temp_ch0);
         }
-        temperature = filtered_temp;
+        temp_ch0 = filtered_temp_ch0;
     } else {
-        filtered_temp = -999.0f;
+        filtered_temp_ch0 = -999.0f;
+    }
+
+    // Ch1 필터링
+    if (status_ch1 == 0) {
+        if (filtered_temp_ch1 <= -990.0f) {
+            filtered_temp_ch1 = temp_ch1; // 초기화
+        } else {
+            filtered_temp_ch1 = (alpha * temp_ch1) + ((1.0f - alpha) * filtered_temp_ch1);
+        }
+        temp_ch1 = filtered_temp_ch1;
+    } else {
+        filtered_temp_ch1 = -999.0f;
     }
     
     // 3분 주기 한 줄 출력 (180000ms)
     static uint32_t last_dbg_print_ms = 0;
     uint32_t now_ms = to_ms_since_boot(get_absolute_time());
     if (now_ms - last_dbg_print_ms >= 180000 || last_dbg_print_ms == 0) {
-        printf("[Sensor Dbg (Pin GP26, Ch 0)] GP26 (Ch0): RAW: %.1f, Volt: %.4f V => Calc R: %.2f Ohm, Temp: %.2f C, Status: %d\n", 
-               raw_ch0, volt_ch0, r_sensor, temperature, status_code);
+        printf("[Sensor Dbg] GP26 (Ch0): RAW: %.1f, Volt: %.4f V => Calc R: %.2f Ohm, Temp: %.2f C, Status: %d | GP27 (Ch1): RAW: %.1f, Volt: %.4f V => Calc R: %.2f Ohm, Temp: %.2f C, Status: %d\n", 
+               raw_ch0, volt_ch0, r_sensor_ch0, temp_ch0, status_ch0,
+               raw_ch1, volt_ch1, r_sensor_ch1, temp_ch1, status_ch1);
         last_dbg_print_ms = now_ms;
     }
-    
-    ntc_temp = temperature;
-    return status_code;
 }

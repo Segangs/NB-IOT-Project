@@ -18,8 +18,8 @@ bool check_flash_integrity(uint32_t &calculated_checksum);
 // Perform a quick RAM pattern check on a temporary memory block (returns true if healthy)
 bool test_ram_integrity();
 
-// Read NTC thermistor temperature and diagnose its physical status:
-// Returns status: 0 (Normal), 1 (Open/Cut), 2 (Short), 3 (Out of Range), 99 (Other fault)
-int check_ntc_status(float &ntc_temp);
+// Read both NTC thermistors (GP26 / GP27) and diagnose their physical status:
+// Returns status for each channel via reference parameters.
+void check_ntc_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, int &status_ch1);
 
 #endif // TASKS_SENSOR_HPP
