@@ -1,0 +1,370 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .board-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-create {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        padding: 0.7rem 1.5rem;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        box-shadow: 0 4px 15px var(--primary-glow);
+        transition: all 0.2s ease;
+    }
+
+    .btn-create:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px var(--primary-glow);
+    }
+
+    .post-table-container {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .post-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.9rem;
+    }
+
+    .post-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .post-table td {
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        color: var(--text-main);
+    }
+
+    .post-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .post-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .post-title, .post-title-link {
+        font-weight: 600;
+        color: var(--text-main);
+        text-decoration: none;
+        cursor: pointer;
+        transition: color 0.15s ease;
+    }
+
+    .post-title:hover, .post-title-link:hover {
+        color: var(--secondary);
+    }
+
+    .post-author {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .post-author-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--secondary), var(--primary));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+        font-size: 0.7rem;
+    }
+
+    .post-actions {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .action-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: color 0.15s ease;
+    }
+
+    .action-btn.edit { color: var(--secondary); }
+    .action-btn.edit:hover { color: #0ea5e9; }
+    .action-btn.delete { color: var(--danger); }
+    .action-btn.delete:hover { color: #f43f5e; }
+
+    /* Modal System */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+    }
+
+    .modal-content {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        width: 100%;
+        max-width: 540px;
+        padding: 2.25rem;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        position: relative;
+        animation: modalFadeIn 0.25s forwards;
+    }
+
+    @keyframes modalFadeIn {
+        from { opacity: 0; transform: translateY(-15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 1.5rem;
+        right: 1.5rem;
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 1.25rem;
+        cursor: pointer;
+    }
+
+    .modal-close:hover {
+        color: var(--text-main);
+    }
+
+    .modal-title {
+        font-family: var(--font-title);
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+    }
+
+    .form-control {
+        width: 100%;
+        background-color: rgba(15, 23, 42, 0.6);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+        color: var(--text-main);
+        font-family: var(--font-family);
+        font-size: 0.95rem;
+        outline: none;
+    }
+
+    .form-control:focus {
+        border-color: var(--secondary);
+    }
+
+    .modal-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+    }
+
+    .btn-cancel {
+        background-color: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.65rem 1.25rem;
+        border-radius: 10px;
+        cursor: pointer;
+    }
+
+    .btn-cancel:hover {
+        background-color: rgba(255, 255, 255, 0.03);
+    }
+
+    .btn-submit {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        padding: 0.65rem 1.5rem;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>운영 게시판</h1>
+    <p>설비 운영 이력, 유지보수 보고 및 공지사항을 공유하고 관리하세요. 📝</p>
+{% endblock %}
+
+{% block content %}
+    <div class="board-header-actions">
+        <h2 style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 600;">공지 및 업무 일지 목록</h2>
+        <button class="btn-create" onclick="openCreateModal()">
+            <i class="fa-solid fa-plus"></i> 글쓰기
+        </button>
+    </div>
+
+    <!-- Bulletin board list -->
+    <div class="post-table-container">
+        <table class="post-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">번호</th>
+                    <th>제목</th>
+                    <th style="width: 160px;">작성자</th>
+                    <th style="width: 160px;">작성일</th>
+                    <th style="width: 100px; text-align: center;">작업</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if posts %}
+                    {% for post in posts %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <a href="/board/{{ post.boardId }}" class="post-title-link">
+                                    {{ post.title }}
+                                </a>
+                            </td>
+                            <td>
+                                <div class="post-author">
+                                    <div class="post-author-avatar">{{ post.author_name[0] }}</div>
+                                    <span>{{ post.author_name }}</span>
+                                </div>
+                            </td>
+                            <td style="color: var(--text-muted);">{{ post.formatted_date }}</td>
+                            <td style="text-align: center;">
+                                <div class="post-actions">
+                                    <button class="action-btn edit" data-id="{{ post.boardId }}" data-title="{{ post.title }}" data-content="{{ post.content }}" onclick="openEditModal(this)">
+                                        <i class="fa-regular fa-pen-to-square"></i>
+                                    </button>
+                                    <form action="/board/delete/{{ post.boardId }}" method="POST" onsubmit="return confirm('이 게시글을 정말로 삭제하시겠습니까?');" style="display:inline;">
+                                        <button type="submit" class="action-btn delete">
+                                            <i class="fa-regular fa-trash-can"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                            등록된 게시글이 없습니다. 첫 공지 글을 등록해 보세요!
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- CREATE MODAL -->
+    <div class="modal" id="create-modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeCreateModal()"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="modal-title">새 글 쓰기</h3>
+            <form action="/board/create" method="POST">
+                <div class="form-group">
+                    <label class="form-label">제목</label>
+                    <input type="text" name="title" class="form-control" placeholder="제목을 입력하세요" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">내용</label>
+                    <textarea name="content" class="form-control" rows="8" placeholder="내용을 입력하세요" style="resize: none;" required></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn-cancel" onclick="closeCreateModal()">취소</button>
+                    <button type="submit" class="btn-submit">등록</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- EDIT MODAL -->
+    <div class="modal" id="edit-modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeEditModal()"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="modal-title">글 수정하기</h3>
+            <form id="edit-form" action="" method="POST">
+                <div class="form-group">
+                    <label class="form-label">제목</label>
+                    <input type="text" name="title" id="edit-title" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">내용</label>
+                    <textarea name="content" id="edit-content" class="form-control" rows="8" style="resize: none;" required></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn-cancel" onclick="closeEditModal()">취소</button>
+                    <button type="submit" class="btn-submit">수정 완료</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Scripts -->
+    <script>
+        const createModal = document.getElementById('create-modal');
+        const editModal = document.getElementById('edit-modal');
+
+        function openCreateModal() { createModal.style.display = 'flex'; }
+        function closeCreateModal() { createModal.style.display = 'none'; }
+
+        function openEditModal(element) {
+            const id = element.getAttribute('data-id');
+            const title = element.getAttribute('data-title');
+            const content = element.getAttribute('data-content');
+            
+            document.getElementById('edit-form').action = `/board/update/${id}`;
+            document.getElementById('edit-title').value = title;
+            document.getElementById('edit-content').value = content;
+            editModal.style.display = 'flex';
+        }
+        function closeEditModal() { editModal.style.display = 'none'; }
+
+        // Close on clicking outside
+        window.onclick = function(event) {
+            if (event.target === createModal) closeCreateModal();
+            if (event.target === editModal) closeEditModal();
+        }
+    </script>
+{% endblock %}

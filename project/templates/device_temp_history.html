@@ -1,0 +1,410 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .history-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .info-card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .info-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .info-card-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .info-card-value {
+        font-family: var(--font-title);
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-main);
+    }
+
+    .chart-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 350px;
+        width: 100%;
+    }
+
+    .table-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.85rem;
+    }
+
+    .history-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .history-table td {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        color: var(--text-main);
+    }
+
+    .history-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .history-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .btn-back {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-back:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--text-muted);
+    }
+
+    .badge-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-pill.success {
+        background-color: rgba(16, 185, 129, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .badge-pill.danger {
+        background-color: rgba(239, 68, 68, 0.12);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .info-card select {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        font-family: var(--font-title);
+        font-size: 1.15rem;
+        font-weight: 700;
+        padding: 0.35rem 0.5rem;
+        border-radius: 8px;
+        outline: none;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 4px;
+        transition: all 0.25s ease;
+    }
+    .info-card select:focus {
+        border-color: var(--secondary);
+        box-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+    }
+    .info-card select option {
+        background-color: var(--bg-surface);
+        color: var(--text-main);
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>온도 변화 추이</h1>
+    <p>{{ device.user_name }} 님의 기기 [{{ device.model_name }}] 실시간 온도 이력 분석입니다. 📈</p>
+{% endblock %}
+
+{% block content %}
+    <div class="history-header-actions">
+        <h2 style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 600;">실시간 수집 로그 및 꺾은선 차트</h2>
+        <a href="/temp-status" class="btn-back">
+            <i class="fa-solid fa-arrow-left"></i> 온도 상태로 돌아가기
+        </a>
+    </div>
+
+    <!-- Info Cards Grid -->
+    <div class="info-card-grid">
+        <div class="info-card">
+            <span class="info-card-label">관리 담당자</span>
+            <span class="info-card-value" style="color: var(--secondary);">{{ device.user_name }}</span>
+        </div>
+        <div class="info-card">
+            <span class="info-card-label">영업장</span>
+            <select id="workplace-select">
+                {% for wp in workplaces %}
+                    <option value="{{ wp.userWorkplaceId }}" {% if wp.userWorkplaceId == device.workplace_id %}selected{% endif %}>
+                        {{ wp.WorkplaceName or wp.WorkplaceAddress }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="info-card">
+            <span class="info-card-label">기기 이름</span>
+            <select id="machine-select">
+                <!-- Javascript will populate this -->
+            </select>
+        </div>
+        <div class="info-card">
+            <span class="info-card-label">기기 모델명</span>
+            <span class="info-card-value">{{ device.model_name }}</span>
+        </div>
+        <div class="info-card">
+            <span class="info-card-label">단말 IMEI 식별코드</span>
+            <span class="info-card-value" style="font-family: monospace; font-size: 1.1rem; color: var(--text-muted);">{{ device.imei }}</span>
+        </div>
+        <div class="info-card">
+            <span class="info-card-label">설정 상한 온도</span>
+            <span class="info-card-value" style="color: var(--danger);">{{ device.upper_limit }}°C</span>
+        </div>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="chart-card">
+        <h3 style="font-family: var(--font-title); font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+            <i class="fa-solid fa-chart-line" style="color: var(--secondary);"></i> 최근 50건 온도 변화 그래프
+        </h3>
+        <div class="chart-container">
+            <canvas id="deviceTempChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Table Section -->
+    <div class="table-card" style="overflow-x: auto;">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">ID</th>
+                    <th>수집 시간 (KST)</th>
+                    <th>측정 온도</th>
+                    <th>설정 상한 임계</th>
+                    <th>상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if history %}
+                    {% for log in history %}
+                        <tr>
+                            <td style="font-weight: 600; color: var(--secondary);">#{{ log.id }}</td>
+                            <td style="color: var(--text-muted);">{{ log.time }}</td>
+                            <td style="font-weight: 600; font-size: 0.95rem; {% if log.status_ok %}color: var(--success);{% else %}color: var(--danger);{% endif %}">
+                                {{ log.value }}°C
+                            </td>
+                            <td style="color: var(--text-muted);">{{ device.upper_limit }}°C</td>
+                            <td>
+                                {% if log.status_ok %}
+                                    <span class="badge-pill success">안전</span>
+                                {% else %}
+                                    <span class="badge-pill danger">임계 초과</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 4rem;">
+                            수집된 온도 로그가 존재하지 않습니다.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ChartJS Initialization -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const ctx = document.getElementById('deviceTempChart').getContext('2d');
+            
+            const labels = {{ chart_labels | tojson }};
+            const values = {{ chart_values | tojson }};
+            const upperLimit = {{ device.upper_limit }};
+            
+            // Build threshold array
+            const thresholdLine = Array(labels.length).fill(upperLimit);
+            
+            // Linear gradient for fill
+            const fillGradient = ctx.createLinearGradient(0, 0, 0, 300);
+            fillGradient.addColorStop(0, 'rgba(56, 189, 248, 0.25)');
+            fillGradient.addColorStop(1, 'rgba(37, 99, 235, 0.0)');
+
+            // Map point colors based on limit exceed
+            const pointBackgroundColors = values.map(v => v > upperLimit ? '#ef4444' : '#2563eb');
+            const pointBorderColors = values.map(v => v > upperLimit ? '#ffffff' : '#ffffff');
+            const pointRadius = values.map(v => v > upperLimit ? 6 : 4);
+            const pointHoverRadius = values.map(v => v > upperLimit ? 8 : 6);
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '측정 온도 (°C)',
+                            data: values,
+                            borderColor: '#38bdf8',
+                            borderWidth: 2.5,
+                            pointBackgroundColor: pointBackgroundColors,
+                            pointBorderColor: pointBorderColors,
+                            pointRadius: pointRadius,
+                            pointHoverRadius: pointHoverRadius,
+                            tension: 0.35,
+                            fill: true,
+                            backgroundColor: fillGradient
+                        },
+                        {
+                            label: '상한 임계 온도 (°C)',
+                            data: thresholdLine,
+                            borderColor: '#ef4444',
+                            borderWidth: 1.5,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            pointHoverRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#94a3b8',
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y + '°C';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.02)' },
+                            ticks: { 
+                                color: '#94a3b8',
+                                font: { size: 10 }
+                            }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.02)' },
+                            ticks: { 
+                                color: '#94a3b8',
+                                callback: function(value) {
+                                    return value + '°C';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // --- Workplace / Machine dropdown navigation ---
+            const userMachines = {{ user_machines | tojson }};
+            const currentDeviceId = {{ device.device_id }};
+            const currentWorkplaceId = {{ device.workplace_id }};
+            
+            const workplaceSelect = document.getElementById("workplace-select");
+            const machineSelect = document.getElementById("machine-select");
+            
+            function populateMachines(workplaceId) {
+                machineSelect.innerHTML = "";
+                const filtered = userMachines.filter(m => m.userWorkplaceId == workplaceId);
+                
+                filtered.forEach(m => {
+                    const option = document.createElement("option");
+                    option.value = m.deviceId;
+                    option.textContent = m.userMachineName;
+                    if (m.deviceId == currentDeviceId) {
+                        option.selected = true;
+                    }
+                    machineSelect.appendChild(option);
+                });
+            }
+            
+            // Initial population
+            if (workplaceSelect) {
+                populateMachines(workplaceSelect.value);
+                
+                workplaceSelect.addEventListener("change", function() {
+                    const wpId = this.value;
+                    const filtered = userMachines.filter(m => m.userWorkplaceId == wpId);
+                    if (filtered.length > 0) {
+                        // Redirect to the first device in the newly selected workplace
+                        window.location.href = "/device-temp-history/" + filtered[0].deviceId;
+                    }
+                });
+            }
+            
+            if (machineSelect) {
+                machineSelect.addEventListener("change", function() {
+                    const devId = this.value;
+                    if (devId && devId != currentDeviceId) {
+                        window.location.href = "/device-temp-history/" + devId;
+                    }
+                });
+            }
+        });
+    </script>
+{% endblock %}

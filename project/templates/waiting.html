@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoTeam - 구글 로그인 대기 중</title>
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <style>
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Light.woff2') format('woff2');
+            font-weight: 300;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Regular.woff2') format('woff2');
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Medium.woff2') format('woff2');
+            font-weight: 500;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-SemiBold.woff2') format('woff2');
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Bold.woff2') format('woff2');
+            font-weight: 700;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-ExtraBold.woff2') format('woff2');
+            font-weight: 800;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Heavy.woff2') format('woff2');
+            font-weight: 900;
+            font-display: swap;
+        }
+
+        :root {
+            --bg: #0b0f19;
+            --surface: rgba(30, 41, 59, 0.7);
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.3);
+            --secondary: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.08);
+            --font-family: 'Sweet', sans-serif;
+            --font-title: 'Sweet', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Ambient glow background */
+        .glowing-orbs {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.12;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--primary);
+            top: 20%;
+            left: 15%;
+        }
+
+        .orb-2 {
+            width: 350px;
+            height: 350px;
+            background: var(--secondary);
+            bottom: 20%;
+            right: 15%;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 440px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px);
+            z-index: 2;
+            position: relative;
+            text-align: center;
+        }
+
+        .brand-logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-title);
+            font-weight: 800;
+            font-size: 2rem;
+            color: white;
+            box-shadow: 0 0 20px var(--primary-glow);
+            margin-bottom: 1.5rem;
+        }
+
+        .title {
+            font-family: var(--font-title);
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .description {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        .spinner-container {
+            position: relative;
+            width: 70px;
+            height: 70px;
+            margin: 0 auto 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 3px solid rgba(56, 189, 248, 0.1);
+            border-top: 3px solid var(--secondary);
+            border-radius: 50%;
+            animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        }
+
+        .pulse-icon {
+            position: absolute;
+            font-size: 1.5rem;
+            color: var(--secondary);
+            animation: pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+
+        .status-badge {
+            background-color: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            color: var(--secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--secondary);
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .btn-cancel {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s ease;
+        }
+
+        .btn-cancel:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glowing-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+    </div>
+
+    <div class="card">
+        <div class="brand-logo">P</div>
+        <h2 class="title">웹 브라우저를 확인해 주세요</h2>
+        
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <i class="fa-solid fa-lock pulse-icon"></i>
+        </div>
+
+        <div class="status-badge">
+            <span class="status-dot"></span>
+            인증 완료 대기 중...
+        </div>
+
+        <p class="description">
+            안전한 구글 로그인을 위해 기본 웹 브라우저 창이 열렸습니다.<br>
+            브라우저에서 로그인을 성공적으로 마치면 이 화면이 자동으로 전환됩니다.
+        </p>
+
+        <a href="/auth/login" class="btn-cancel">로그인 취소</a>
+    </div>
+
+    <script>
+        const loginId = "{{ login_id }}";
+        
+        function pollLoginStatus() {
+            if (!loginId) return;
+            
+            fetch(`/auth/poll?login_id=${loginId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        // Polling set the Flask session, now redirect to dashboard
+                        window.location.href = "/dashboard";
+                    } else if (data.status === "pending") {
+                        // Retry after 1 second
+                        setTimeout(pollLoginStatus, 1000);
+                    } else {
+                        // Error fallback: display error state in UI
+                        const errorMsg = data.error || "인증 세션을 가져오는 데 실패했습니다.";
+                        
+                        document.querySelector('.title').innerText = "구글 로그인 실패";
+                        
+                        // Replace spinner with warning icon
+                        document.querySelector('.spinner-container').innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="font-size: 3rem; color: #ef4444; animation: pulse 2s infinite ease-in-out;"></i>';
+                        
+                        // Status badge style change
+                        const badge = document.querySelector('.status-badge');
+                        badge.style.backgroundColor = "rgba(239, 68, 68, 0.15)";
+                        badge.style.borderColor = "rgba(239, 68, 68, 0.3)";
+                        badge.style.color = "#ef4444";
+                        badge.innerHTML = '<span class="status-dot" style="background-color: #ef4444; box-shadow: 0 0 6px #ef4444;"></span>오류 발생';
+                        
+                        // Description text change
+                        document.querySelector('.description').innerHTML = `<span style="color: #fca5a5; font-weight: 600;">상세 오류 내용:</span><br>${errorMsg}<br><br>다시 시도하거나 시스템 관리자에게 문의해 주세요.`;
+                        
+                        // Cancel button to retry button
+                        const btn = document.querySelector('.btn-cancel');
+                        btn.href = "/auth/login";
+                        btn.innerText = "로그인 화면으로 돌아가기";
+                        btn.style.background = "linear-gradient(135deg, #2563eb, #38bdf8)";
+                        btn.style.color = "white";
+                        btn.style.borderColor = "transparent";
+                        btn.style.boxShadow = "0 4px 15px rgba(37, 99, 235, 0.3)";
+                    }
+                })
+                .catch(err => {
+                    console.error("폴링 통신 에러:", err);
+                    setTimeout(pollLoginStatus, 2000);
+                });
+        }
+
+        // Start polling on load
+        window.onload = pollLoginStatus;
+    </script>
+</body>
+</html>

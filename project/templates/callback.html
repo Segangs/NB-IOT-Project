@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>PicoTeam - 로그인 처리 중</title>
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <style>
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Light.woff2') format('woff2');
+            font-weight: 300;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Regular.woff2') format('woff2');
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Medium.woff2') format('woff2');
+            font-weight: 500;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-SemiBold.woff2') format('woff2');
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Bold.woff2') format('woff2');
+            font-weight: 700;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-ExtraBold.woff2') format('woff2');
+            font-weight: 800;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Heavy.woff2') format('woff2');
+            font-weight: 900;
+            font-display: swap;
+        }
+
+        :root {
+            --bg: #0b0f19;
+            --surface: rgba(30, 41, 59, 0.7);
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.3);
+            --secondary: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.08);
+            --font-family: 'Sweet', sans-serif;
+            --font-title: 'Sweet', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Ambient glow background */
+        .glowing-orbs {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.12;
+        }
+
+        .orb-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--primary);
+            top: 20%;
+            left: 15%;
+        }
+
+        .orb-2 {
+            width: 350px;
+            height: 350px;
+            background: var(--secondary);
+            bottom: 20%;
+            right: 15%;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            width: 100%;
+            max-width: 460px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px);
+            z-index: 2;
+            position: relative;
+            text-align: center;
+        }
+
+        .brand-logo {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-title);
+            font-weight: 800;
+            font-size: 2rem;
+            color: white;
+            box-shadow: 0 0 20px var(--primary-glow);
+            margin-bottom: 1.5rem;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.05);
+            border-top-color: #38bdf8;
+            border-radius: 50%;
+            animation: spin 1s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+            margin: 0 auto 2rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .text {
+            font-size: 1.15rem;
+            font-weight: 500;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            letter-spacing: -0.5px;
+        }
+
+        .btn-close {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            padding: 0.9rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 15px var(--primary-glow);
+            transition: all 0.2s ease;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .btn-close:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px var(--primary-glow);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glowing-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+    </div>
+
+    <div class="card">
+        <div class="brand-logo">P</div>
+        <div class="spinner" id="loader"></div>
+        <div class="text" id="status-text">구글 인증 세션 초기화 중...</div>
+        
+        <!-- User click button to bypass standard browser window.close() block -->
+        <button id="close-btn" class="btn-close" onclick="closeWindow()">
+            로그인 완료 - 창 닫기 (Cmd + W) <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+
+    <script>
+        // Parse parameters from URL (both hash fragment AND query string)
+        function getUrlParams() {
+            const params = {};
+            
+            // 1. Try query string (used by code flow and for custom params like login_id)
+            const search = window.location.search.substring(1);
+            if (search) {
+                search.split('&').forEach(pair => {
+                    if (!pair) return;
+                    const [key, val] = pair.split('=');
+                    params[key] = decodeURIComponent(val || '');
+                });
+            }
+            
+            // 2. Try hash fragment (used by implicit flow)
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                hash.split('&').forEach(pair => {
+                    if (!pair) return;
+                    const [key, val] = pair.split('=');
+                    params[key] = decodeURIComponent(val || '');
+                });
+            }
+            
+            return params;
+        }
+
+        function closeWindow() {
+            // 1. Try to close the tab directly
+            window.close();
+            
+            // 2. Try the parent close hack
+            window.open('', '_self', '');
+            window.close();
+            
+            // 3. Fallback: If still open (due to macOS Chrome security sandboxing), 
+            // transform page content into a premium instruction card.
+            setTimeout(() => {
+                document.querySelector('.card').innerHTML = `
+                    <div class="brand-logo" style="background: linear-gradient(135deg, #10b981, #38bdf8); box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);">
+                        <i class="fa-solid fa-circle-check" style="font-size: 2.2rem; color: white;"></i>
+                    </div>
+                    <h2 class="title" style="font-family: var(--font-title); font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; background: linear-gradient(135deg, #ffffff 30%, #10b981 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">인증 완료</h2>
+                    <p class="description" style="color: var(--text-main); font-size: 1.05rem; font-weight: 500; line-height: 1.6; margin-bottom: 1.5rem;">
+                        보안을 위해 이 웹 브라우저 탭을 직접 닫아주세요.<br><br>
+                        <span style="color: #38bdf8; font-weight: 600; font-size: 1.1rem; display: block; margin-top: 0.5rem;">
+                            단축키: <kbd style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 0.3rem 0.6rem; border-radius: 6px; font-family: monospace; font-size: 1rem; color: #a5f3fc; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Cmd + W</kbd> (Mac)<br>또는 <kbd style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 0.3rem 0.6rem; border-radius: 6px; font-family: monospace; font-size: 1rem; color: #a5f3fc; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Ctrl + W</kbd> (Windows)
+                        </span>
+                    </p>
+                    <div style="border-top: 1px solid var(--border); padding-top: 1rem; color: var(--text-muted); font-size: 0.8rem;">
+                        PicoTeam 데스크톱 앱에서 관제 대시보드가 성공적으로 활성화되었습니다. ❄️
+                    </div>
+                `;
+            }, 100);
+        }
+
+        window.onload = function() {
+            const params = getUrlParams();
+            const tokenOrCode = params.access_token || params.id_token || params.code;
+            const loginId = params.login_id;
+            
+            if (tokenOrCode) {
+                document.getElementById('status-text').innerText = "보안 세션을 생성하는 중입니다...";
+                
+                // POST token (or auth code) and login_id to server to establish Flask Session
+                fetch('/auth/session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        access_token: tokenOrCode,
+                        login_id: loginId,
+                        raw_params: params
+                    })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.is_desktop) {
+                            document.getElementById('loader').style.display = 'none';
+                            document.getElementById('status-text').innerHTML = "구글 인증이 성공적으로 완료되었습니다!<br><br><span style='color: #38bdf8; font-size: 0.95rem; font-weight: 500;'>데스크톱 앱 창에서 대시보드가 활성화되었습니다.<br>아래 버튼을 눌러 이 창을 닫아주세요.</span>";
+                            
+                            // Make the premium close button visible
+                            const closeBtn = document.getElementById('close-btn');
+                            closeBtn.style.display = 'inline-flex';
+                            
+                            // Eagerly try to auto-close the tab
+                            closeWindow();
+                        } else {
+                            if (data.action === 'link') {
+                                document.getElementById('status-text').innerText = "구글 계정이 성공적으로 연결되었습니다! 회원정보 수정 페이지로 이동합니다.";
+                                window.location.href = '/auth/edit-profile';
+                            } else {
+                                document.getElementById('status-text').innerText = "인증 성공! 대시보드로 이동합니다.";
+                                window.location.href = '/dashboard';
+                            }
+                        }
+                    } else {
+                        document.getElementById('loader').style.display = 'none';
+                        document.getElementById('status-text').innerText = "오류: " + (data.error || "세션 초기화 실패");
+                        setTimeout(() => window.location.href = '/auth/login', 1000);
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('status-text').innerText = "통신 에러가 발생했습니다.";
+                    console.error(err);
+                    setTimeout(() => window.location.href = '/auth/login', 3000);
+                });
+            } else {
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('status-text').innerText = "오류: 인증 토큰이 존재하지 않습니다.";
+                setTimeout(() => window.location.href = '/auth/login', 3000);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,204 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .temp-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .temp-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .temp-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.9rem;
+    }
+
+    .temp-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .temp-table td {
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        color: var(--text-main);
+    }
+
+    .temp-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .temp-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .btn-back {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-back:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--text-muted);
+    }
+
+    /* Glow indicators for LED and Siren */
+    .status-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+
+    .led-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .led-dot.green {
+        background-color: var(--success);
+        box-shadow: 0 0 10px var(--success), 0 0 20px var(--success);
+    }
+
+    .led-dot.red {
+        background-color: var(--danger);
+        box-shadow: 0 0 10px var(--danger), 0 0 20px var(--danger);
+        animation: blink 1s infinite alternate;
+    }
+
+    @keyframes blink {
+        from {
+            opacity: 1;
+            transform: scale(1);
+        }
+        to {
+            opacity: 0.5;
+            transform: scale(0.9);
+        }
+    }
+
+    .status-text.ok {
+        color: var(--success);
+    }
+
+    .status-text.over {
+        color: var(--danger);
+    }
+
+    .limit-value {
+        font-family: monospace;
+        background-color: rgba(255, 255, 255, 0.05);
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>온도 상태 (실시간 임계 대조)</h1>
+    <p>수신된 실시간 온도 데이터를 사용자의 설정 상한 온도와 정밀 대조 검증합니다. ❄️</p>
+{% endblock %}
+
+{% block content %}
+    <div class="temp-header-actions">
+        <h2 style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 600;">실시간 온도 데이터와 설정 임계값 비교 (최근 150건)</h2>
+        <a href="/dashboard" class="btn-back">
+            <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+        </a>
+    </div>
+
+    <div class="temp-card" style="overflow-x: auto;">
+        <table class="temp-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">ID</th>
+                    <th>시간 (KST)</th>
+                    <th>이름</th>
+                    <th>기기 모델</th>
+                    <th>단말 IMEI 식별코드</th>
+                    <th>현재 온도</th>
+                    <th>설정 상한 온도</th>
+                    <th style="text-align: center; width: 150px;">관제 상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if temps %}
+                    {% for item in temps %}
+                        <tr>
+                            <td style="font-weight: 600; color: var(--secondary);">#{{ item.id }}</td>
+                            <td style="color: var(--text-muted);">{{ item.time | safe }}</td>
+                            <td style="font-weight: 500;">
+                                {% if item.device_id %}
+                                    <a href="/device-temp-history/{{ item.device_id }}" style="color: var(--secondary); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; transition: color 0.2s ease;">
+                                        <i class="fa-solid fa-chart-line" style="font-size: 0.8rem; opacity: 0.8;"></i>
+                                        <span style="border-bottom: 1px dashed rgba(56, 189, 248, 0.4);">{{ item.user_name }}</span>
+                                    </a>
+                                {% else %}
+                                    {{ item.user_name }}
+                                {% endif %}
+                            </td>
+                            <td>{{ item.model_name }}</td>
+                            <td style="font-family: monospace; color: var(--text-muted);">{{ item.imei }}</td>
+                            
+                            <!-- Current Temperature -->
+                            <td style="font-family: monospace; font-weight: 600; font-size: 1rem; {% if item.status_ok %}color: var(--success);{% else %}color: var(--danger);{% endif %}">
+                                {{ item.value }}°C
+                            </td>
+                            
+                            <!-- Setting Limit -->
+                            <td>
+                                <span class="limit-value">{{ item.upper_limit }}°C</span>
+                            </td>
+                            
+                            <!-- Status LED -->
+                            <td style="text-align: center;">
+                                <div class="status-indicator" style="justify-content: center;">
+                                    {% if item.status_ok %}
+                                        <span class="led-dot green"></span>
+                                        <span class="status-text ok">정상</span>
+                                    {% else %}
+                                        <span class="led-dot red"></span>
+                                        <span class="status-text over"><i class="fa-solid fa-triangle-exclamation"></i> 초과</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 4rem;">
+                            온도 비교 데이터가 존재하지 않습니다.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

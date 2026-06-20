@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoTeam IoT Anomaly Detection</title>
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <style>
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Light.woff2') format('woff2');
+            font-weight: 300;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Regular.woff2') format('woff2');
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Medium.woff2') format('woff2');
+            font-weight: 500;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-SemiBold.woff2') format('woff2');
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Bold.woff2') format('woff2');
+            font-weight: 700;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-ExtraBold.woff2') format('woff2');
+            font-weight: 800;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Heavy.woff2') format('woff2');
+            font-weight: 900;
+            font-display: swap;
+        }
+
+        :root {
+            --bg: #0b0f19;
+            --surface: #131a2d;
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.4);
+            --secondary: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --font-family: 'Sweet', sans-serif;
+            --font-title: 'Sweet', sans-serif;
+            --border: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated glowing background shapes */
+        .glowing-orbs {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.15;
+            animation: moveOrb 20s infinite alternate;
+        }
+
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            background: var(--primary);
+            top: -10%;
+            right: -10%;
+        }
+
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            background: var(--secondary);
+            bottom: -10%;
+            left: -10%;
+            animation-duration: 25s;
+        }
+
+        @keyframes moveOrb {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(100px, 50px) scale(1.2); }
+        }
+
+        .container {
+            max-width: 800px;
+            text-align: center;
+            padding: 2rem;
+            z-index: 2;
+        }
+
+        .brand-logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            font-family: var(--font-title);
+            font-weight: 800;
+            color: white;
+            box-shadow: 0 0 40px var(--primary-glow);
+            margin-bottom: 2rem;
+            animation: floatLogo 4s infinite ease-in-out;
+        }
+
+        @keyframes floatLogo {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        h1 {
+            font-family: var(--font-title);
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -1px;
+            margin-bottom: 1.5rem;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 3rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+            padding: 1rem 2.5rem;
+            border-radius: 16px;
+            font-weight: 600;
+            font-size: 1.05rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 10px 30px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px var(--primary-glow);
+        }
+
+        .btn-outline {
+            border: 1.5px solid var(--border);
+            color: var(--text-main);
+            background-color: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--text-main);
+            background-color: rgba(255, 255, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-top: 5rem;
+        }
+
+        .feature-card {
+            background-color: var(--surface);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 1.5rem;
+            text-align: left;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--secondary);
+            transform: translateY(-4px);
+        }
+
+        .feature-icon {
+            font-size: 1.5rem;
+            color: var(--secondary);
+            margin-bottom: 1rem;
+        }
+
+        .feature-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glowing-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+    </div>
+
+    <div class="container">
+        <div class="brand-logo">P</div>
+        <h1>전국 냉동공조기계<br><span class="gradient-text">지능형 이상감지시스템</span></h1>
+        <p>Raspberry Pi Pico W 디바이스와 초고속 TCP/IP 소켓 통신 및 Supabase 연동으로 온도를 실시간 관제하고 이상을 즉각 추적합니다.</p>
+        
+        <div class="btn-group">
+            <a href="/auth/login" class="btn btn-primary">
+                시작하기 <i class="fa-solid fa-arrow-right"></i>
+            </a>
+            <a href="/auth/register" class="btn btn-outline">
+                회원가입
+            </a>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <i class="fa-solid fa-microchip feature-icon"></i>
+                <h3 class="feature-title">Pico W 데이터 수집</h3>
+                <p class="feature-desc">C++ 및 FreeRTOS 환경의 Pico W 단말기로 실시간 온도 정밀 측정 및 LTE/TCP 소켓 전송.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fa-solid fa-database feature-icon"></i>
+                <h3 class="feature-title">Supabase 클라우드</h3>
+                <p class="feature-desc">PostgreSQL 기반 클라우드 DB 연동으로 전국 지점 기기 로그 및 임계 설정 실시간 보존.</p>
+            </div>
+            <div class="feature-card">
+                <i class="fa-solid fa-bell feature-icon"></i>
+                <h3 class="feature-title">스마트 임계치 알림</h3>
+                <p class="feature-desc">각 지점별 온도 상/하한 임계 범위 일탈 시 경보 발생 및 스마트 대시보드 알림 로그 자동 기입.</p>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

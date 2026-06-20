@@ -1,0 +1,199 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .admin-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .admin-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .admin-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+        text-align: left;
+    }
+
+    .admin-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .admin-table td {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        padding: 1.1rem 1.5rem;
+        color: var(--text-main);
+        white-space: nowrap;
+    }
+
+    .admin-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .btn-back {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-back:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--text-muted);
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.6rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-admin {
+        background-color: rgba(37, 99, 235, 0.2);
+        color: var(--primary);
+        border: 1px solid rgba(37, 99, 235, 0.3);
+    }
+
+    .badge-member {
+        background-color: rgba(148, 163, 184, 0.15);
+        color: var(--text-muted);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .badge-paid {
+        background-color: rgba(16, 185, 129, 0.2);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-unpaid {
+        background-color: rgba(239, 68, 68, 0.2);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .badge-na {
+        background-color: rgba(148, 163, 184, 0.1);
+        color: var(--text-muted);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    .badge-active {
+        background-color: rgba(16, 185, 129, 0.2);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .badge-blocked {
+        background-color: rgba(239, 68, 68, 0.2);
+        color: var(--danger);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .google-connected {
+        color: var(--secondary);
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>회원관리</h1>
+    <p>시스템에 등록된 전체 사용자 정보를 조회하고 관리합니다. (관리자 전용)</p>
+{% endblock %}
+
+{% block content %}
+<div class="admin-header-actions">
+    <h2 style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 600;">가입 회원 목록 (총 {{ members|length }}명)</h2>
+    <a href="/dashboard" class="btn-back">
+        <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+    </a>
+</div>
+
+<div class="admin-card" style="overflow-x: auto;">
+    <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>UID</th>
+                    <th>로그인 ID</th>
+                    <th>성명</th>
+                    <th>전화번호</th>
+                    <th>등급</th>
+                    <th>결제 상태</th>
+                    <th>활동 상태</th>
+                    <th>Google 연동</th>
+                    <th>가입일</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for member in members %}
+                <tr>
+                    <td>{{ member.userId }}</td>
+                    <td style="font-weight: 500;">{{ member.userAccountId }}</td>
+                    <td>{{ member.userName }}</td>
+                    <td>{{ member.userPhoneNumber or '-' }}</td>
+                    <td>
+                        {% if member.level == 0 %}
+                            <span class="badge badge-admin"><i class="fa-solid fa-user-shield" style="margin-right: 4px;"></i>관리자</span>
+                        {% else %}
+                            <span class="badge badge-member">일반회원</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if member.userPaymentStatus == 0 %}
+                            <span class="badge badge-paid">결제됨</span>
+                        {% elif member.userPaymentStatus == 1 %}
+                            <span class="badge badge-unpaid">미결제</span>
+                        {% else %}
+                            <span class="badge badge-na">N/A</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if member.userActiveStatus == 0 %}
+                            <span class="badge badge-active">로그인 가능</span>
+                        {% else %}
+                            <span class="badge badge-blocked">로그인 제한</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if member.googleEmail %}
+                            <span class="google-connected" title="{{ member.googleEmail }}">
+                                <i class="fa-brands fa-google"></i> {{ member.googleEmail }}
+                            </span>
+                        {% else %}
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">미연동</span>
+                        {% endif %}
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.8rem;">{{ member.formatted_create_date or member.userCreateDate }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+</div>
+{% endblock %}
