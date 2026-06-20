@@ -24,15 +24,22 @@
 
 ## 📅 2026-06-20: [펌웨어 & DB] Supabase DB Join 제거 및 싱글/듀얼 온도 센서(냉장/냉동) 동적 대응 고도화
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
-* **개발 범주**: Supabase DDL (RPC), Pico 2 W C/C++ Firmware, Dual-Channel NTC ADC Read, Periodic Transmission, JSON Parsing
+* **개발 범주**: Supabase DDL (RPC), Pico 2 W C/C++ Firmware, Dual-Channel NTC ADC Read, Periodic Transmission, JSON Parsing, HTTP Session Optimization, Response Parsing Bug Fix
 
 ### 1. 작업 개요 (Goal & Requirements)
 * Supabase에 `sensorvalue` 인서트 시 발생하는 DB JOIN 부하를 제거하여 기성 쿼리를 튜닝할 것.
 * 기기 부팅 시 기기에 매핑된 센서 정보를 Supabase `get_device_sensors` RPC를 통해 미리 조회하여 RAM에 캐싱.
 * 추후 온도센서가 1개 더 추가되는 상황(냉장용 센서, 냉동용 센서 총 2개)과 기존 1개만 사용하는 기기 모두 완벽히 동적으로 자동 인식 및 지원할 것.
 * 20분마다 온도를 전송할 때 캐싱된 각 센서의 `sensorId`를 포함해 JOIN이 없는 튜닝된 RPC `t`로 각각 전송할 것.
+* **부팅 시 불필요한 HTTPS 세션 닫기/열기 해소**: 부팅 로그 전송 후 바로 연달아 센서 정보를 조회하므로, TCP/TLS 오버헤드를 막기 위해 단일 HTTPS 세션 내에서 연속적으로 전송하도록 시퀀스를 결합할 것.
+* **센서 정보 파싱 실패 해결**: Supabase `get_device_sensors` 응답 시 cmd가 아닌 다른 일반 JSON이 응답되어도 누락 없이 `response_buf`에 복사되도록 필터를 완화할 것.
 
 ### 2. 주요 작업 및 기술적 의사결정
+* **HTTPS 단일 세션 시퀀스 고도화 및 최적화 (`main.cpp` 수정)**:
+  - `vBootTask` 에서 `modem_HttpOpen`을 1회만 호출하여 세션을 연 상태에서, 첫 번째로 `/rest/v1/rpc/b` (부팅 로그)를 보내고, 연결을 끊지 않고 곧바로 두 번째로 `/rest/v1/rpc/get_device_sensors` (센서 조회)를 연이어 호출한 뒤, 마지막에 `modem_HttpClose`로 세션을 정리하도록 통합 리팩토링.
+  - 이로 인해 2회 발생하던 SSL/TLS 핸드셰이크가 1회로 단축되어 부팅 응답 속도가 획기적으로 향상됨.
+* **모뎀 응답 수신 필터 완화 (`tasks_modem.cpp` 수정)**:
+  - `modem_HttpPost` 함수 내부에서 서버로부터 수신된 대괄호 `[` ]` JSON 문자열을 가져올 때, 기존에 걸려있던 strict `"cmd"` 서브스트링 검사 필터를 제거하여 `sensorId` 정보를 담고 있는 센서 목록 JSON 등 다양한 Supabase REST 응답 형태를 모두 유연하게 파싱 및 버퍼에 담도록 수정.
 * **Supabase RPC 리팩토링 및 신규 생성**:
   - 기존 `t(character varying, numeric)` 함수를 DROP하고 `t(integer, numeric)` 로 JOIN을 전면 배제한 초고속 인서트 전용 함수로 개편.
   - 디바이스의 IMEI를 기준으로 등록된 센서 목록을 반환하는 `get_device_sensors` RPC 함수 신규 정의.

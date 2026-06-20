@@ -758,37 +758,42 @@ void vBootTask(void *pvParameters)
         oper_name, ntc_status, g_boot_reason_code, g_boot_cmd_id);
 
     bool boot_report_success = false;
+    bool sensor_fetch_success = false;
+    char response_buf[512];
+    response_buf[0] = '\0';
+
+    printf("[Boot] Supabase HTTPS 연결 시작...\n");
     if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT)) {
+        // 1. 부팅 로그 전송
+        printf("[Boot] 1. 부팅 자가 진단 로그 전송 중...\n");
         if (modem.modem_HttpPost("/rest/v1/rpc/b", json_payload)) {
             boot_report_success = true;
+            printf("[Boot] 부팅 자가 진단 로그 전송 성공.\n");
+            
+            // 2. 연결을 유지한 채 센서 매핑 정보 조회
+            printf("[Boot] 2. 디바이스 센서 매핑 정보 조회 중...\n");
+            char sensor_req_payload[128];
+            snprintf(sensor_req_payload, sizeof(sensor_req_payload), "{\"p_imei\":\"%s\"}", modem.get_imei());
+            
+            if (modem.modem_HttpPost("/rest/v1/rpc/get_device_sensors", sensor_req_payload, response_buf, sizeof(response_buf))) {
+                sensor_fetch_success = true;
+                printf("[Boot] 디바이스 센서 매핑 정보 수신 성공.\n");
+            } else {
+                printf("[Boot] 에러: 디바이스 센서 매핑 정보 수신 실패.\n");
+            }
+        } else {
+            printf("[Boot] 에러: 부팅 자가 진단 로그 전송 실패.\n");
         }
+        
+        // 최종 세션 정리
         modem.modem_HttpClose();
-        printf("[Boot] 자가 진단 보고 데이터 HTTPS 송출 완료.\n");
     } else {
-        printf("[Boot] 에러: 자가 진단 HTTPS 데이터 송출 실패.\n");
+        printf("[Boot] 에러: Supabase HTTPS 연결 실패.\n");
         modem.modem_HttpClose();
     }
 
-    // 💡 부팅 로그 전송 성공 시, 기기의 센서 목록을 Supabase로부터 조회하여 로컬 RAM에 캐싱
-    if (boot_report_success) {
-        printf("[Boot] Supabase로부터 디바이스 센서 매핑 정보 조회 시작...\n");
-        char sensor_req_payload[128];
-        snprintf(sensor_req_payload, sizeof(sensor_req_payload), "{\"p_imei\":\"%s\"}", modem.get_imei());
-        
-        char response_buf[512];
-        response_buf[0] = '\0';
-        bool sensor_fetch_success = false;
-
-        if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT)) {
-            if (modem.modem_HttpPost("/rest/v1/rpc/get_device_sensors", sensor_req_payload, response_buf, sizeof(response_buf))) {
-                sensor_fetch_success = true;
-            }
-            modem.modem_HttpClose();
-        }
-
-        if (sensor_fetch_success && response_buf[0] != '\0') {
-            g_sensor_count = parse_sensors_json(response_buf, g_sensors, 2);
-        }
+    if (sensor_fetch_success && response_buf[0] != '\0') {
+        g_sensor_count = parse_sensors_json(response_buf, g_sensors, 2);
     }
 
     // 센서 조회 실패했거나 매핑된 센서가 없을 때의 안전 폴백 (기본 1개 센서 동작)

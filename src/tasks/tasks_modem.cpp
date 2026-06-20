@@ -1015,12 +1015,11 @@ this->modem_PacedWrite(total_packet);
                         char temp[256];
                         strncpy(temp, json_start, len);
                         temp[len] = '\0';
-                        if (strstr(temp, "cmd") != nullptr)
-                        {
-                            strcpy(response_buf, temp);
-                            printf("[HTTPS] Parsed response body: %s\n", response_buf);
-                            break;
-                        }
+                        
+                        // JSON 형식이 수집되면 무조건 수집 (cmd 필터 완화)
+                        strcpy(response_buf, temp);
+                        printf("[HTTPS] Parsed response body: %s\n", response_buf);
+                        break;
                     }
                     json_start = strchr(json_end + 1, '[');
                 }
