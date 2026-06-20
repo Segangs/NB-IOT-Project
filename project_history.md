@@ -10,7 +10,7 @@
 > * **Edge Device (단말 장치)**:
 >   * **MCU**: RP2350 (Raspberry Pi Pico 2 W) 기반 C/C++ SDK 펌웨어 설계.
 >   * **RTOS**: FreeRTOS 커널 멀티태스킹 스케줄링을 통해 센서 측정, LCD 렌더링, 모뎀 통신, 부저 경보 루틴을 완벽히 병렬화.
->   * **Modem**: HL7811 셀룰러 모뎀을 제어하여 LTE-M(NB-IoT) 망을 통한 TLS 1.2 보안 규격 통신 연동.
+>   * **Modem**: HL7811 셀룰러 모듈을 제어하여 LTE-M(NB-IoT) 망을 통한 TLS 1.2 보안 규격 통신 연동.
 >   * **Self-Diagnostics**: 부팅 단계에서 전압(VSYS), 과열(Internal Temp), 플래시 무결성(CRC32), RAM 무결성(Pattern Test) 자가진단 수행.
 >   * **Safety Guard**: 하드웨어 와치독(Watchdog), Powman 브라운아웃(Brown-out) 감지 및 오프라인 상태 대비 Flash 비휘발성 로깅 시스템(32바이트 구조체 정렬) 구축.
 > * **Control System & Web Server (관제 웹 및 데스크톱)**:
@@ -21,6 +21,24 @@
 
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
+
+## 📅 2026-06-21: [단말 펌웨어] RTOS 스택 오버플로우 방지 및 UART 락 충돌 방지 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: FreeRTOS Task Stacks, stdio Mutex Locking, UART Deadlock Avoidance, Buffer Race Conditions
+
+### 1. 작업 개요 (Goal & Requirements)
+* HTTPS 송출과 3분 주기 NTC 온도 디버그 `printf` 출력 타이밍이 겹칠 때 단말이 뻗는(출력 잘림 및 무반응) 현상 해결.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **스택 사이즈 최적화 (`main.cpp` 수정)**:
+  - `vSensorTask` 스택 크기를 `256 words` (1024 bytes)에서 `1024 words` (4096 bytes)로 4배 증설하여 `printf` 내부의 대용량 float 포맷터와 수학 라이브러리(`log`) 연산에 필요한 스택 마진을 충분히 보장함.
+  - 추가로 `vDebugTask`와 `vBuzzerTask` 스택 역시 각각 `512`에서 `1024 words`로 확장하여 태스크 구동의 안정성을 높임.
+* **로그 출력 상호 배제 가드 추가 (`tasks_sensor.cpp` 수정)**:
+  - 3분 주기 디버그 로그 `[Sensor Dbg]` 출력 시, 모뎀이 데이터를 전송 중이거나 비지 상태(`lcd_params.is_transmitting || lcd_params.is_modem_busy == true`)인 경우 출력을 1초간 미루고 건너뛰도록 가드 구현. 이를 통해 stdout(UART0) Mutex 락 경합 및 교착 상태를 원천 차단함.
+* **빌드 및 갱신 완료**:
+  - Ninja 컴파일러 빌드를 통해 오류 없이 바이너리 갱신 완료.
+
+---
 
 ## 📅 2026-06-20: [펌웨어 & DB] Supabase DB Join 제거 및 싱글/듀얼 온도 센서(냉장/냉동) 동적 대응 고도화
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)

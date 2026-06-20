@@ -1,10 +1,13 @@
 #include "tasks_sensor.hpp"
 #include "../config.h"
+#include "tasks_lcd.hpp"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "pico/stdlib.h"
 #include <math.h>
 #include <stdio.h>
+
+extern LcdTaskParams lcd_params;
 
 // FreeRTOS standard headers
 #include "FreeRTOS.h" 
@@ -287,6 +290,10 @@ void check_ntc_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, in
     static uint32_t last_dbg_print_ms = 0;
     uint32_t now_ms = to_ms_since_boot(get_absolute_time());
     if (now_ms - last_dbg_print_ms >= 180000 || last_dbg_print_ms == 0) {
+        // 모뎀이 데이터 전송 중이거나 제어 모드일 때는 UART 출력 경쟁으로 인한 데드락 방지를 위해 출력을 한 턴 미룹니다.
+        if (lcd_params.is_transmitting || lcd_params.is_modem_busy) {
+            return;
+        }
         printf("[Sensor Dbg] GP26 (Ch0): RAW: %.1f, Volt: %.4f V => Calc R: %.2f Ohm, Temp: %.2f C, Status: %d | GP27 (Ch1): RAW: %.1f, Volt: %.4f V => Calc R: %.2f Ohm, Temp: %.2f C, Status: %d\n", 
                raw_ch0, volt_ch0, r_sensor_ch0, temp_ch0, status_ch0,
                raw_ch1, volt_ch1, r_sensor_ch1, temp_ch1, status_ch1);

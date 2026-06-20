@@ -888,7 +888,7 @@ int main()
     xTaskCreate(
         vSensorTask,
         "SensorTask",
-        256,
+        1024,
         NULL,
         1,
         NULL
@@ -898,7 +898,7 @@ int main()
     xTaskCreate(
         vDebugTask,
         "DebugTask",
-        512,
+        1024,
         NULL,
         1,
         NULL
@@ -918,7 +918,7 @@ int main()
     xTaskCreate(
         vBuzzerTask,
         "BuzzerTask",
-        512,
+        1024,
         NULL,
         1,
         NULL
