@@ -56,6 +56,10 @@ include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/Community-Supported-Ports/GC
 add_executable(nb_iot_project
     main.cpp
     lib/LCD_I2C.cpp
+    src/tasks/tasks_sensor.cpp
+    src/tasks/tasks_lcd.cpp
+    src/tasks/tasks_modem.cpp
+    src/lib/flash_logger.cpp
 )
 
 # 7. 라이브러리 연결
@@ -65,6 +69,8 @@ target_link_libraries(nb_iot_project
     hardware_adc
     hardware_i2c
     hardware_pio
+    hardware_flash
+    hardware_pwm
     pico_multicore      
     FreeRTOS-Kernel
     FreeRTOS-Kernel-Heap4

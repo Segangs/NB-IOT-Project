@@ -1,3 +1,12 @@
 /Build
+/build/
+.DS_Store
+*.uf2
+*.elf
+*.bin
+*.hex
+*.map
+/scratch/
 /pico-sdk/
 /backup
+/DOCS
