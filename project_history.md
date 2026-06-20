@@ -5,6 +5,20 @@
 > 
 > 본 프로젝트는 **NB-IoT (HL7811) 셀룰러 모듈**과 **Raspberry Pi Pico 2 W** 단말을 기반으로 한 **초저전력 지능형 이상온도 감지 및 실시간 원격 관제 시스템**입니다.
 > 산업용 극저온 냉동고 및 백신 보관소 등의 온도 데이터를 수집하고, 실시간 통신 및 동적 임계 규칙 탐지 엔진을 통해 이상 현상을 관제 화면에 송출 및 AI 챗봇을 통한 능동적 대처 가이드를 제시하는 것을 목적으로 합니다.
+> 
+> **🛠️ 주요 기술 사항 및 아키텍처**
+> * **Edge Device (단말 장치)**:
+>   * **MCU**: RP2350 (Raspberry Pi Pico 2 W) 기반 C/C++ SDK 펌웨어 설계.
+>   * **RTOS**: FreeRTOS 커널 멀티태스킹 스케줄링을 통해 센서 측정, LCD 렌더링, 모뎀 통신, 부저 경보 루틴을 완벽히 병렬화.
+>   * **Modem**: HL7811 셀룰러 모뎀을 제어하여 LTE-M(NB-IoT) 망을 통한 TLS 1.2 보안 규격 통신 연동.
+>   * **Self-Diagnostics**: 부팅 단계에서 전압(VSYS), 과열(Internal Temp), 플래시 무결성(CRC32), RAM 무결성(Pattern Test) 자가진단 수행.
+>   * **Safety Guard**: 하드웨어 와치독(Watchdog), Powman 브라운아웃(Brown-out) 감지 및 오프라인 상태 대비 Flash 비휘발성 로깅 시스템(32바이트 구조체 정렬) 구축.
+> * **Control System & Web Server (관제 웹 및 데스크톱)**:
+>   * **Backend**: Flask (Python) 기반의 데이터 적재 API 및 기기 상태 관제 서버 구축.
+>   * **Database & BaaS**: Supabase PostgreSQL을 통해 센서 측정값 및 부팅 자가진단 로그를 적재하고, Google OAuth 2.0 사용자 및 세션 만료 관리.
+>   * **Realtime Sync**: Supabase Realtime 웹소켓(WebSocket) 감지를 연동하여 실시간 데이터 변화 감지 및 화면 깜빡임 없는 DOM 갱신.
+>   * **Desktop Packaging**: PyWebView를 통해 단일 브라우저 루프백 연동 로그인(Safari/Chrome 패스크 우회)을 지원하는 크로스 플랫폼 데스크톱 패키징 실현.
+
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
