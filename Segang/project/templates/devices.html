@@ -1,0 +1,176 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .devices-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .devices-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .devices-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.9rem;
+    }
+
+    .devices-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .devices-table td {
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        color: var(--text-main);
+    }
+
+    .devices-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .devices-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.3rem 0.75rem;
+        border-radius: 30px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .status-badge.active {
+        background-color: rgba(16, 185, 129, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status-badge.inactive {
+        background-color: rgba(148, 163, 184, 0.12);
+        color: var(--text-muted);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .status-badge.active .status-dot {
+        background-color: var(--success);
+        box-shadow: 0 0 6px var(--success);
+    }
+
+    .status-badge.inactive .status-dot {
+        background-color: var(--text-muted);
+    }
+
+    .btn-back {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-back:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--text-muted);
+    }
+
+    .device-icon {
+        color: var(--secondary);
+        font-size: 1.1rem;
+        margin-right: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>가동 기기 목록</h1>
+    <p>전국 관제소에 등록 및 운용 중인 스마트 Pico IoT 수집 기기 현황입니다. 🖥️</p>
+{% endblock %}
+
+{% block content %}
+    <div class="devices-header-actions">
+        <h2 style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 600;">전체 연결 기기 리스트</h2>
+        <a href="/dashboard" class="btn-back">
+            <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+        </a>
+    </div>
+
+    <div class="devices-card">
+        <table class="devices-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">ID</th>
+                    <th>기기 유형</th>
+                    <th>기기 시리얼 넘버</th>
+                    <th>단말 IMEI 식별코드</th>
+                    <th>USIM 연결 ID</th>
+                    <th>담당 작업장 ID</th>
+                    <th style="width: 150px; text-align: center;">가동 상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if devices %}
+                    {% for dev in devices %}
+                        <tr>
+                            <td style="font-weight: 600; color: var(--secondary);">#{{ dev.deviceId }}</td>
+                            <td>
+                                <i class="fa-solid fa-microchip device-icon"></i>
+                                <span>{{ dev.deviceType or 'Pico W' }}</span>
+                            </td>
+                            <td><code style="font-family: monospace; font-size: 0.85rem; color: #a5f3fc; background-color: rgba(165, 243, 252, 0.05); padding: 0.2rem 0.4rem; border-radius: 4px;">{{ dev.deviceSerialNumber }}</code></td>
+                            <td style="color: var(--text-muted); font-family: monospace;">{{ dev.deviceIMEI or '-' }}</td>
+                            <td style="color: var(--text-muted); font-family: monospace;">{{ dev.usim_imsi or '-' }}</td>
+                            <td>작업장 #{{ dev.userWorkplaceId or '1' }}</td>
+                            <td style="text-align: center;">
+                                {% if dev.deviceStatus == 'Y' or dev.deviceStatus == 'ACTIVE' %}
+                                    <span class="status-badge active">
+                                        <span class="status-dot"></span>정상 가동 중
+                                    </span>
+                                {% else %}
+                                    <span class="status-badge inactive">
+                                        <span class="status-dot"></span>비활성화
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 4rem;">
+                            등록된 수집 기기가 없습니다.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

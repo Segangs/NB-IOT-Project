@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PicoTeam - 냉동공조기계 이상감지시스템</title>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <!-- ChartJS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Light.woff2') format('woff2');
+            font-weight: 300;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Regular.woff2') format('woff2');
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Medium.woff2') format('woff2');
+            font-weight: 500;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-SemiBold.woff2') format('woff2');
+            font-weight: 600;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Bold.woff2') format('woff2');
+            font-weight: 700;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-ExtraBold.woff2') format('woff2');
+            font-weight: 800;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'Sweet';
+            src: url('/static/fonts/SUITE-Heavy.woff2') format('woff2');
+            font-weight: 900;
+            font-display: swap;
+        }
+
+        :root {
+            --bg-base: #0f172a;
+            --bg-surface: #1e293b;
+            --bg-sidebar: #0b0f19;
+            --primary: #2563eb;
+            --primary-glow: rgba(37, 99, 235, 0.4);
+            --secondary: #38bdf8;
+            --accent: #f59e0b;
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.2);
+            --success: #10b981;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --font-family: 'Sweet', sans-serif;
+            --font-title: 'Sweet', sans-serif;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.05);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* Sidebar Styling (Matching Jina's mockup side menu) */
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 2rem 1.5rem;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .brand-logo {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-family: var(--font-title);
+            font-size: 1.5rem;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .brand-text {
+            font-family: var(--font-title);
+            font-weight: 700;
+            font-size: 1.25rem;
+            letter-spacing: -0.5px;
+        }
+
+        .brand-subtitle {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+
+        .nav-menu {
+            margin-top: 2rem;
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex-grow: 1;
+        }
+
+        .nav-item a {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.85rem 1rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+
+        .nav-item a:hover {
+            color: var(--text-main);
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-item.active a {
+            color: var(--text-main);
+            background: linear-gradient(135deg, var(--primary), rgba(37, 99, 235, 0.6));
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .nav-item a i {
+            font-size: 1.15rem;
+            width: 24px;
+            text-align: center;
+        }
+
+        .sidebar-banner {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.25rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-banner::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .sidebar-banner-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .sidebar-banner-desc {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* Main Content Panel */
+        .main-panel {
+            margin-left: 260px;
+            flex-grow: 1;
+            min-width: 0; /* Magic bullet to allow flex item child resizing */
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            position: relative;
+        }
+
+        /* Top Navbar */
+        .top-navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .user-welcome h1 {
+            font-family: var(--font-title);
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .user-welcome p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+
+        .top-nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .notification-bell {
+            position: relative;
+            cursor: pointer;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            transition: all 0.2s ease;
+        }
+
+        .notification-bell:hover {
+            border-color: var(--secondary);
+            color: var(--secondary);
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background-color: var(--danger);
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid var(--bg-base);
+        }
+
+        .profile-menu {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            padding: 0.4rem 1rem 0.4rem 0.5rem;
+            border-radius: 30px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .profile-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--secondary), var(--primary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+            font-size: 0.85rem;
+        }
+
+        .profile-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .profile-menu:hover {
+            border-color: var(--text-muted);
+        }
+
+        /* Alert Toast System */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            background: rgba(30, 41, 59, 0.95);
+            border-left: 4px solid var(--primary);
+            border-radius: 8px;
+            padding: 1rem;
+            min-width: 300px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transform: translateY(-20px);
+            opacity: 0;
+            animation: slideIn 0.3s forwards;
+            backdrop-filter: blur(10px);
+        }
+
+        .toast.success { border-left-color: var(--success); }
+        .toast.danger { border-left-color: var(--danger); }
+        .toast.warning { border-left-color: var(--accent); }
+        .toast.info { border-left-color: var(--secondary); }
+
+        @keyframes slideIn {
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* Grid Utility classes */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 70px;
+                padding: 1.5rem 0.5rem;
+            }
+            .sidebar .brand-text, 
+            .sidebar .brand-subtitle, 
+            .sidebar .nav-item span,
+            .sidebar .sidebar-banner {
+                display: none;
+            }
+            .main-panel {
+                margin-left: 70px;
+            }
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="toast {{ category }}">
+                        <i class="fa-solid 
+                            {% if category == 'success' %}fa-circle-check
+                            {% elif category == 'danger' %}fa-triangle-exclamation
+                            {% elif category == 'warning' %}fa-circle-exclamation
+                            {% else %}fa-circle-info{% endif %}"></i>
+                        <div>{{ message }}</div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Navigation Sidebar -->
+    <div class="sidebar">
+        <div>
+            <div class="brand">
+                <div class="brand-logo" style="background: url('/static/1_logo.png') no-repeat center center; background-size: cover; box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);"></div>
+                <div>
+                    <h1 class="brand-text">PicoTeam</h1>
+                    <div class="brand-subtitle">IoT Anomaly System</div>
+                </div>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item {% if request.path == '/dashboard' or request.path == '/' and 'user_id' in session %}active{% endif %}">
+                    <a href="/dashboard"><i class="fa-solid fa-chart-line"></i><span>실시간 대시보드</span></a>
+                </li>
+                <li class="nav-item {% if request.path == '/board' %}active{% endif %}">
+                    <a href="/board"><i class="fa-solid fa-clipboard-list"></i><span>운영 게시판</span></a>
+                </li>
+                <li class="nav-item {% if request.path == '/devices' %}active{% endif %}">
+                    <a href="/devices"><i class="fa-solid fa-server"></i><span>가동 기기 목록</span></a>
+                </li>
+                <li class="nav-item {% if request.path == '/device-status' %}active{% endif %}">
+                    <a href="/device-status"><i class="fa-solid fa-microchip"></i><span>기기 상태</span></a>
+                </li>
+                <li class="nav-item {% if request.path == '/temp-status' %}active{% endif %}">
+                    <a href="/temp-status"><i class="fa-solid fa-temperature-half"></i><span>온도 상태</span></a>
+                </li>
+                {% if session.get('level') == 0 %}
+                <li class="nav-item {% if request.path == '/admin/members' %}active{% endif %}">
+                    <a href="/admin/members"><i class="fa-solid fa-user-gear"></i><span>회원관리</span></a>
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+        
+        <div class="sidebar-banner" style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
+            <img src="/static/1_logo3.png" alt="Owly Mascot" style="width: 135px; height: 135px; object-fit: cover; border-radius: 20px; border: 2px solid var(--secondary); box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);">
+            <h3 class="sidebar-banner-title">안전 온도 관제</h3>
+            <p class="sidebar-banner-desc">전국 냉동공조기계를 실시간 소켓 통신으로 정밀 모니터링 중입니다. ❄️</p>
+        </div>
+    </div>
+
+    <!-- Main Content Panel -->
+    <div class="main-panel">
+        <div class="top-navbar">
+            <div class="user-welcome">
+                {% block navbar_header %}{% endblock %}
+            </div>
+            
+            <div class="top-nav-actions">
+                {% if session.get('user_id') %}
+                    <div class="profile-container" style="position: relative;">
+                        <div class="profile-menu" id="profileMenuBtn">
+                            <div class="profile-avatar">{{ session.get('user_name')[0] if session.get('user_name') else 'U' }}</div>
+                            <span class="profile-name">{{ session.get('user_name') }} 님</span>
+                            <i class="fa-solid fa-chevron-down" style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;"></i>
+                        </div>
+                        <div class="profile-dropdown" id="profileDropdown" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 12px; min-width: 150px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 1000; overflow: hidden; padding: 0.5rem 0;">
+                            <a href="/auth/edit-profile" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--text-main); text-decoration: none; font-size: 0.9rem; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='none'">
+                                <i class="fa-solid fa-user-gear" style="color: var(--secondary); width: 16px;"></i>
+                                <span>회원정보 수정</span>
+                            </a>
+                            <div style="border-top: 1px solid var(--border); margin: 0.5rem 0;"></div>
+                            <a href="/auth/logout" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; color: var(--danger); text-decoration: none; font-size: 0.9rem; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='none'">
+                                <i class="fa-solid fa-right-from-bracket" style="width: 16px;"></i>
+                                <span>로그아웃</span>
+                            </a>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <script>
+        // Profile dropdown toggle
+        const profileMenuBtn = document.getElementById('profileMenuBtn');
+        const profileDropdown = document.getElementById('profileDropdown');
+        if (profileMenuBtn && profileDropdown) {
+            profileMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isShown = profileDropdown.style.display === 'block';
+                profileDropdown.style.display = isShown ? 'none' : 'block';
+            });
+            document.addEventListener('click', () => {
+                profileDropdown.style.display = 'none';
+            });
+        }
+
+        // Auto-fade toasts
+        setTimeout(() => {
+            const toasts = document.querySelectorAll('.toast');
+            toasts.forEach(toast => {
+                toast.style.transition = 'opacity 0.5s ease';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            });
+        }, 4000);
+    </script>
+</body>
+</html>

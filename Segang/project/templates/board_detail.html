@@ -1,0 +1,331 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .detail-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 2.5rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        margin-bottom: 2rem;
+    }
+
+    .detail-header {
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .detail-title {
+        font-family: var(--font-title);
+        font-size: 1.85rem;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 1rem;
+        line-height: 1.35;
+    }
+
+    .detail-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .detail-author {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.95rem;
+    }
+
+    .detail-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--secondary), var(--primary));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+
+    .detail-date {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
+    .detail-content {
+        font-size: 1.05rem;
+        line-height: 1.8;
+        color: var(--text-main);
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin-bottom: 3rem;
+    }
+
+    .detail-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+        border-top: 1px solid var(--border);
+        padding-top: 1.5rem;
+    }
+
+    .action-left {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .action-right {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .btn-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.65rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-decoration: none;
+    }
+
+    .btn-list {
+        background-color: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-main);
+    }
+
+    .btn-list:hover {
+        background-color: rgba(255, 255, 255, 0.03);
+        border-color: var(--text-muted);
+    }
+
+    .btn-edit {
+        background-color: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        color: var(--secondary);
+    }
+
+    .btn-edit:hover {
+        background-color: rgba(56, 189, 248, 0.2);
+        transform: translateY(-1px);
+    }
+
+    .btn-delete {
+        background-color: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        color: var(--danger);
+    }
+
+    .btn-delete:hover {
+        background-color: rgba(239, 68, 68, 0.2);
+        transform: translateY(-1px);
+    }
+
+    /* Modal System */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(10px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+    }
+
+    .modal-content {
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        width: 100%;
+        max-width: 540px;
+        padding: 2.25rem;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        position: relative;
+        animation: modalFadeIn 0.25s forwards;
+    }
+
+    @keyframes modalFadeIn {
+        from { opacity: 0; transform: translateY(-15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 1.5rem;
+        right: 1.5rem;
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 1.25rem;
+        cursor: pointer;
+    }
+
+    .modal-close:hover {
+        color: var(--text-main);
+    }
+
+    .modal-title {
+        font-family: var(--font-title);
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+    }
+
+    .form-control {
+        width: 100%;
+        background-color: rgba(15, 23, 42, 0.6);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+        color: var(--text-main);
+        font-family: var(--font-family);
+        font-size: 0.95rem;
+        outline: none;
+    }
+
+    .form-control:focus {
+        border-color: var(--secondary);
+    }
+
+    .modal-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+    }
+
+    .btn-cancel {
+        background-color: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.65rem 1.25rem;
+        border-radius: 10px;
+        cursor: pointer;
+    }
+
+    .btn-cancel:hover {
+        background-color: rgba(255, 255, 255, 0.03);
+    }
+
+    .btn-submit {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        padding: 0.65rem 1.5rem;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>운영 게시글 상세</h1>
+    <p>설비 운영 및 유지보수 기록을 상세 조회 중입니다. 📝</p>
+{% endblock %}
+
+{% block content %}
+    <div class="detail-card">
+        <div class="detail-header">
+            <h2 class="detail-title">{{ post.title }}</h2>
+            <div class="detail-meta">
+                <div class="detail-author">
+                    <div class="detail-avatar">{{ post.author_name[0] }}</div>
+                    <div>
+                        <span style="font-weight: 600; color: var(--text-main);">{{ post.author_name }}</span>
+                        <span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 6px;">작성자</span>
+                    </div>
+                </div>
+                <div class="detail-date">
+                    <i class="fa-regular fa-clock" style="margin-right: 4px; color: var(--secondary);"></i> {{ post.formatted_date }}
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-content">{{ post.content }}</div>
+
+        <div class="detail-actions">
+            <div class="action-left">
+                <a href="/board" class="btn-action btn-list">
+                    <i class="fa-solid fa-arrow-left"></i> 목록으로
+                </a>
+            </div>
+            
+            {% if post.userId == current_user_id %}
+                <div class="action-right">
+                    <button class="btn-action btn-edit" onclick="openEditModal()">
+                        <i class="fa-regular fa-pen-to-square"></i> 수정하기
+                    </button>
+                    <form action="/board/delete/{{ post.boardId }}" method="POST" onsubmit="return confirm('이 게시글을 정말로 삭제하시겠습니까?');" style="display:inline;">
+                        <button type="submit" class="btn-action btn-delete">
+                            <i class="fa-regular fa-trash-can"></i> 삭제하기
+                        </button>
+                    </form>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if post.userId == current_user_id %}
+        <!-- EDIT MODAL -->
+        <div class="modal" id="edit-modal">
+            <div class="modal-content">
+                <button class="modal-close" onclick="closeEditModal()"><i class="fa-solid fa-xmark"></i></button>
+                <h3 class="modal-title">글 수정하기</h3>
+                <form id="edit-form" action="/board/update/{{ post.boardId }}" method="POST">
+                    <div class="form-group">
+                        <label class="form-label">제목</label>
+                        <input type="text" name="title" id="edit-title" class="form-control" value="{{ post.title }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">내용</label>
+                        <textarea name="content" id="edit-content" class="form-control" rows="8" style="resize: none;" required>{{ post.content }}</textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn-cancel" onclick="closeEditModal()">취소</button>
+                        <button type="submit" class="btn-submit">수정 완료</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script>
+            const editModal = document.getElementById('edit-modal');
+            function openEditModal() { editModal.style.display = 'flex'; }
+            function closeEditModal() { editModal.style.display = 'none'; }
+            window.onclick = function(event) {
+                if (event.target === editModal) closeEditModal();
+            }
+        </script>
+    {% endif %}
+{% endblock %}

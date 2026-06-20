@@ -1,0 +1,887 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+    /* Metric Cards Grid */
+    .metric-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        transition: all 0.25s ease;
+    }
+
+    .metric-card:hover {
+        border-color: var(--secondary);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(56, 189, 248, 0.05);
+    }
+
+    .metric-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+    }
+
+    .metric-icon.blue { background-color: rgba(37, 99, 235, 0.15); color: var(--secondary); }
+    .metric-icon.indigo { background-color: rgba(99, 102, 241, 0.15); color: #818cf8; }
+    .metric-icon.emerald { background-color: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .metric-icon.rose { background-color: rgba(244, 63, 94, 0.15); color: var(--danger); }
+
+    .metric-info {
+        flex-grow: 1;
+    }
+
+    .metric-title {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .metric-value {
+        font-family: var(--font-title);
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-top: 2px;
+        display: flex;
+        align-items: baseline;
+        gap: 0.25rem;
+    }
+
+    .metric-unit {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        font-weight: 400;
+    }
+
+    .metric-badge {
+        font-size: 0.72rem;
+        font-weight: 600;
+        padding: 0.25rem 0.5rem;
+        border-radius: 30px;
+        margin-left: auto;
+    }
+    
+    .metric-badge.success { background-color: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .metric-badge.danger { background-color: rgba(239, 68, 68, 0.15); color: var(--danger); }
+    .metric-badge.warning { background-color: rgba(245, 158, 11, 0.15); color: var(--accent); }
+
+    /* Dashboard Layout Sections */
+    .dashboard-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .main-section {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        min-width: 0;
+    }
+
+    .card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.5rem;
+        position: relative;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.25rem;
+    }
+
+    .card-title {
+        font-family: var(--font-title);
+        font-size: 1.15rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .card-subtitle {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+    }
+
+    .card-action {
+        color: var(--secondary);
+        font-size: 0.8rem;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .card-action:hover {
+        text-decoration: underline;
+    }
+
+    /* Bar indicator graphics (Mocking Jina's sleep stages chart styling) */
+    .temp-stages-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .temp-stage-row {
+        display: flex;
+        align-items: center;
+        font-size: 0.85rem;
+    }
+
+    .stage-label {
+        width: 80px;
+        color: var(--text-muted);
+    }
+
+    .stage-bar-wrapper {
+        flex-grow: 1;
+        height: 10px;
+        background-color: rgba(255, 255, 255, 0.05);
+        border-radius: 5px;
+        overflow: hidden;
+        margin: 0 1rem;
+        position: relative;
+    }
+
+    .stage-bar {
+        height: 100%;
+        border-radius: 5px;
+        transition: width 0.5s ease;
+    }
+
+    .stage-bar.danger { background: linear-gradient(90deg, #f43f5e, #ef4444); }
+    .stage-bar.chilled { background: linear-gradient(90deg, #0ea5e9, #38bdf8); }
+    .stage-bar.frozen { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+
+    .stage-value {
+        width: 90px;
+        text-align: right;
+        font-weight: 500;
+    }
+
+    .stage-value span {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+    }
+
+    /* Interactive Chatbot styling (Matching Jina's Owly Chat UI) */
+    .chatbot-card {
+        display: flex;
+        flex-direction: column;
+        height: 480px;
+    }
+
+    .chatbot-status {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        background-color: var(--success);
+        border-radius: 50%;
+        box-shadow: 0 0 8px var(--success);
+    }
+
+    .chatbot-body {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 1rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 1rem;
+        /* Scrollbar styles */
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+    }
+
+    .chatbot-body::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .chatbot-body::-webkit-scrollbar-thumb {
+        background-color: var(--border);
+        border-radius: 4px;
+    }
+
+    .chat-bubble {
+        max-width: 85%;
+        padding: 0.75rem 1rem;
+        border-radius: 16px;
+        font-size: 0.85rem;
+        line-height: 1.45;
+        position: relative;
+    }
+
+    .chat-bubble.bot {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .chat-bubble.bot i {
+        color: var(--secondary);
+        font-size: 1.1rem;
+        margin-top: 2px;
+    }
+
+    .chat-bubble.user {
+        background: linear-gradient(135deg, var(--primary), rgba(37, 99, 235, 0.8));
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+        box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+    }
+
+    .chat-time {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        margin-top: 4px;
+        text-align: right;
+    }
+
+    .chat-bubble.user .chat-time {
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .chatbot-input-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .chatbot-input {
+        flex-grow: 1;
+        background-color: rgba(15, 23, 42, 0.6);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.65rem 1rem;
+        color: var(--text-main);
+        font-family: var(--font-family);
+        font-size: 0.85rem;
+        outline: none;
+    }
+
+    .chatbot-input:focus {
+        border-color: var(--secondary);
+    }
+
+    .chatbot-send-btn {
+        width: 38px;
+        height: 38px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+
+    .chatbot-send-btn:hover {
+        transform: scale(1.05);
+    }
+
+    /* Anomaly Log list and Live Console log */
+    .anomaly-log-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        text-align: left;
+    }
+
+    .anomaly-log-table th {
+        color: var(--text-muted);
+        font-weight: 500;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .anomaly-log-table td {
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    }
+
+    .anomaly-log-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.01);
+    }
+
+    .badge-status {
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-status.crit { background-color: rgba(239, 68, 68, 0.15); color: var(--danger); }
+
+    .console-panel {
+        background-color: #05070c;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.8rem;
+        padding: 1rem;
+        height: 180px;
+        overflow-y: auto;
+        color: #10b981;
+        line-height: 1.5;
+    }
+
+    /* Custom Scrollbar for anomaly table wrapper and console panel */
+    .anomaly-table-wrapper, .console-panel {
+        scrollbar-width: thin;
+        scrollbar-color: #ffffff transparent;
+    }
+
+    .anomaly-table-wrapper::-webkit-scrollbar, .console-panel::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .anomaly-table-wrapper::-webkit-scrollbar-track, .console-panel::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .anomaly-table-wrapper::-webkit-scrollbar-thumb, .console-panel::-webkit-scrollbar-thumb {
+        background-color: #ffffff;
+        border-radius: 6px;
+    }
+
+    /* Side menu advice card */
+    .advice-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8));
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.25rem;
+    }
+
+    .advice-title {
+        font-family: var(--font-title);
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--accent);
+    }
+
+    .advice-item {
+        display: flex;
+        gap: 0.75rem;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+        margin-bottom: 0.75rem;
+    }
+
+    .advice-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .advice-item i {
+        color: var(--secondary);
+        font-size: 0.95rem;
+        margin-top: 2px;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 250px;
+        width: 100%;
+    }
+
+    @media (max-width: 1024px) {
+        .dashboard-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @keyframes pulse-live {
+        0%, 100% { opacity: 0.3; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1.1); }
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <img src="/static/1_logo2.png" alt="Owly Logo" style="width: 48px; height: 48px; object-fit: cover; border-radius: 50%; border: 2px solid var(--secondary); box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);">
+        <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <h1 style="margin: 0; font-size: 1.75rem; font-family: var(--font-title); font-weight: 700; line-height: 1.2;">실시간 관제 대시보드</h1>
+                <div style="background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--success); padding: 0.35rem 0.75rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem;">
+                    <span style="width: 8px; height: 8px; background-color: var(--success); border-radius: 50%; display: inline-block; animation: pulse-live 1.5s infinite; box-shadow: 0 0 8px var(--success);"></span>
+                    실시간 자동 갱신
+                </div>
+            </div>
+            <p style="margin: 3px 0 0 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.2;">안녕하세요, {{ user_name }}님! 안전하고 쾌적하게 설비를 모니터링하세요. ❄️</p>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+    <!-- 4 Core Metrics Cards -->
+    <div class="dashboard-grid">
+        <div class="metric-card" onclick="window.location.href='/devices'" style="cursor: pointer;">
+            <div class="metric-icon indigo"><i class="fa-solid fa-server"></i></div>
+            <div class="metric-info">
+                <div class="metric-title">전체 가동 기기</div>
+                <div class="metric-value"><span id="active-devices">0</span><span class="metric-unit">대</span></div>
+            </div>
+            <span class="metric-badge success" id="active-devices-badge">정상 가동</span>
+        </div>
+
+        <div class="metric-card" onclick="window.location.href='/device-status'" style="cursor: pointer;">
+            <div class="metric-icon blue"><i class="fa-solid fa-microchip"></i></div>
+            <div class="metric-info">
+                <div class="metric-title">기기 상태</div>
+                <div class="metric-value"><span id="device-health">0</span><span class="metric-unit">%</span></div>
+            </div>
+            <span class="metric-badge success" id="device-health-badge">양호</span>
+        </div>
+
+        <div class="metric-card" onclick="window.location.href='/temp-status'" style="cursor: pointer;">
+            <div class="metric-icon rose"><i class="fa-solid fa-temperature-half"></i></div>
+            <div class="metric-info">
+                <div class="metric-title">센서 상태</div>
+                <div class="metric-value"><span id="sensor-health">0</span><span class="metric-unit">%</span></div>
+            </div>
+            <span class="metric-badge success" id="sensor-health-badge">정상</span>
+        </div>
+
+        <div class="metric-card" onclick="window.location.href='/device-status'" style="cursor: pointer;">
+            <div class="metric-icon emerald"><i class="fa-solid fa-wifi"></i></div>
+            <div class="metric-info">
+                <div class="metric-title">통신 상태</div>
+                <div class="metric-value"><span id="comm-health">0</span><span class="metric-unit">%</span></div>
+            </div>
+            <span class="metric-badge success" id="comm-health-badge">안정적</span>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Section and Sidebar -->
+    <div class="dashboard-layout">
+        
+        <!-- Left Column: Chart & Logs -->
+        <div class="main-section">
+            
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title"><i class="fa-solid fa-chart-bar" style="color: var(--secondary);"></i>전체 기기 정상 가동률 추이 (12h)</h2>
+                        <div class="card-subtitle">최근 12시간 동안 온도 상한 임계값 이내를 유지하는 디바이스 비율의 추이입니다.</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="tempChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Anomaly History Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title"><i class="fa-solid fa-clock-rotate-left" style="color: var(--danger);"></i>실시간 온도 이상 감지 목록</h2>
+                        <div class="card-subtitle">지정된 임계 상한 온도(tempUpperLimitValue)를 초과한 기기 목록입니다.</div>
+                    </div>
+                </div>
+                <div class="anomaly-table-wrapper" style="overflow: auto; max-height: 250px;">
+                    <table class="anomaly-log-table">
+                        <thead>
+                            <tr>
+                                <th>감지 시간</th>
+                                <th>사용자 이름</th>
+                                <th>기기 식별명</th>
+                                <th>현재 온도</th>
+                                <th>경보 구분</th>
+                                <th>상태 메시지</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alerts-table-body">
+                            <tr>
+                                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                    이상 감지 이력이 없습니다. 시스템이 안전하게 작동 중입니다.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Terminal Logging console -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h2 class="card-title"><i class="fa-solid fa-terminal" style="color: var(--success);"></i>수신 데이터 로그(HTTP)</h2>
+                        <div class="card-subtitle">단말기가 서버로 접속 및 수신에 대한 로그 스트림입니다.</div>
+                    </div>
+                </div>
+                <div class="console-panel" id="console-logs">
+                    [12:00:00] 관제 데몬 대기 상태...
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Right Column: Chatbot & Safety Advice (Matching Jina's Owly Chat UI) -->
+        <div class="main-section" style="gap: 1.5rem;">
+            
+            <!-- Pico AI Chatbot -->
+            <div class="card chatbot-card">
+                <div class="card-header" style="margin-bottom: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <img src="/static/1_chat.png" alt="Owly" style="width: 28px; height: 28px; object-fit: cover; border-radius: 50%; border: 1px solid var(--secondary);">
+                        <h2 class="card-title" style="font-size: 1rem; margin: 0;">오울리 AI 도우미</h2>
+                    </div>
+                    <div class="chatbot-status">
+                        <span class="status-dot"></span>온라인
+                    </div>
+                </div>
+                
+                <div class="chatbot-body" id="chat-box">
+                    <div class="chat-bubble bot">
+                        <img src="/static/1_chat.png" alt="Owly" style="width: 32px; height: 32px; object-fit: cover; border-radius: 50%; flex-shrink: 0; margin-top: 2px;">
+                        <div>
+                            안녕하세요! 저는 PicoTeam의 마스코트이자 AI 관제 비서인 **오울리(Owly)**입니다! 🦉❄️
+                            현재 연동된 Supabase 로그를 분석하여 기기 상태와 제어 조치 방안을 답변해 드릴 수 있습니다.
+                            <div class="chat-time">지금</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chatbot-input-group">
+                    <input type="text" id="chat-input" class="chatbot-input" placeholder="메시지를 입력하세요..." onkeypress="handleKeyPress(event)">
+                    <button class="chatbot-send-btn" onclick="sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+
+            <!-- Safety tips -->
+            <div class="advice-card">
+                <h3 class="advice-title"><i class="fa-solid fa-lightbulb"></i>오늘의 안전 관리 가이드</h3>
+                <div class="temp-stages-container">
+                    <!-- Distribution visual mockup like sleep stages -->
+                    <div class="temp-stage-row">
+                        <span class="stage-label">급속냉동기</span>
+                        <div class="stage-bar-wrapper">
+                            <div class="stage-bar frozen" style="width: 85%;"></div>
+                        </div>
+                        <span class="stage-value">-25°C <span>(목표)</span></span>
+                    </div>
+                    <div class="temp-stage-row">
+                        <span class="stage-label">저온저장고</span>
+                        <div class="stage-bar-wrapper">
+                            <div class="stage-bar chilled" style="width: 60%;"></div>
+                        </div>
+                        <span class="stage-value">2°C <span>(목표)</span></span>
+                    </div>
+                    <div class="temp-stage-row">
+                        <span class="stage-label">공조실외기</span>
+                        <div class="stage-bar-wrapper">
+                            <div class="stage-bar danger" style="width: 40%;"></div>
+                        </div>
+                        <span class="stage-value">28°C <span>(주의)</span></span>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid var(--border); margin-top: 1.25rem; padding-top: 1rem;">
+                    <div class="advice-item">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <div>급속냉동기 온도가 -15°C를 초과할 경우, Supabase 설정을 변경하여 자동 알림을 증폭해 주세요.</div>
+                    </div>
+                    <div class="advice-item">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <div>Pico W 보드의 송신 주기가 10초 이내로 너무 짧으면 LTE 모뎀 발열이 발생할 수 있으니 60초 이상을 유지할 것을 권장합니다.</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Chart & Live Socket updates scripts -->
+    <script>
+        // Init ChartJS with stacked bar chart
+        const ctx = document.getElementById('tempChart').getContext('2d');
+
+        const tempChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['21:00', '21:10', '21:20', '21:30', '21:40', '21:50'],
+                datasets: [
+                    {
+                        label: '가동 중인 기기 비율 (%)',
+                        data: [100, 100, 100, 100, 100, 100],
+                        backgroundColor: '#2563eb', // Blue
+                        borderRadius: 4
+                    },
+                    {
+                        label: '가동 중이 아닌 기기 비율 (%)',
+                        data: [0, 0, 0, 0, 0, 0],
+                        backgroundColor: '#ef4444', // Red
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#94a3b8',
+                            font: {
+                                family: 'Inter',
+                                size: 11
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: { color: '#94a3b8' }
+                    },
+                    y: {
+                        stacked: true,
+                        min: 0,
+                        max: 100,
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: { color: '#94a3b8' }
+                    }
+                }
+            }
+        });
+
+        // Global status cache for chatbot
+        let latestStatusData = {
+            active_devices: 0,
+            device_health: 100,
+            sensor_health: 100,
+            comm_health: 100,
+            avg_temp: 3.5,
+            alerts: [],
+            chart_values: [100, 100, 100, 100, 100, 100]
+        };
+
+        // ---------------- Live Updates from Flask REST API ----------------
+        function updateDashboard() {
+            fetch('/api/status')
+                .then(res => {
+                    if (res.status === 401) {
+                        window.location.href = '/auth/login';
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    if (data.success) {
+                        // Cache data for chatbot
+                        latestStatusData = data;
+
+                        // 1. Update Core metrics values
+                        document.getElementById('active-devices').innerText = data.active_devices;
+                        document.getElementById('active-devices-badge').innerText = '정상 가동';
+                        
+                        document.getElementById('device-health').innerText = data.device_health;
+                        document.getElementById('device-health-badge').innerText = data.device_health >= 90 ? '양호' : '주의';
+                        
+                        document.getElementById('sensor-health').innerText = data.sensor_health;
+                        document.getElementById('sensor-health-badge').innerText = data.sensor_health >= 95 ? '정상' : '이상 감지';
+                        
+                        document.getElementById('comm-health').innerText = data.comm_health;
+                        document.getElementById('comm-health-badge').innerText = data.comm_health >= 90 ? '안정적' : '신호 감쇠';
+
+                        // 2. Update stacked bar chart
+                        if (data.chart_labels && data.chart_labels.length > 0) {
+                            tempChart.data.labels = data.chart_labels;
+                            tempChart.data.datasets[0].data = data.chart_values;
+                            tempChart.data.datasets[1].data = data.chart_values.map(v => 100 - v);
+                            tempChart.update();
+                        }
+
+                        // 3. Update Anomaly alarms Table
+                        const tbody = document.getElementById('alerts-table-body');
+                        if (data.alerts.length > 0) {
+                            tbody.innerHTML = '';
+                            data.alerts.forEach(a => {
+                                tbody.innerHTML += `
+                                    <tr>
+                                        <td>${a.time}</td>
+                                        <td>${a.user_name}</td>
+                                        <td><strong>${a.device}</strong></td>
+                                        <td style="color: var(--danger); font-weight: 600;">${a.value}°C</td>
+                                        <td><span class="badge-status crit">임계 초과</span></td>
+                                        <td style="color: var(--text-muted);">${a.message}</td>
+                                    </tr>
+                                `;
+                            });
+                        } else {
+                            tbody.innerHTML = `
+                                <tr>
+                                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                        이상 감지 이력이 없습니다. 시스템이 안전하게 작동 중입니다.
+                                    </td>
+                                </tr>
+                            `;
+                        }
+
+                        // 4. Update TCP Server logging console
+                        const consoleLogs = document.getElementById('console-logs');
+                        if (data.logs && data.logs.length > 0) {
+                            consoleLogs.innerHTML = data.logs.join('<br>');
+                            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+                        }
+                    }
+                })
+                .catch(err => console.error("대시보드 실시간 업데이트 에러:", err));
+        }
+
+        // Initial load of dashboard data (automatic polling disabled by request)
+        window.onload = updateDashboard;
+
+        // ---------------- Supabase Realtime Subscription ----------------
+        const supabaseUrl = "{{ supabase_url }}";
+        const supabaseKey = "{{ supabase_key }}";
+        
+        if (supabaseUrl && supabaseKey) {
+            const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+            
+            // Subscribe to database changes
+            const channel = supabaseClient
+                .channel('dashboard-realtime')
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'sensorvalue' },
+                    (payload) => {
+                        console.log('Realtime sensorvalue update:', payload);
+                        updateDashboard();
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'device_boot_logs' },
+                    (payload) => {
+                        console.log('Realtime device_boot_logs update:', payload);
+                        updateDashboard();
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    { event: '*', schema: 'public', table: 'usersettings' },
+                    (payload) => {
+                        console.log('Realtime usersettings update:', payload);
+                        updateDashboard();
+                    }
+                )
+                .subscribe((status) => {
+                    console.log('Supabase Realtime subscription status:', status);
+                });
+        }
+
+        // ---------------- Pico Chatbot Script (Mocking Owly AI Chatbot) ----------------
+        const chatBox = document.getElementById('chat-box');
+        const chatInput = document.getElementById('chat-input');
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function appendMessage(sender, text) {
+            const timeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+            const bubble = document.createElement('div');
+            bubble.className = `chat-bubble ${sender}`;
+            
+            if (sender === 'bot') {
+                bubble.innerHTML = `
+                    <img src="/static/1_chat.png" alt="Owly" style="width: 32px; height: 32px; object-fit: cover; border-radius: 50%; flex-shrink: 0; margin-top: 2px;">
+                    <div>
+                        ${text}
+                        <div class="chat-time">${timeStr}</div>
+                    </div>
+                `;
+            } else {
+                bubble.innerHTML = `
+                    <div>
+                        ${text}
+                        <div class="chat-time">${timeStr}</div>
+                    </div>
+                `;
+            }
+            
+            chatBox.appendChild(bubble);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function sendMessage() {
+            const query = chatInput.value.trim();
+            if (!query) return;
+
+            appendMessage('user', query);
+            chatInput.value = '';
+
+            // Simulate intelligent AI bot answering using live values
+            setTimeout(() => {
+                let reply = '';
+                const queryLower = query.toLowerCase();
+                if (queryLower.includes('온도') || queryLower.includes('어때')) {
+                    const currentRate = latestStatusData.chart_values ? latestStatusData.chart_values[latestStatusData.chart_values.length - 1] : 100;
+                    reply = `현재 전체 기기의 12시간 정상 가동률은 **${currentRate}%** 이며, 전국 평균 온도는 **${latestStatusData.avg_temp}°C** 입니다.`;
+                } else if (queryLower.includes('기기') || queryLower.includes('장비') || queryLower.includes('상태')) {
+                    reply = `현재 활성 가동 중인 단말기는 총 **${latestStatusData.active_devices}대** 이며, 기기 상태 점수는 **${latestStatusData.device_health}%**, 센서 상태는 **${latestStatusData.sensor_health}%**, 통신 상태는 **${latestStatusData.comm_health}%** 입니다.`;
+                } else if (queryLower.includes('경보') || queryLower.includes('알림') || queryLower.includes('이상') || queryLower.includes('에러')) {
+                    const alertCount = latestStatusData.alerts ? latestStatusData.alerts.length : 0;
+                    if (alertCount > 0) {
+                         reply = `⚠️ 현재 **${alertCount}건**의 온도 이상 경보가 발생한 상태입니다. 대시보드 하단의 '온도 이상 감지 목록'을 검토하시기 바랍니다.`;
+                    } else {
+                        reply = `✅ 오늘 감지된 이상 경보는 총 **0건**으로, 아주 양호하고 안전한 상태가 지속되고 있습니다.`;
+                    }
+                } else if (queryLower.includes('도움') || queryLower.includes('사용') || queryLower.includes('안내')) {
+                    reply = `저 오울리가 도와드릴 수 있는 항목은 다음과 같습니다 🦉:<br>
+                            1. **온도 현황**: "현재 온도 어때?"<br>
+                            2. **기기 상태**: "현재 연결된 기기 상태"<br>
+                            3. **이상 감지**: "이상 경보 발생 여부"<br>
+                            문의사항을 편하게 말씀해 주세요!`;
+                } else {
+                    reply = `이해했습니다! 저 오울리가 Supabase 로그 데이터를 스캔한 결과, 전체 시스템은 정상 궤도에 있습니다. 추가로 알고 싶으신 지표(온도, 활성 기기, 경보 이력 등)가 있다면 자유롭게 질문해 주세요 🦉.`;
+                }
+                
+                appendMessage('bot', reply);
+            }, 800);
+        }
+    </script>
+{% endblock %}

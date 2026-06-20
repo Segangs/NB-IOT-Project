@@ -1,0 +1,254 @@
+{% extends "layout.html" %}
+
+{% block head %}
+<style>
+    .nt-header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .nt-card {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        overflow: hidden;
+    }
+
+    .nt-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.9rem;
+    }
+
+    .nt-table th {
+        background-color: rgba(255, 255, 255, 0.02);
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .nt-table td {
+        padding: 1.1rem 1.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        color: var(--text-main);
+    }
+
+    .nt-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .nt-table tr {
+        transition: background-color 0.25s ease;
+    }
+
+    .nt-table tr:hover td {
+        background-color: rgba(255, 255, 255, 0.015);
+    }
+
+    .type-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .type-badge.freeze {
+        background-color: rgba(59, 130, 246, 0.12);
+        color: #60a5fa;
+        border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    .type-badge.chill {
+        background-color: rgba(14, 165, 233, 0.12);
+        color: #38bdf8;
+        border: 1px solid rgba(14, 165, 233, 0.2);
+    }
+
+    .type-badge.general {
+        background-color: rgba(148, 163, 184, 0.12);
+        color: var(--text-muted);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .temp-value {
+        font-family: var(--font-title);
+        font-weight: 700;
+        font-size: 1.05rem;
+    }
+
+    .temp-value.cold {
+        color: #38bdf8;
+        text-shadow: 0 0 8px rgba(56, 189, 248, 0.2);
+    }
+
+    .temp-value.hot {
+        color: #f43f5e;
+        text-shadow: 0 0 8px rgba(244, 63, 150, 0.2);
+    }
+
+    .btn-back {
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 0.6rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-back:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--text-muted);
+    }
+
+    .live-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background-color: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        color: var(--success);
+        padding: 0.4rem 0.85rem;
+        border-radius: 30px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        background-color: var(--success);
+        border-radius: 50%;
+        animation: pulse-live 1.5s infinite;
+        box-shadow: 0 0 8px var(--success);
+    }
+
+    @keyframes pulse-live {
+        0%, 100% { opacity: 0.3; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1.1); }
+    }
+</style>
+{% endblock %}
+
+{% block navbar_header %}
+    <h1>실시간 전국 평균 온도 세부 현황</h1>
+    <p>각 수집 단말기로부터 들어오는 온도의 상세 정보와 담당자 정보를 실시간 모니터링합니다. 📡</p>
+{% endblock %}
+
+{% block content %}
+    <div class="nt-header-actions">
+        <div class="live-indicator">
+            <span class="live-dot"></span>실시간 동기화 중 (2s)
+        </div>
+        <a href="/dashboard" class="btn-back">
+            <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+        </a>
+    </div>
+
+    <div class="nt-card">
+        <table class="nt-table">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">번호</th>
+                    <th>담당자 이름 (User)</th>
+                    <th>설비 종류 (SystemType)</th>
+                    <th>현재 측정 온도 (SensorValue)</th>
+                    <th>최종 수집 시각 (SensorValueTime)</th>
+                </tr>
+            </thead>
+            <tbody id="nt-table-body">
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 5rem;">
+                        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; color: var(--secondary); margin-bottom: 1rem;"></i>
+                        <br>실시간 수집 로그를 안전하게 불러오는 중입니다...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function updateNationalTemperatures() {
+            fetch('/api/national-temperatures')
+                .then(res => {
+                    if (res.status === 401) {
+                        window.location.href = '/auth/login';
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    if (data.success) {
+                        const tbody = document.getElementById('nt-table-body');
+                        if (data.data && data.data.length > 0) {
+                            let rowsHTML = '';
+                            data.data.forEach((item, index) => {
+                                // SystemType styling
+                                let typeClass = 'general';
+                                if (item.systemType === '냉동') {
+                                    typeClass = 'freeze';
+                                } else if (item.systemType === '냉장') {
+                                    typeClass = 'chill';
+                                }
+                                
+                                // Temperature value styling
+                                let tempClass = item.sensorValue > 20 ? 'hot' : (item.sensorValue <= 0 ? 'cold' : '');
+                                
+                                rowsHTML += `
+                                    <tr>
+                                        <td style="font-weight: 500; color: var(--text-muted);">#${index + 1}</td>
+                                        <td style="font-weight: 600;">
+                                            <i class="fa-solid fa-user" style="color: var(--secondary); margin-right: 0.5rem; font-size: 0.85rem;"></i>
+                                            ${item.userName}
+                                        </td>
+                                        <td>
+                                            <span class="type-badge ${typeClass}">
+                                                <i class="fa-solid ${item.systemType === '냉동' ? 'fa-snowflake' : 'fa-temperature-low'}" style="font-size: 0.75rem;"></i>
+                                                ${item.systemType}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="temp-value ${tempClass}">${item.sensorValue.toFixed(1)}°C</span>
+                                        </td>
+                                        <td style="color: var(--text-muted); font-family: monospace;">
+                                            <i class="fa-regular fa-clock" style="margin-right: 0.4rem; font-size: 0.85rem;"></i>
+                                            ${item.sensorValueTime}
+                                        </td>
+                                    </tr>
+                                `;
+                            });
+                            tbody.innerHTML = rowsHTML;
+                        } else {
+                            tbody.innerHTML = `
+                                <tr>
+                                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 4rem;">
+                                        실시간으로 수집된 온도 정보가 아직 존재하지 않습니다.
+                                    </td>
+                                </tr>
+                            `;
+                        }
+                    }
+                })
+                .catch(err => console.error("실시간 전국 온도 업데이트 에러:", err));
+        }
+
+        // Run updates every 2 seconds for active real-time tracking
+        setInterval(updateNationalTemperatures, 2000);
+        
+        // Eager execution on load
+        window.onload = updateNationalTemperatures;
+    </script>
+{% endblock %}
