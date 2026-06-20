@@ -6,21 +6,20 @@
 
 ---
 
-## 📅 2026-06-20: [단말 펌웨어] Supabase Anon Key 보안 위협 제거 및 CMake .env 동적 빌드 매크로 도입
+## 📅 2026-06-20: [단말 펌웨어] 네트워크/서버 환경 설정 변수 .env 이전 및 CMake 동적 매크로 전역 도입
 * **개발 범주**: Security Hardening, CMake Build, Environment Variables (.env)
 
 ### 1. 작업 개요 (Goal & Requirements)
-* `src/config.h`에 민감한 API 인증 키(`SUPABASE_ANON_KEY`)가 하드코딩되어 깃허브 공개 저장소에 노출되는 보안 위협 식별.
-* 소스 코드에 키를 명시적으로 작성하지 않고, 외부 `.env` 파일로 분리 관리하여 깃 커밋 및 유출 대상에서 완전히 제외시킬 것.
+* `src/config.h`에 민감한 API 인증 키(`SUPABASE_ANON_KEY`)뿐만 아니라, `APN_NAME`, `SUPABASE_HOST`, `SUPABASE_PORT` 등 모든 가변 환경 설정 변수가 하드코딩되어 깃허브 공개 저장소에 직접 노출되는 구조 개선.
+* 모든 서버 연동 및 네트워크 설정 파라미터를 외부 `.env` 파일로 통합 이전하여 기밀성과 빌드 유연성을 극대화할 것.
 
 ### 2. 해결 과정 & 핵심 해결 방안
-* **CMake 기반 `.env` 파서 구현 (`CMakeLists.txt` 수정)**:
-  - CMake 구성 단에서 프로젝트 루트의 `.env` 파일을 동적으로 한 줄씩 읽어와 유효한 환경 변수 설정을 파싱하는 스크립트 작성.
-  - 파싱된 환경 변수 키-값 쌍을 `add_compile_definitions(KEY="VALUE")` 컴파일러 전처리 지시문으로 전달하여, 빌드 타임에 전역 전처리 매크로(Macro)로 동적 바인딩되도록 구성.
-* **비휘발성 설정 예외 가드 가동 (`src/config.h` 수정)**:
-  - `src/config.h` 내부의 하드코딩된 API Key 선언부를 걷어내고, `#ifndef SUPABASE_ANON_KEY` 전처리 지시문 분기를 사용해 컴파일러 레벨 정의가 누락되었을 때에만 기본 템플릿/플레이스홀더가 삽입되도록 안전장치 마련.
-* **환경 템플릿 배포 및 깃 배제**:
-  - 비밀 값 관리를 위한 `.env.example` 템플릿 파일을 신규 배포하고, 실제 중요 키값이 들어있는 `.env` 파일은 `.gitignore`에 명시적으로 추가하여 원격 Git 저장소 유출 원천 차단.
+* **CMake 기반 `.env` 동적 파서 확장 (`CMakeLists.txt`)**:
+  - 프로젝트 루트의 `.env` 파일에 기록된 모든 환경 변수(`SUPABASE_ANON_KEY`, `APN_NAME`, `SUPABASE_HOST`, `SUPABASE_PORT`)를 CMake 빌드 구성 단계에서 파싱하여 컴파일러 전처리 매크로(`add_compile_definitions`)로 전역 주입하도록 기능을 일원화함.
+* **`config.h` 하드코딩 파라미터 완전 소거 및 매크로 가드 도입**:
+  - `src/config.h` 내부의 하드코딩된 서버/APN 연결 설정을 모두 삭제하고, `#ifndef` 지시문을 결합하여 컴파일 타임에 환경 변수 값이 주입되지 않을 경우에만 대체 기본값/플레이스홀더가 삽입되도록 안전장치 수립.
+* **환경 구성 템플릿 갱신 (`.env.example` 및 `.gitignore`)**:
+  - `.env.example` 파일에 모든 네트워크 파라미터 구조 템플릿을 명시하였고, 실제 연결 설정값들이 담긴 `.env` 파일은 깃 커밋 대상에서 완벽히 격리시켰습니다.
 
 ---
 
