@@ -28,9 +28,17 @@
 // ====================================================================================
 // [4] Networking & Server Settings
 // ====================================================================================
+#ifndef APN_NAME
 #define APN_NAME          "YOUR_APN_NAME_PLACEHOLDER"
+#endif
+
+#ifndef SUPABASE_HOST
 #define SUPABASE_HOST     "YOUR_SUPABASE_HOST_PLACEHOLDER"
+#endif
+
+#ifndef SUPABASE_PORT
 #define SUPABASE_PORT     "443"
+#endif
 
 #ifndef SUPABASE_ANON_KEY
 #define SUPABASE_ANON_KEY "YOUR_SUPABASE_ANON_KEY_PLACEHOLDER"
