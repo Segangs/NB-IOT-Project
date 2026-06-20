@@ -209,17 +209,21 @@ void check_ntc_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, in
         status_ch0 = 2; // Short circuit
     } else {
         r_sensor_ch0 = R_FIXED_val * (VCC_val / volt_ch0 - 1.0f);
-        
-        // B-parameter 변환
-        float temp_k = r_sensor_ch0 / R_ROOM_TEMP_val;
-        temp_k = log(temp_k);                      
-        temp_k /= B_COEFFICIENT_val;               
-        temp_k += 1.0f / ROOM_TEMP_K_val;          
-        temp_k = 1.0f / temp_k;                    
-        temp_ch0 = temp_k - 273.15f + NTC_TEMP_OFFSET;            
-        
-        if (temp_ch0 < NTC_TEMP_MIN || temp_ch0 > NTC_TEMP_MAX) {
-            status_ch0 = 3; // Out of range
+        if (r_sensor_ch0 <= 0.0f) {
+            status_ch0 = 3; // Out of range / Invalid resistance
+            temp_ch0 = -999.0f;
+        } else {
+            // B-parameter 변환
+            float temp_k = r_sensor_ch0 / R_ROOM_TEMP_val;
+            temp_k = log(temp_k);                      
+            temp_k /= B_COEFFICIENT_val;               
+            temp_k += 1.0f / ROOM_TEMP_K_val;          
+            temp_k = 1.0f / temp_k;                    
+            temp_ch0 = temp_k - 273.15f + NTC_TEMP_OFFSET;            
+            
+            if (temp_ch0 < NTC_TEMP_MIN || temp_ch0 > NTC_TEMP_MAX) {
+                status_ch0 = 3; // Out of range
+            }
         }
     }
 
@@ -232,17 +236,21 @@ void check_ntc_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, in
         status_ch1 = 2; // Short circuit
     } else {
         r_sensor_ch1 = R_FIXED_val * (VCC_val / volt_ch1 - 1.0f);
-        
-        // B-parameter 변환
-        float temp_k = r_sensor_ch1 / R_ROOM_TEMP_val;
-        temp_k = log(temp_k);                      
-        temp_k /= B_COEFFICIENT_val;               
-        temp_k += 1.0f / ROOM_TEMP_K_val;          
-        temp_k = 1.0f / temp_k;                    
-        temp_ch1 = temp_k - 273.15f + NTC_TEMP_OFFSET;            
-        
-        if (temp_ch1 < NTC_TEMP_MIN || temp_ch1 > NTC_TEMP_MAX) {
-            status_ch1 = 3; // Out of range
+        if (r_sensor_ch1 <= 0.0f) {
+            status_ch1 = 3; // Out of range / Invalid resistance
+            temp_ch1 = -999.0f;
+        } else {
+            // B-parameter 변환
+            float temp_k = r_sensor_ch1 / R_ROOM_TEMP_val;
+            temp_k = log(temp_k);                      
+            temp_k /= B_COEFFICIENT_val;               
+            temp_k += 1.0f / ROOM_TEMP_K_val;          
+            temp_k = 1.0f / temp_k;                    
+            temp_ch1 = temp_k - 273.15f + NTC_TEMP_OFFSET;            
+            
+            if (temp_ch1 < NTC_TEMP_MIN || temp_ch1 > NTC_TEMP_MAX) {
+                status_ch1 = 3; // Out of range
+            }
         }
     }
     

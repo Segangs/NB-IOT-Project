@@ -24,7 +24,7 @@
 
 ## 📅 2026-06-20: [펌웨어 & DB] Supabase DB Join 제거 및 싱글/듀얼 온도 센서(냉장/냉동) 동적 대응 고도화
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
-* **개발 범주**: Supabase DDL (RPC), Pico 2 W C/C++ Firmware, Dual-Channel NTC ADC Read, Periodic Transmission, JSON Parsing, HTTP Session Optimization, Response Parsing Bug Fix
+* **개발 범주**: Supabase DDL (RPC), Pico 2 W C/C++ Firmware, Dual-Channel NTC ADC Read, Periodic Transmission, JSON Parsing, HTTP Session Optimization, Response Parsing Bug Fix, Math Domain Protection
 
 ### 1. 작업 개요 (Goal & Requirements)
 * Supabase에 `sensorvalue` 인서트 시 발생하는 DB JOIN 부하를 제거하여 기성 쿼리를 튜닝할 것.
@@ -33,6 +33,7 @@
 * 20분마다 온도를 전송할 때 캐싱된 각 센서의 `sensorId`를 포함해 JOIN이 없는 튜닝된 RPC `t`로 각각 전송할 것.
 * **부팅 시 불필요한 HTTPS 세션 닫기/열기 해소**: 부팅 로그 전송 후 바로 연달아 센서 정보를 조회하므로, TCP/TLS 오버헤드를 막기 위해 단일 HTTPS 세션 내에서 연속적으로 전송하도록 시퀀스를 결합할 것.
 * **센서 정보 파싱 실패 해결**: Supabase `get_device_sensors` 응답 시 cmd가 아닌 다른 일반 JSON이 응답되어도 누락 없이 `response_buf`에 복사되도록 필터를 완화할 것.
+* **플로팅 핀(미연결 핀) 수학적 오류 예외 처리**: 온도 센서 1개 기기에서 GP27(Ch1) 핀에 센서가 없을 경우, 플로팅 노이즈 전압 유입으로 인해 `log(음수)` DomainError가 발생해 보드가 HardFault로 뻗어 부팅 단계(`Check Pico`)에서 먹통이 되던 크래시 현상을 차단할 것.
 
 ### 2. 주요 작업 및 기술적 의사결정
 * **HTTPS 단일 세션 시퀀스 고도화 및 최적화 (`main.cpp` 수정)**:
@@ -46,8 +47,9 @@
 * **센서 정보 파싱 및 캐싱**:
   - 라이브러리 비의존성 C-string JSON 파서 `parse_sensors_json`을 자체 구현하여 메모리 오버헤드 없이 기기 내 `g_sensors` 캐시 및 `g_sensor_count` 업데이트.
   - 부팅 로그 전송 후 `get_device_sensors`를 호출하여 센서 정보를 가져오고, 통신 오류나 미매핑 시 ID 1번 기본 센서로 안전하게 Fallback하도록 예외 처리.
-* **듀얼 채널(냉장/냉동) NTC 계측 및 독립 필터링**:
-  - `check_ntc_status` 함수를 `check_ntc_status_dual`로 고도화하여 GP26(Ch0)과 GP27(Ch1) 두 개 채널을 모두 정밀 계측 및 개별 LPF(Low Pass Filter)를 독립 적용.
+* **듀얼 채널(냉장/냉동) NTC 계측 및 독립 필터링 (`tasks_sensor.cpp` 수정)**:
+  - `check_ntc_status` 함수를 `check_ntc_status_dual`로 고도화하여 GP26(Ch0)과 GP27(Ch1) 두 개 채널을 모두 정밀 계측 및 LPF(Low Pass Filter)를 개별 적용.
+  - **하드폴트 예방 방어 코드 주입**: GP26/GP27 NTC 계산 저항값(`r_sensor`)이 플로팅 노이즈 등에 의해 0 이하(`<= 0.0f`)가 될 시, 로그 연산(`log(temp_k)`)을 실행하지 않고 에러 상태코드 3번(Out of Range)으로 처리해 수학 예외에 따른 크래시(HardFault) 현상을 철저히 차단함.
   - LCD 렌더링 태스크(`vLcdTask`)를 확장하여, 싱글 센서일 때는 기존 단일 온도 상시 노출을 유지하고, 듀얼 센서일 때는 4초 주기로 `C0: 온도로 표시` ⇄ `C1: 온도로 표시`가 번갈아 토글 표시되는 시각적 고도화 구현.
   - 20분 전송 루프(`vPeriodicModemTask`) 시 캐싱된 센서 개수만큼 루프를 돌며 각각의 `sensorId` 기반으로 `/rest/v1/rpc/t`를 호출하여 전송 성공/실패 여부를 독립적으로 처리하도록 가변화.
 * **빌드 안정성 확보**:
