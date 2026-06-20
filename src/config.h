@@ -31,7 +31,10 @@
 #define APN_NAME          "YOUR_APN_NAME_PLACEHOLDER"
 #define SUPABASE_HOST     "YOUR_SUPABASE_HOST_PLACEHOLDER"
 #define SUPABASE_PORT     "443"
+
+#ifndef SUPABASE_ANON_KEY
 #define SUPABASE_ANON_KEY "YOUR_SUPABASE_ANON_KEY_PLACEHOLDER"
+#endif
 
 // ====================================================================================
 // [5] Timing & Frequencies (Units: minutes)

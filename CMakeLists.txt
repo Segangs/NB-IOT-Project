@@ -33,6 +33,23 @@ project(nb_iot_project C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Read .env file if it exists and define compiler macros
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.env")
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/.env" ENV_LINES)
+    foreach(line ${ENV_LINES})
+        # Ignore comments and empty lines
+        if(NOT line MATCHES "^#" AND line MATCHES "=")
+            string(REPLACE "=" ";" line_split ${line})
+            list(GET line_split 0 key)
+            list(GET line_split 1 val)
+            # Remove any wrapping quotes from val
+            string(REGEX REPLACE "^\"|\"$" "" val "${val}")
+            # Register the definition as a compiler preprocessor macro
+            add_compile_definitions(${key}="${val}")
+        endif()
+    endforeach()
+endif()
+
 # 5. Pico SDK 초기화
 pico_sdk_init()
 
