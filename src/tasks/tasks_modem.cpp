@@ -994,6 +994,18 @@ this->modem_PacedWrite(total_packet);
 
     modem_sleep(1000);
 
+    // 💡 [구제책] URC가 시리얼 노이즈로 인해 깨진 경우라도, 
+    // Supabase의 정상 응답 데이터 형식(예: "sensorId" 또는 "cmd")이 버퍼에 이미 존재하고
+    // 최종적으로 모뎀으로부터 "OK"를 수신했다면 성공으로 간주하여 구제합니다.
+    if (!response_status_2xx && post_ok)
+    {
+        if (strstr(this->rx_buffer, "sensorId") != nullptr || strstr(this->rx_buffer, "cmd") != nullptr)
+        {
+            response_status_2xx = true;
+            printf("\n[HTTPS] 경고: URC 찌그러짐/누락이 발생했으나, 수신 버퍼 내 Supabase 데이터 및 OK 매칭으로 성공 구제 완료!\n");
+        }
+    }
+
     if (post_ok && response_status_2xx)
     {
         printf("[HTTPS] Supabase 데이터 직접 적재 성공!\n");
