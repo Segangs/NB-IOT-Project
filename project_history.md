@@ -22,6 +22,23 @@
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
+## 📅 2026-06-22: [단말 펌웨어] 초기 디버그 printf 폭발 방지 및 부팅 격리 패치 (5V 부팅 안정성 확보)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: FreeRTOS Tasks, stdio CDC Buffer Deadlock, Debug Print Lockout
+
+### 1. 작업 개요 (Goal & Requirements)
+* USB 디버깅 기능(`pico_enable_stdio_usb`)을 유지한 상태에서, 부팅 직후(1초 시점) `vSensorTask`와 `vBootTask`가 동시에 대량의 디버그 `printf`를 송출하여 USB 가상 시리얼 포트(CDC) 버퍼를 꽉 채워 기기를 데드락에 빠뜨리던 현상 해결.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **부팅 중 출력 차단 가드 보강 (`tasks_sensor.cpp` 수정)**:
+  - `check_ntc_status_dual` 의 디버그 출력 가드 조건식에 `lcd_params.is_booting == true` 를 추가하여 부팅 완료(`Ready`) 상태 전까지는 어떠한 백그라운드 디버그 로그도 송출되지 않도록 격리.
+* **최초 디버그 출력 시점 지연**:
+  - `last_dbg_print_ms` 초기값을 `0` 대신 부팅 직후의 `to_ms_since_boot(get_absolute_time())` 으로 셋팅하여, 부팅 완료 단 1초 만에 320바이트의 `[Sensor Dbg]` 로그가 즉각 송출되는 문제를 해결하고 최초 출력을 3분 뒤로 미룸.
+* **빌드 및 갱신 완료**:
+  - Ninja 컴파일러 빌드를 통해 바이너리 갱신 완료.
+
+---
+
 ## 📅 2026-06-22: [단말 펌웨어] USB stdio 제거 및 하드웨어 UART stdio 전환 (5V 전원 구동 최적화)
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: CMake Stdio Redirection, USB CDC Driver Disable, UART Stdio Enable
