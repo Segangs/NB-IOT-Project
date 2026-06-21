@@ -22,6 +22,23 @@
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
+## 📅 2026-06-22: [단말 펌웨어] 외부 5V 전원 부팅 시 stdio 블로킹 멈춤 현상 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: CMake Configuration, stdio USB blocking, TinyUSB driver timeout optimization
+
+### 1. 작업 개요 (Goal & Requirements)
+* 단말기를 맥북 USB 포트가 아닌 외부 5V 어댑터 전원에만 연결했을 때 부팅 진단 중 먹통(Check Pico 화면 등)이 되는 현상 해결.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **USB Stdio 기본 타임아웃 0ms 최적화 (`CMakeLists.txt` 수정)**:
+  - `add_compile_definitions(PICO_STDIO_USB_DEFAULT_TIMEOUT_MS=0)` 전역 매크로 정의를 빌드 구성에 추가.
+  - PC 시리얼 모니터가 열리지 않는 상태에서 `printf` 및 `putchar` 호출 시, TinyUSB 전송 버퍼가 찰 때마다 발생하는 기본 50~100ms 대기 타임아웃을 강제로 제거하여 무비동기(Non-blocking)로 즉각 반환되도록 개선.
+  - 이로 인해 외부 5V 단독 전원 동작 시에도 실시간 FreeRTOS 태스크 스케줄링이 마비되지 않고 정상 부팅 및 무중단 작동 보장.
+* **빌드 및 갱신 완료**:
+  - Ninja 컴파일러 빌드를 통해 바이너리(`nb_iot_project.uf2`) 갱신 완료.
+
+---
+
 ## 📅 2026-06-21: [단말 펌웨어] RTOS 스택 오버플로우 방지 및 UART 락 충돌 방지 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: FreeRTOS Task Stacks, stdio Mutex Locking, UART Deadlock Avoidance, Buffer Race Conditions

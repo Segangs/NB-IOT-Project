@@ -94,6 +94,7 @@ target_link_libraries(nb_iot_project
 )
 
 # stdio 설정
+add_compile_definitions(PICO_STDIO_USB_DEFAULT_TIMEOUT_MS=0)
 pico_enable_stdio_usb(nb_iot_project 1)
 pico_enable_stdio_uart(nb_iot_project 0)
 
