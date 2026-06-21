@@ -22,6 +22,23 @@
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
+## 📅 2026-06-22: [단말 펌웨어] USB stdio 제거 및 하드웨어 UART stdio 전환 (5V 전원 구동 최적화)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: CMake Stdio Redirection, USB CDC Driver Disable, UART Stdio Enable
+
+### 1. 작업 개요 (Goal & Requirements)
+* 일반 5V 전원 어댑터 연결 등 USB 데이터 선이 플로팅되거나 호스트가 없는 무전력 감지 상황에서, USB 장치 스택의 드라이버 락 및 인터럽트 경합에 의한 부팅 정지 현상을 원천적으로 차단하기 위한 하드웨어 stdio 전향.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **Stdio 출력 통로 변경 (`CMakeLists.txt` 수정)**:
+  - `pico_enable_stdio_usb(nb_iot_project 0)` 설정하여 TinyUSB 가상 CDC 시리얼 장치 스택 비활성화.
+  - `pico_enable_stdio_uart(nb_iot_project 1)` 설정하여 표준 출력(`printf`) 채널을 GP0(TX)/GP1(RX) 물리 UART 핀으로 강제 고정.
+  - USB 연결 여부와 관계없이 드라이버 루프가 100% 논블로킹으로 구동되게끔 물리 통로를 분리하여 어댑터 부팅 문제를 완전 해소함.
+* **빌드 완료**:
+  - Ninja 컴파일러 빌드를 통해 바이너리 갱신 완료.
+
+---
+
 ## 📅 2026-06-22: [단말 펌웨어] 스케줄러 기동 전 printf 임시 소거 패치 (5V 전원 먹통 방지)
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: FreeRTOS Pre-scheduler, stdio USB CDC lock-up prevent
