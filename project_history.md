@@ -22,6 +22,24 @@
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
+## 📅 2026-06-22: [단말 펌웨어] 5V 부팅 임시 우회(자가진단 Bypass) 복구 롤백 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: Rollback, Diagnostics Bypass, Stability Recovery
+
+### 1. 작업 개요 (Goal & Requirements)
+* `safe_printf` 및 자가진단 활성화 패치 적용 후 5V 환경에서 다시 부팅 멈춤 증상이 재현됨에 따라, 5V 어댑터 전원 하에서 정상 동작(부팅 성공률 100%)이 확실하게 검증되었던 직전 시점인 **"자가진단 Phase 1 임시 우회(Bypass)"** 상태로 긴급 롤백 진행.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **코드 롤백 실행**:
+  - `safe_printf` 감지 및 전역 오버라이드 매크로를 `src/config.h`에서 제거.
+  - `main.cpp` 내의 자가진단 과정(`read_vsys_voltage`, `read_internal_temp`, `check_flash_integrity`, `test_ram_integrity`)을 다시 더미 처리 및 주석 처리(우회)하여 `Check Pico` 락-업 요소를 강제 분리.
+* **이유 분석**:
+  - `safe_printf`를 적용했음에도 데드락이 발생한 것은, 멈춤의 원인이 `printf` 뿐만 아니라 자가진단 함수 내부에서 호출되는 하드웨어 핀 제어(예: VSYS 전압 측정 시 CYW43 무선 칩 SPI GP25/GP29 하이재킹에 따른 버스 인터랙션이나 내부 클록 오동작) 또는 RAM 테스트의 dynamic allocation 과정에 하드웨어적 병목이 아직 완전히 해결되지 않았음을 시사함.
+* **빌드 및 갱신 완료**:
+  - `ninja` 빌드를 통해 잘 작동하던 이전 바이너리로 복원 완료.
+
+---
+
 ## 📅 2026-06-22: [단말 펌웨어] 초기 디버그 printf 폭발 방지 및 부팅 격리 패치 (5V 부팅 안정성 확보)
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: FreeRTOS Tasks, stdio CDC Buffer Deadlock, Debug Print Lockout
