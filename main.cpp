@@ -128,7 +128,7 @@ void detect_boot_reason() {
         // Clear the POWMAN reset register (Write-1-to-Clear) to avoid stale values next boot
         powman_hw->chip_reset = reset_reason;
         
-        printf("[System] POWMAN chip_reset raw register: 0x%08X\n", reset_reason);
+        // printf("[System] POWMAN chip_reset raw register: 0x%08X\n", reset_reason);
         
         // If brown-out (HAD_BOR) or glitch (HAD_GLITCH_DETECT) bits are set, classify as Power Cut/Glitch (3)
         if (reset_reason & (POWMAN_CHIP_RESET_HAD_BOR_BITS | POWMAN_CHIP_RESET_HAD_GLITCH_DETECT_BITS)) {
@@ -138,7 +138,7 @@ void detect_boot_reason() {
         }
         g_boot_cmd_id = 0;
     }
-    printf("[System] Boot reason detected: %d (cmdId: %d)\n", g_boot_reason_code, g_boot_cmd_id);
+    // printf("[System] Boot reason detected: %d (cmdId: %d)\n", g_boot_reason_code, g_boot_cmd_id);
 }
 
 // Helper function to extract integer value from JSON response
@@ -843,9 +843,9 @@ int main()
     // 1. Initialize serial monitoring
     stdio_init_all();
     
-    printf("\n==================================================\n");
-    printf("❄️ Pico 2 W 부팅 자가 진단 및 데이터 수집 클라이언트\n");
-    printf("==================================================\n");
+    // printf("\n==================================================\n");
+    // printf("❄️ Pico 2 W 부팅 자가 진단 및 데이터 수집 클라이언트\n");
+    // printf("==================================================\n");
     
     // 2. Configure shared state initial parameters immediately
     // Set 'is_searching_network' and 'is_booting' to true to start boot screen instantly!

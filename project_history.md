@@ -22,6 +22,23 @@
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
+## 📅 2026-06-22: [단말 펌웨어] 스케줄러 기동 전 printf 임시 소거 패치 (5V 전원 먹통 방지)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: FreeRTOS Pre-scheduler, stdio USB CDC lock-up prevent
+
+### 1. 작업 개요 (Goal & Requirements)
+* 외부 5V 전원 어댑터 연결 시 FreeRTOS 스케줄러 기동 전 실행되는 `printf` 출력들이 USB 호스트 미연결로 인해 TinyUSB 내부 락에 빠져 기기 부팅 자체를 차단하던 현상 임시 소거 및 검증.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **초기 printf 주석 처리 (`main.cpp` 수정)**:
+  - `detect_boot_reason()` 내의 진단 및 부팅 원인 출력 `printf` 2개 주석 처리.
+  - `main()` 함수 초입의 배너 출력 `printf` 3개 주석 처리.
+  - 이를 통해 USB 호스트가 없는 환경(5V 단독 전원 어댑터)에서 스케줄러(`vTaskStartScheduler()`)가 돌기도 전에 보드가 뻗는 현상을 예방.
+* **빌드 완료**:
+  - Ninja 컴파일러 빌드를 통해 바이너리 갱신 완료.
+
+---
+
 ## 📅 2026-06-22: [단말 펌웨어] 외부 5V 전원 부팅 시 stdio 블로킹 멈춤 현상 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: CMake Configuration, stdio USB blocking, TinyUSB driver timeout optimization
