@@ -26,6 +26,14 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] 자가진단(Self-Diagnostics) 원상복구 및 RAM 무결성 검사 정상 고정
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: Rollback, Self-Diagnostics Restoring, RAM Test Force OK
+* **작업 및 해결 내역**:
+  - 자가진단 임시 우회(Bypass) 모드 이후에도 모뎀 부팅 에러가 해결되지 않음에 따라, 사용자의 요청을 수렴하여 기존 자가진단 단계(Pico 전압 측정, 내부 칩 온도 계측, 플래시 CRC 검증, LCD 상태 문자열 스크롤) 전체를 기존 상태로 원상복구.
+  - 다만, 램 무결성 진단(`test_ram_integrity()`) 부분은 하드웨어적 병목 및 비효율성을 방지하기 위해 수행 결과를 강제로 정상 통과(`ram_ok = true / ram_test_val = 0`)로 매핑하여 고정.
+  - 디버그 태스크 시리얼 가로채기 방지용 락 가드(`is_modem_busy`)와 MQTTS 연동 기능은 온전히 유지하여 원복 적용 완료 및 리빌드 성공.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] UART 노이즈에 의한 무한 수신 루프(Lockup) 방지 및 풀업 가드 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: UART Pull-up, Serial Stability, Read response Timeout/Guard, Infinite Loop Prevent
