@@ -26,6 +26,15 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] MQTTCFG CME ERROR 0 조치를 위한 더미 CA 인증서 주입 복구
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: MQTTS SSL Bypass, GTS_ROOT_R4_CERT, AT+KCERTSTORE, AT+KMQTTCFG
+* **작업 및 해결 내역**:
+  - `tasks_modem.cpp`에서 MQTTS 인증서 검증 우회(`AT+KSSLCFG=0,0` 적용)를 처리하기 위해 `AT+KCERTSTORE` 주입 단계를 아예 생략했더니, 모뎀 내부의 SSL 스택 초기화 오류로 인해 `AT+KMQTTCFG` 명령 실행 시 `+CME ERROR: 0` (Phone failure)이 발생하는 현상을 진단 및 해결.
+  - HL7811 모뎀의 TLS 스택 초기화에는 최소한 슬롯 0번에 유효한 인증서가 존재해야 하므로, 765바이트 크기의 컴팩트한 `GTS_ROOT_R4_CERT` (더미 CA)를 `AT+KCERTSTORE=0` 슬롯에 주입하는 시퀀스를 다시 복구함.
+  - 이를 통해 `AT+KMQTTCFG` 호출 시 `+CME ERROR: 0` 없이 정상적으로 `OK` 응답을 획득하도록 보장하고, 실제 접속 검증 단계에서는 `AT+KSSLCFG=0,0` (verify_none) 설정을 통해 서버와의 암호화 핸드셰이크가 중단 없이 이루어지도록 최종 연동 구조를 완성함.
+
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] 모뎀 UART 선로 stdio 출력 간섭 해제 (무한 ERROR 해결)
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: UART stdio disabling, CMakeLists.txt modification, Serial output conflict resolution
