@@ -10,21 +10,26 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-// Google Trust Services (GTS) Root R4 certificate to act as a dummy CA (765 bytes)
-static const char *GTS_ROOT_R4_CERT =
-    "-----BEGIN CERTIFICATE-----\n"
-    "MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD\n"
-    "VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG\n"
-    "A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw\n"
-    "WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz\n"
-    "IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi\n"
-    "AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi\n"
-    "QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR\n"
-    "HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW\n"
-    "BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D\n"
-    "9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8\n"
-    "p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD\n"
-    "-----END CERTIFICATE-----\n";
+// Let's Encrypt ISRG Root X2 (Root YE) certificate for p.zxcx.io verification (776 bytes compressed PEM)
+static const char *LE_ROOT_YE_CERT =
+    "-----BEGIN CERTIFICATE-----"
+    "MIICpjCCAiugAwIBAgIRAIchZfw0tuX7qK3Vs3BftTowCgYIKoZIzj0EAwMwTzEL"
+    "MAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2VhcmNo"
+    "IEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDIwHhcNMjYwNTEzMDAwMDAwWhcN"
+    "MzIwOTAyMjM1OTU5WjAuMQswCQYDVQQGEwJVUzENMAsGA1UEChMESVNSRzEQMA4G"
+    "A1UEAxMHUm9vdCBZRTB2MBAGByqGSM49AgEGBSuBBAAiA2IABDwS/6vhrcVqcbBo"
+    "+wgdI3fwn9x7DNJJOY/lTOti0vkwuRN87RhEhTH17E7XyFjWsPYhIPt/wzOqxTd2"
+    "b+4ZJNy9ID04YywF9U5zasDVyGSNErVNtz8uSGh5izW87j77GaOB6zCB6DAOBgNV"
+    "HQ8BAf8EBAMCAQYwEwYDVR0lBAwwCgYIKwYBBQUHAwEwDwYDVR0TAQH/BAUDAwEB"
+    "/zAdBgNVHQ4EFgQUo8gmWo6hTNA1Y/ybI8g6rlbzT1YwHwYDVR0jBBgwFoAUfEKW"
+    "rt5LSDv6kviejM9ti6lyN5UwMgYIKwYBBQUHAQEEJjAkMCIGCCsGAQUFBzAChhZo"
+    "dHRwOi8veDIuaS5sZW5jci5vcmcvMBMGA1UdIAQMMAowCAYGZ4EMAQIBMCcGA1Ud"
+    "HwQgMB4wHKAaoBiGFmh0dHA6Ly94Mi5jLmxlbmNyLm9yZy8wCgYIKoZIzj0EAwMD"
+    "aQAwZgIxAMU19WCtmxVND8UHBZRoma49Z7jPs64Dma0eTu1OChVbB/2J7GV3nvYK"
+    "Ax54uk1G9QIxAO0miLVJu8PLNiXXXkiE/gsK3CTRTF/aeo4bMX42Zw40csRU6AC2"
+    "6hSW1/IWaas6dg=="
+    "-----END CERTIFICATE-----";
+
 
 // ====================================================================================
 // Cooperative Sleep Helper: Performs non-blocking yields when FreeRTOS is active
@@ -341,14 +346,14 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     modem_sleep(2000);
 
     // 💡 [트러블슈팅] HL7811 모뎀의 NVRAM 인증서 저장 한계(1024바이트) 극복 방안:
-    // 765바이트의 GTS_ROOT_R4_CERT를 0번 슬롯에 더미 CA로 우선 저장(CME 931 및 MQTTCFG의 CME 0 방지용)하고,
-    // 실제 통신 시에는 KSSLCFG=0,0(verify_none) 설정을 통해 서버 사설/공인 인증서 불일치 검증을 우회합니다.
-    printf("[System] SSL Root CA 인증서(더미용 765바이트) 주입 개시 (0번 슬롯)...\n");
+    // Let's Encrypt의 776바이트 ISRG Root X2(Root YE) 진짜 인증서를 압축하여 0번 슬롯에 저장하고,
+    // 실제 통신 시에는 KSSLCFG=0,3(Full Verification) 설정을 통해 서버와 MQTTS/HTTPS의 보안 검증을 수행합니다.
+    printf("[System] Let's Encrypt 진짜 SSL Root CA 인증서(776바이트) 주입 개시 (0번 슬롯)...\n");
     this->modem_SendCmdWaitResponse("AT+KCERTDELETE=0,0", "OK", "ERROR", 3000);
     modem_sleep(1000);
 
     char cert_cmd[64];
-    int cert_len = strlen(GTS_ROOT_R4_CERT);
+    int cert_len = strlen(LE_ROOT_YE_CERT);
     snprintf(cert_cmd, sizeof(cert_cmd), "AT+KCERTSTORE=0,%d,0", cert_len);
 
     if (this->modem_SendCmdWaitResponse(cert_cmd, "CONNECT", nullptr, 5000))
@@ -356,15 +361,17 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
         modem_sleep(200);
         this->modem_ClearRxBuffer();
 
-        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트)...\n", cert_len);
-        for (int i = 0; i < cert_len; i++)
+        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트, 64바이트 분할 전송)...\n", cert_len);
+        int chunk_size = 64;
+        for (int i = 0; i < cert_len; i += chunk_size)
         {
-            uart_putc(UART_ID, GTS_ROOT_R4_CERT[i]);
-            sleep_us(200);
-            if (i > 0 && i % 200 == 0)
+            int current_chunk = (cert_len - i < chunk_size) ? (cert_len - i) : chunk_size;
+            for (int j = 0; j < current_chunk; j++)
             {
-                printf("[%d/%d 바이트 송신 완료]\n", i, cert_len);
+                uart_putc(UART_ID, LE_ROOT_YE_CERT[i + j]);
             }
+            modem_sleep(10); // 10ms delay between chunks to prevent FIFO/buffer overrun
+            printf("[%d/%d 바이트 송신 완료]\n", (i + current_chunk), cert_len);
         }
         printf("\n[System] 데이터 본문 전송 완료! 1.5초 대기 후 최종 OK 수집...\n");
         modem_sleep(1500);
@@ -742,7 +749,7 @@ bool nb_iot::modem_HttpOpen(const char *host, const char *port)
         modem_sleep(1000);
     }
 
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,0", 5000);
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000);
     modem_sleep(1000);
     this->modem_SendCmdWaitOK("AT+KSSLCRYPTO=0,8,3,25392,12,4,1,0", 5000);
     modem_sleep(1000);
@@ -1164,7 +1171,7 @@ bool nb_iot::modem_MqttOpen(const char *host, const char *port, const char *clie
 
     // SSL 및 TLS 세션 재개(Session Resumption) 설정
     printf("[MQTTS] TLS 암호화 세션 재개 활성화 구성 중...\n");
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,0", 5000); // TLS 활성화
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000); // TLS 활성화
     modem_sleep(1000);
     this->modem_SendCmdWaitOK("AT+KSSLCFG=2,0", 5000); // Session Mode: 0 (Automatic session resumption)
     modem_sleep(1000);
