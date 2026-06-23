@@ -26,6 +26,14 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] MQTT QoS 1 하향 조정 적용
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: MQTT QoS 1, tasks_modem.cpp modification
+* **작업 및 해결 내역**:
+  - 단말의 모든 MQTT 메시지 발행(Publish) 및 구독(Subscribe) 요청의 QoS 수준을 기존 2(Exactly Once)에서 1(At least Once)로 하향 조정.
+  - `tasks_modem.cpp` 내의 `AT+KMQTTPUB` 파라미터를 `,1,`로 수정하고, QoS 1 발행 성공을 뜻하는 모뎀 URC 코드 `+KMQTT_IND: <session_id>,3`을 대기하도록 URC 대기 시퀀스 개정.
+  - 구독 명령 `AT+KMQTTSUB` 또한 QoS 1(파라미터 `,1`)로 작동하도록 튜닝 완료 및 펌웨어 리빌드 검증 성공.
+
 ## 📅 2026-06-23: [단말 펌웨어 & 서버] MQTTS (TLS 8883) 통신 마이그레이션 및 Supabase 인증/규칙 연동
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: MQTTS (QoS 2 / Clean Session 1) Migration, HL7811 MQTT AT, Supabase pg_cron Offline Check, authentication_logs DB Schema, LCD Unauth Layout
