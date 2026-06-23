@@ -48,6 +48,8 @@ nb_iot::nb_iot()
     last_csq = 99;
     last_cereg = -1;
     http_session_id = 1;
+    mqtt_session_id = 0;
+    is_unauthenticated = false;
 
     memset(rx_buffer, 0, sizeof(rx_buffer));
     strcpy(device_imei, "0");
@@ -1109,4 +1111,244 @@ uint32_t nb_iot::retrieve_network_time()
         }
     }
     return 0;
+}
+
+bool nb_iot::modem_MqttOpen(const char *host, const char *port, const char *client_id, const char *username, const char *password)
+{
+    printf("[MQTTS] MQTTS 연동 시퀀스 개시 (%s:%s)...\n", host, port);
+    this->is_unauthenticated = false;
+
+    char cnx_cmd[256];
+    snprintf(cnx_cmd, sizeof(cnx_cmd), "AT+KCNXCFG=1,\"GPRS\",\"%s\"", APN_NAME);
+    
+    if (!this->modem_SendCmdWaitOK(cnx_cmd, 5000))
+    {
+        printf("[MQTTS] 경고: GPRS APN 설정 실패 (이미 활성화되었을 가능성 있음)\n");
+    }
+    modem_sleep(1000);
+
+    if (!this->modem_SendCmdWaitOK("AT+KCNXPROFILE=1", 5000))
+    {
+        printf("[MQTTS] 경고: GPRS 프로필 활성화 실패 (이미 활성화되었을 가능성 있음)\n");
+    }
+    modem_sleep(1000);
+
+    this->modem_SendCmd("AT+KCNXUP=1");
+    uint32_t cnx_elapsed = 0;
+    bool bearer_ok = false;
+
+    while (cnx_elapsed < 20000)
+    {
+        modem_sleep(100);
+        cnx_elapsed += 100;
+        this->modem_ReadResponse(0);
+        
+        if (strstr(this->rx_buffer, "+KCNX_IND: 1,1") != nullptr)
+        {
+            bearer_ok = true;
+            break;
+        }
+        if (this->buffer_idx > 800)
+            this->modem_ClearRxBuffer();
+    }
+    modem_sleep(2000);
+
+    // SSL 및 TLS 세션 재개(Session Resumption) 설정
+    printf("[MQTTS] TLS 암호화 세션 재개 활성화 구성 중...\n");
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000); // TLS 활성화
+    modem_sleep(1000);
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=2,0", 5000); // Session Mode: 0 (Automatic session resumption)
+    modem_sleep(1000);
+    this->modem_SendCmdWaitOK("AT+KSSLCRYPTO=0,8,3,25392,12,4,1,0", 5000); // Cipher suites configuration
+    modem_sleep(1000);
+
+    // MQTT 세션 설정 (Clean session=1, ClientID, Username, Password, Cipher Index=0)
+    char cfg_cmd[512];
+    snprintf(cfg_cmd, sizeof(cfg_cmd), 
+        "AT+KMQTTCFG=1,1,\"%s\",%s,4,\"%s\",120,1,0,\"\",\"\",0,0,\"%s\",\"%s\",0",
+        host, port, client_id, username, password);
+
+    if (!this->modem_SendCmdWaitOK(cfg_cmd, 5000))
+    {
+        printf("[MQTTS] 에러: MQTT 설정(KMQTTCFG) 명령 전송 실패\n");
+        return false;
+    }
+
+    char *p = strstr(this->rx_buffer, "+KMQTTCFG:");
+    if (p != nullptr)
+    {
+        int parsed_id = 0;
+        if (sscanf(p, "+KMQTTCFG: %d", &parsed_id) == 1)
+            this->mqtt_session_id = parsed_id;
+    }
+    else
+    {
+        // 폴백으로 세션 ID 1 지정
+        this->mqtt_session_id = 1;
+    }
+    modem_sleep(1000);
+
+    // MQTT 브로커 연결 시도
+    char cnx_mqtt[64];
+    snprintf(cnx_mqtt, sizeof(cnx_mqtt), "AT+KMQTTCNX=%d", this->mqtt_session_id);
+    this->modem_SendCmd(cnx_mqtt);
+
+    uint32_t elapsed = 0;
+    const uint32_t step_ms = 100;
+    bool connected = false;
+    char expected_urc[32], failure_urc[32];
+    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,1", this->mqtt_session_id);
+    snprintf(failure_urc, sizeof(failure_urc), "+KMQTT_IND: %d,0", this->mqtt_session_id);
+
+    while (elapsed < 30000)
+    {
+        modem_sleep(step_ms);
+        elapsed += step_ms;
+        this->modem_ReadResponse(0);
+        
+        if (strstr(this->rx_buffer, expected_urc) != nullptr)
+        {
+            connected = true;
+            break;
+        }
+        if (strstr(this->rx_buffer, failure_urc) != nullptr)
+        {
+            printf("[MQTTS] 🚨 연결 실패 URC 감지! 인증이 거부되었거나 연결 끊김.\n");
+            this->is_unauthenticated = true;
+            break;
+        }
+        if (this->buffer_idx > 800)
+            this->modem_ClearRxBuffer();
+    }
+
+    if (!connected)
+    {
+        printf("[MQTTS] MQTTS 연결 실패 (타임아웃 또는 인증 거절)\n");
+        return false;
+    }
+
+    printf("[MQTTS] MQTTS 브로커 연결 성공! (Session ID: %d)\n", this->mqtt_session_id);
+    is_socket_open = true;
+    return true;
+}
+
+bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
+{
+    if (!is_socket_open || this->mqtt_session_id == 0) return false;
+
+    // 80바이트 페이로드 제한 방어
+    int payload_len = strlen(payload);
+    if (payload_len > 80)
+    {
+        printf("[MQTTS] ⚠️ 경고: 페이로드 크기(%d 바이트)가 모뎀의 80바이트 한도를 초과합니다!\n", payload_len);
+        return false;
+    }
+
+    printf("[MQTTS] Publish 전송 토픽: %s | 페이로드: %s\n", topic, payload);
+
+    char pub_cmd[512];
+    // QoS 2로 전송 시도
+    snprintf(pub_cmd, sizeof(pub_cmd), "AT+KMQTTPUB=%d,\"%s\",2,0,\"%s\"", this->mqtt_session_id, topic, payload);
+    
+    if (!this->modem_SendCmdWaitOK(pub_cmd, 5000))
+    {
+        printf("[MQTTS] 에러: Publish 명령어 실행 실패\n");
+        return false;
+    }
+
+    // QoS 2 전송 성공 URC (+KMQTT_IND: <session_id>,4) 대기
+    uint32_t elapsed = 0;
+    bool pub_success = false;
+    char expected_urc[32];
+    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,4", this->mqtt_session_id);
+
+    while (elapsed < 10000)
+    {
+        modem_sleep(100);
+        elapsed += 100;
+        this->modem_ReadResponse(0);
+        if (strstr(this->rx_buffer, expected_urc) != nullptr)
+        {
+            pub_success = true;
+            break;
+        }
+        if (this->buffer_idx > 800)
+            this->modem_ClearRxBuffer();
+    }
+
+    if (!pub_success)
+    {
+        printf("[MQTTS] 에러: Publish URC 수신 실패 (QoS 2 핸드셰이크 누락)\n");
+        return false;
+    }
+
+    printf("[MQTTS] Publish 전송 성공 URC 확인 완료.\n");
+    return true;
+}
+
+bool nb_iot::modem_MqttSubscribe(const char *topic)
+{
+    if (!is_socket_open || this->mqtt_session_id == 0) return false;
+
+    printf("[MQTTS] Subscribe 신청 토픽: %s\n", topic);
+
+    char sub_cmd[256];
+    // QoS 2로 구독 신청
+    snprintf(sub_cmd, sizeof(sub_cmd), "AT+KMQTTSUB=%d,\"%s\",2", this->mqtt_session_id, topic);
+
+    if (!this->modem_SendCmdWaitOK(sub_cmd, 5000))
+    {
+        printf("[MQTTS] 에러: Subscribe 명령어 실행 실패\n");
+        return false;
+    }
+
+    // 구독 성공 URC (+KMQTT_IND: <session_id>,2) 대기
+    uint32_t elapsed = 0;
+    bool sub_success = false;
+    char expected_urc[32];
+    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,2", this->mqtt_session_id);
+
+    while (elapsed < 10000)
+    {
+        modem_sleep(100);
+        elapsed += 100;
+        this->modem_ReadResponse(0);
+        if (strstr(this->rx_buffer, expected_urc) != nullptr)
+        {
+            sub_success = true;
+            break;
+        }
+        if (this->buffer_idx > 800)
+            this->modem_ClearRxBuffer();
+    }
+
+    if (!sub_success)
+    {
+        printf("[MQTTS] 에러: Subscribe URC 수신 실패\n");
+        return false;
+    }
+
+    printf("[MQTTS] Subscribe 성공 URC 확인 완료.\n");
+    return true;
+}
+
+void nb_iot::modem_MqttClose()
+{
+    if (this->mqtt_session_id == 0) return;
+
+    printf("[MQTTS] MQTTS 세션 종료 시작 (Session ID: %d)...\n", this->mqtt_session_id);
+    
+    char close_cmd[64];
+    snprintf(close_cmd, sizeof(close_cmd), "AT+KMQTTCLOSE=%d", this->mqtt_session_id);
+    this->modem_SendCmdWaitResponse(close_cmd, "OK", "910", 5000);
+    modem_sleep(1000);
+
+    char del_cmd[64];
+    snprintf(del_cmd, sizeof(del_cmd), "AT+KMQTTDEL=%d", this->mqtt_session_id);
+    this->modem_SendCmdWaitResponse(del_cmd, "OK", "910", 5000);
+    modem_sleep(1000);
+
+    this->mqtt_session_id = 0;
+    is_socket_open = false;
+    printf("[MQTTS] MQTTS 세션 정상 종료 완료.\n");
 }

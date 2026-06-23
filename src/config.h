@@ -44,6 +44,14 @@
 #define SUPABASE_ANON_KEY "YOUR_SUPABASE_ANON_KEY_PLACEHOLDER"
 #endif
 
+#ifndef MQTT_BROKER_HOST
+#define MQTT_BROKER_HOST  "p.zxcx.io"
+#endif
+
+#ifndef MQTT_BROKER_PORT
+#define MQTT_BROKER_PORT  "8883"
+#endif
+
 // ====================================================================================
 // [5] Timing & Frequencies (Units: minutes)
 // ====================================================================================

@@ -21,10 +21,13 @@ private:
     int last_csq;
     int last_cereg;
     int http_session_id;
+    int mqtt_session_id;
     
 public:
     nb_iot();
     ~nb_iot();
+    
+    bool is_unauthenticated;
 
     void modem_PacedWrite(const char *data);
     uint32_t retrieve_network_time();
@@ -59,7 +62,14 @@ public:
     bool modem_HttpPost(const char *request_uri, const char *payload, char *response_buf = nullptr, size_t response_buf_len = 0);
     void modem_HttpClose();
 
+    // MQTTS (TLS 8883) Operations
+    bool modem_MqttOpen(const char *host, const char *port, const char *client_id, const char *username, const char *password);
+    bool modem_MqttPublish(const char *topic, const char *payload);
+    bool modem_MqttSubscribe(const char *topic);
+    void modem_MqttClose();
+
     // Diagnostics Getters
+    const char* get_rx_buffer() const { return rx_buffer; }
     const char* get_imei() const { return device_imei; }
     const char* get_cimi() const { return device_cimi; }
     const char* get_carrier() const { return carrier_name; }

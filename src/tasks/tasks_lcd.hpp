@@ -35,6 +35,7 @@ struct LcdTaskParams {
     volatile bool is_transmitting;
     volatile bool is_booting;
     volatile bool is_modem_busy; // Core 0 & Core 1 UART 경합 방지용 플래그
+    volatile bool is_unauthenticated; // MQTT 인증 실패 상태 플래그
     volatile float current_temperature; // Ch0
     volatile float current_temperature_ch1; // Ch1
     volatile int status_ch0;

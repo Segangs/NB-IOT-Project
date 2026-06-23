@@ -163,6 +163,28 @@ int extract_json_int(const char *json, const char *key) {
     return -1;
 }
 
+// Helper function to extract float value from JSON response
+float extract_json_float(const char *json, const char *key) {
+    char search_key[64];
+    snprintf(search_key, sizeof(search_key), "\"%s\":", key);
+    const char *pos = strstr(json, search_key);
+    if (pos == nullptr) {
+        snprintf(search_key, sizeof(search_key), "\"%s\" :", key);
+        pos = strstr(json, search_key);
+    }
+    if (pos != nullptr) {
+        const char *val_start = pos + strlen(search_key);
+        while (*val_start == ' ' || *val_start == '\t') {
+            val_start++;
+        }
+        if (strncmp(val_start, "null", 4) == 0) {
+            return -999.0f;
+        }
+        return (float)atof(val_start);
+    }
+    return -999.0f;
+}
+
 // Safe reboot using Pico SDK Hardware Watchdog
 void safe_reboot(int delay_ms, int cmd_id = 0) {
     printf("[System] 🚨 Reboot command received! Halting FreeRTOS and resetting system via hardware watchdog...\n");
@@ -229,124 +251,14 @@ void vPeriodicModemTask(void *pvParameters)
         // 2. Transmit Temperature Telemetry JSON (Every 20 minutes as configured)
         if (current_time_ms - last_temp_send_time_ms >= (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000))
         {
-            printf("[PeriodicModemTask] 주기적 온도 HTTPS 전송 시도...\n");
-            
-            // 💡 [핵심] 망 등록 상태(CEREG) 및 신호 세기(CSQ)를 1회 즉각 확인하여 통신 상태가 좋은지 판별합니다.
-            int cereg_val = modem.check_network_registration();
-            int csq_val = modem.check_rssi_csq();
-            lcd_params.current_csq = csq_val;
-            lcd_params.is_searching_network = (csq_val == 99 || csq_val == 0);
-            
-            bool network_good = ((cereg_val == 1 || cereg_val == 5) && (csq_val != 99 && csq_val > 0));
-            
-            if (network_good)
+            if (lcd_params.is_unauthenticated)
             {
-                printf("[PeriodicModemTask] 통신 상태 양호 (CEREG: %d, CSQ: %d). HTTPS 전송 시작...\n", cereg_val, csq_val);
-                lcd_params.is_transmitting = true;
-                vTaskDelay(pdMS_TO_TICKS(1000)); // 물리 안정화 지연
-                
-                bool all_sends_success = true;
-                
-                for (int i = 0; i < g_sensor_count; i++)
-                {
-                    float send_val = (i == 0) ? lcd_params.current_temperature : lcd_params.current_temperature_ch1;
-                    int sensor_id = g_sensors[i].sensor_id;
-                    
-                    if (send_val > -990.0f)
-                    {
-                        char payload[256];
-                        snprintf(payload, sizeof(payload), 
-                            "{\"p_sensor_id\":%d,\"p_value\":%.2f}", 
-                            sensor_id, send_val);
-                        
-                        char response_buf[256];
-                        response_buf[0] = '\0';
-                        bool send_success = false;
-                        
-                        if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT))
-                        {
-                            if (modem.modem_HttpPost("/rest/v1/rpc/t", payload, response_buf, sizeof(response_buf)))
-                            {
-                                send_success = true;
-                            }
-                            modem.modem_HttpClose();
-                        }
-                        else
-                        {
-                            modem.modem_HttpClose(); 
-                        }
-                        
-                        if (send_success)
-                        {
-                            printf("[PeriodicModemTask] 센서 ID %d 데이터 전송 성공.\n", sensor_id);
-                            
-                            // Parse command and command ID from response
-                            if (response_buf[0] != '\0')
-                            {
-                                int cmd = extract_json_int(response_buf, "cmd");
-                                int cmdId = extract_json_int(response_buf, "cmdId");
-                                if (cmd != -1 && cmdId != -1)
-                                {
-                                    printf("[PeriodicModemTask] 기기 제어 명령 감지: cmd=%d, cmdId=%d\n", cmd, cmdId);
-                                    if (cmd == 10)
-                                    {
-                                        printf("[PeriodicModemTask] ⚠️ 'reboot' 명령 실행 (100ms 후 리셋)...\n");
-                                        vTaskDelay(pdMS_TO_TICKS(500)); // 로그 출력 보장을 위한 500ms 지연
-                                        safe_reboot(100);
-                                    }
-                                }
-                            }
-                            
-                            flash_log_write(send_val, lcd_params.current_vsys_voltage, 1, 0, 200, 0);
-                        }
-                        else
-                        {
-                            printf("[PeriodicModemTask] 센서 ID %d 데이터 전송 실패.\n", sensor_id);
-                            all_sends_success = false;
-                            flash_log_write(send_val, lcd_params.current_vsys_voltage, 0, 0, -2, 0);
-                        }
-                    }
-                    else
-                    {
-                        printf("[PeriodicModemTask] 센서 ID %d 온도 비정상(센서 결함)으로 전송 생략.\n", sensor_id);
-                        int ntc_err = (send_val <= -990.0f) ? (int)(-990.0f - send_val) : 99;
-                        flash_log_write(send_val, lcd_params.current_vsys_voltage, 0, ntc_err, 0, 101);
-                    }
-                }
-                
-                lcd_params.is_transmitting = false;
-                
-                if (all_sends_success)
-                {
-                    printf("[PeriodicModemTask] 모든 센서 데이터 전송 성공. 다음 주기까지 20분 대기.\n");
-                    last_temp_send_time_ms = current_time_ms; // 성공 시에만 20분 타이머 리셋
-                }
-                else
-                {
-                    printf("[PeriodicModemTask] 일부 센서 전송 실패. 1분 뒤 재시도 예약.\n");
-                    last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
-                }
+                printf("[PeriodicModemTask] 🚨 인증 거부 상태입니다. MQTTS 전송을 시도하지 않습니다.\n");
+                last_temp_send_time_ms = current_time_ms; // 주기 타이머만 리셋
             }
             else
             {
-                printf("[PeriodicModemTask] 통신 상태 불량 (CEREG: %d, CSQ: %d). 전송 보류. 1분 뒤 재시도 예약.\n", cereg_val, csq_val);
-                flash_log_write(0.0f, lcd_params.current_vsys_voltage, 0, 0, -1, 0);
-                last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
-            }
-        }
-
-        // 3. System Error Diagnostic Telemetry (Every 5 minutes)
-        if (current_time_ms - last_error_check_time_ms >= (5 * 60 * 1000))
-        {
-            printf("[PeriodicModemTask] 시스템 이상 진단 체크 실행...\n");
-            
-            bool vsys_stable = lcd_params.is_vsys_stable;
-            float temp_ntc = lcd_params.current_temperature;
-            bool ntc_fault = (temp_ntc <= -990.0f);
-            
-            if (!vsys_stable || ntc_fault)
-            {
-                printf("[PeriodicModemTask] 🚨 시스템 이상 동작 검출! 긴급 HTTPS 알림 전송 시도...\n");
+                printf("[PeriodicModemTask] 주기적 온도 MQTTS 전송 시도...\n");
                 
                 int cereg_val = modem.check_network_registration();
                 int csq_val = modem.check_rssi_csq();
@@ -354,48 +266,192 @@ void vPeriodicModemTask(void *pvParameters)
                 lcd_params.is_searching_network = (csq_val == 99 || csq_val == 0);
                 
                 bool network_good = ((cereg_val == 1 || cereg_val == 5) && (csq_val != 99 && csq_val > 0));
-                bool err_send_success = false;
-
+                
                 if (network_good)
                 {
+                    printf("[PeriodicModemTask] 통신 상태 양호 (CEREG: %d, CSQ: %d). MQTTS 연결 시작...\n", cereg_val, csq_val);
                     lcd_params.is_transmitting = true;
                     vTaskDelay(pdMS_TO_TICKS(1000));
                     
-                    char err_payload[256];
-                    snprintf(err_payload, sizeof(err_payload), 
-                        "{\"p_imei\":\"%s\"}", 
-                        modem.get_imei());
-                    
-                    if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT))
+                    bool all_sends_success = true;
+                    char config_topic[64];
+                    snprintf(config_topic, sizeof(config_topic), "devices/%s/config", modem.get_imei());
+                    char telemetry_topic[64];
+                    snprintf(telemetry_topic, sizeof(telemetry_topic), "devices/%s/telemetry", modem.get_imei());
+
+                    if (modem.modem_MqttOpen(MQTT_BROKER_HOST, MQTT_BROKER_PORT, modem.get_imei(), modem.get_imei(), modem.get_cimi()))
                     {
-                        if (modem.modem_HttpPost("/rest/v1/rpc/a", err_payload))
+                        // 제어 명령 수신을 위한 구독 설정
+                        modem.modem_MqttSubscribe(config_topic);
+
+                        for (int i = 0; i < g_sensor_count; i++)
                         {
-                            err_send_success = true;
+                            float send_val = (i == 0) ? lcd_params.current_temperature : lcd_params.current_temperature_ch1;
+                            int sensor_id = g_sensors[i].sensor_id;
+                            
+                            if (send_val > -990.0f)
+                            {
+                                // 💡 [피드백 반영] 80바이트 제한 극복용 압축 JSON 페이로드 구조
+                                char payload[64];
+                                snprintf(payload, sizeof(payload), "{\"id\":%d,\"v\":%.2f}", sensor_id, send_val);
+                                
+                                if (modem.modem_MqttPublish(telemetry_topic, payload))
+                                {
+                                    printf("[PeriodicModemTask] 센서 ID %d 데이터 MQTTS 발행 성공.\n", sensor_id);
+                                    flash_log_write(send_val, lcd_params.current_vsys_voltage, 1, 0, 200, 0);
+                                }
+                                else
+                                {
+                                    printf("[PeriodicModemTask] 센서 ID %d 데이터 MQTTS 발행 실패.\n", sensor_id);
+                                    all_sends_success = false;
+                                    flash_log_write(send_val, lcd_params.current_vsys_voltage, 0, 0, -2, 0);
+                                }
+                            }
+                            else
+                            {
+                                printf("[PeriodicModemTask] 센서 ID %d 온도 비정상으로 발행 생략.\n", sensor_id);
+                                int ntc_err = (send_val <= -990.0f) ? (int)(-990.0f - send_val) : 99;
+                                flash_log_write(send_val, lcd_params.current_vsys_voltage, 0, ntc_err, 0, 101);
+                            }
                         }
-                        modem.modem_HttpClose();
+
+                        // 발행 직후 약 3초 동안 서버의 config 토픽 응답 수신 대기 (제어 및 임계치 동기화)
+                        uint32_t wait_elapsed = 0;
+                        while (wait_elapsed < 3000) {
+                            modem_sleep(100);
+                            wait_elapsed += 100;
+                            modem.modem_ReadResponse(0);
+                            
+                            if (strstr(modem.get_rx_buffer(), "+KMQTT_DATA:") != nullptr) {
+                                const char *payload_start = strchr(modem.get_rx_buffer(), '{');
+                                if (payload_start != nullptr) {
+                                    char cmd_buffer[256];
+                                    strncpy(cmd_buffer, payload_start, sizeof(cmd_buffer) - 1);
+                                    cmd_buffer[sizeof(cmd_buffer) - 1] = '\0';
+                                    
+                                    char *json_end = strrchr(cmd_buffer, '}');
+                                    if (json_end != nullptr) *(json_end + 1) = '\0';
+
+                                    int cmd = extract_json_int(cmd_buffer, "cmd");
+                                    int cmdId = extract_json_int(cmd_buffer, "cmdId");
+                                    
+                                    if (cmd != -1 && cmdId != -1) {
+                                        printf("[PeriodicModemTask] MQTTS 제어 명령 수신: cmd=%d, cmdId=%d\n", cmd, cmdId);
+                                        if (cmd == 10) {
+                                            printf("[PeriodicModemTask] ⚠️ 리부트 명령(cmd=10) 실행 중...\n");
+                                            modem.modem_MqttClose();
+                                            vTaskDelay(pdMS_TO_TICKS(500));
+                                            safe_reboot(100);
+                                        }
+                                    }
+                                    
+                                    // 💡 [피드백 반영] 실시간 임계 상한 온도 갱신 동기화
+                                    float limit_val = extract_json_float(cmd_buffer, "tempUpperLimitValue");
+                                    if (limit_val > -990.0f) {
+                                        g_temp_upper_limit = limit_val;
+                                        printf("[PeriodicModemTask] 실시간 임계 온도값 갱신 적용: %.1f C\n", limit_val);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 세션 종료
+                        modem.modem_MqttClose();
                     }
                     else
                     {
-                        modem.modem_HttpClose();
+                        printf("[PeriodicModemTask] 에러: MQTTS 브로커 연결 실패\n");
+                        all_sends_success = false;
+                        if (modem.is_unauthenticated) {
+                            printf("[PeriodicModemTask] 🚨 인증 실패 상태 감지! LCD에 상태 표기 적용.\n");
+                            lcd_params.is_unauthenticated = true;
+                        }
                     }
-                    lcd_params.is_transmitting = false;
-                }
 
-                if (err_send_success)
-                {
-                    printf("[PeriodicModemTask] 이상 검출 경보 HTTPS 송출 완료. 다음 주기 5분 대기.\n");
-                    last_error_check_time_ms = current_time_ms;
+                    lcd_params.is_transmitting = false;
+                    
+                    if (all_sends_success)
+                    {
+                        printf("[PeriodicModemTask] 모든 센서 데이터 전송 완료. 다음 주기까지 20분 대기.\n");
+                        last_temp_send_time_ms = current_time_ms;
+                    }
+                    else
+                    {
+                        printf("[PeriodicModemTask] 일부 전송 실패. 1분 뒤 재시도 예약.\n");
+                        last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
+                    }
                 }
                 else
                 {
-                    printf("[PeriodicModemTask] 이상 검출 경보 HTTPS 송출 실패/보류. 1분 뒤 재시도 예약.\n");
-                    last_error_check_time_ms = current_time_ms - (5 * 60 * 1000) + (60 * 1000);
+                    printf("[PeriodicModemTask] 통신망 상태 불량. 전송 보류. 1분 뒤 재시도 예약.\n");
+                    flash_log_write(0.0f, lcd_params.current_vsys_voltage, 0, 0, -1, 0);
+                    last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
                 }
+            }
+        }
+
+        // 3. System Error Diagnostic Telemetry (Every 5 minutes)
+        if (current_time_ms - last_error_check_time_ms >= (5 * 60 * 1000))
+        {
+            if (lcd_params.is_unauthenticated)
+            {
+                last_error_check_time_ms = current_time_ms; // 인증 거부 시 경보 생략
             }
             else
             {
-                // 이상이 없을 때는 그냥 다음 5분 주기로 세팅
-                last_error_check_time_ms = current_time_ms;
+                printf("[PeriodicModemTask] 시스템 이상 진단 체크 실행...\n");
+                
+                bool vsys_stable = lcd_params.is_vsys_stable;
+                float temp_ntc = lcd_params.current_temperature;
+                bool ntc_fault = (temp_ntc <= -990.0f);
+                
+                if (!vsys_stable || ntc_fault)
+                {
+                    printf("[PeriodicModemTask] 🚨 시스템 이상 동작 검출! 긴급 MQTTS 알림 전송 시도...\n");
+                    
+                    int cereg_val = modem.check_network_registration();
+                    int csq_val = modem.check_rssi_csq();
+                    lcd_params.current_csq = csq_val;
+                    lcd_params.is_searching_network = (csq_val == 99 || csq_val == 0);
+                    
+                    bool network_good = ((cereg_val == 1 || cereg_val == 5) && (csq_val != 99 && csq_val > 0));
+                    bool err_send_success = false;
+
+                    if (network_good)
+                    {
+                        lcd_params.is_transmitting = true;
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        
+                        char alert_topic[64];
+                        snprintf(alert_topic, sizeof(alert_topic), "devices/%s/alert", modem.get_imei());
+                        
+                        if (modem.modem_MqttOpen(MQTT_BROKER_HOST, MQTT_BROKER_PORT, modem.get_imei(), modem.get_imei(), modem.get_cimi()))
+                        {
+                            if (modem.modem_MqttPublish(alert_topic, "{\"alert\":1}"))
+                            {
+                                err_send_success = true;
+                            }
+                            modem.modem_MqttClose();
+                        }
+                        lcd_params.is_transmitting = false;
+                    }
+
+                    if (err_send_success)
+                    {
+                        printf("[PeriodicModemTask] 이상 검출 경보 MQTTS 송출 완료. 다음 주기 5분 대기.\n");
+                        last_error_check_time_ms = current_time_ms;
+                    }
+                    else
+                    {
+                        printf("[PeriodicModemTask] 이상 검출 경보 MQTTS 송출 실패. 1분 뒤 재시도 예약.\n");
+                        last_error_check_time_ms = current_time_ms - (5 * 60 * 1000) + (60 * 1000);
+                    }
+                }
+                else
+                {
+                    last_error_check_time_ms = current_time_ms;
+                }
             }
         }
 
@@ -741,59 +797,102 @@ void vBootTask(void *pvParameters)
     printf("[Boot] NTC 온도센서 Ch0 상태코드: %d, Ch1 상태코드: %d\n", status_ch0, status_ch1);
 
     // ====================================================================================
-    // Phase 4: Construct JSON & HTTPS Transmit
+    // Phase 4: MQTTS (TLS 8883) Boot Reporting & Configuration Fetch
     // ====================================================================================
-    strcpy(lcd_params.status_text, "Report HTTP");
+    strcpy(lcd_params.status_text, "Report MQTT");
     vTaskDelay(pdMS_TO_TICKS(1000));
     
     lcd_params.is_transmitting = true;
     
-    char json_payload[512];
+    // 💡 [피드백 반영] 램 무결성 진단은 보류하여 무조건 0(정상)으로 고정합니다.
+    ram_test_val = 0;
+
+    // 💡 [피드백 반영] 80바이트 모뎀 제한 극복을 위해 필드를 압축하고 Ch0/Ch1 센서 에러 상태를 각각 분할(ts0, ts1)합니다.
+    // v: 전압, t: 온도, f: 플래시, r: 램(0), a: AT상태, c: CPIN상태, q: CSQ상태, o: 캐리어, ts0: ch0에러, ts1: ch1에러, b: 부팅이유, i: 명령ID
+    char json_payload[128];
     snprintf(json_payload, sizeof(json_payload),
-        "{\"p_imei\":\"%s\",\"p_cimi\":\"%s\",\"p_voltage\":%.2f,\"p_temp\":%.2f,"
-        "\"p_flash\":%d,\"p_ram\":%d,\"p_at\":%d,\"p_cpin\":%d,\"p_csq\":%d,"
-        "\"p_carrier\":\"%s\",\"p_temp_status\":%d,\"p_boot_reason\":%d,\"p_cmd_id\":%d}",
-        modem.get_imei(), modem.get_cimi(), pico_voltage, pico_temp,
-        flash_integrity_val, ram_test_val, at_status, cpin_status, csq_val,
-        oper_name, ntc_status, g_boot_reason_code, g_boot_cmd_id);
+        "{\"v\":%.2f,\"t\":%.2f,\"f\":%d,\"r\":0,\"a\":%d,\"c\":%d,\"q\":%d,\"o\":\"%.8s\","
+        "\"ts0\":%d,\"ts1\":%d,\"b\":%d,\"i\":%d}",
+        pico_voltage, pico_temp, flash_integrity_val, at_status, cpin_status, csq_val,
+        oper_name, status_ch0, status_ch1, g_boot_reason_code, g_boot_cmd_id);
 
     bool boot_report_success = false;
-    bool sensor_fetch_success = false;
-    char response_buf[512];
-    response_buf[0] = '\0';
+    bool config_received = false;
+    char config_buffer[512];
+    config_buffer[0] = '\0';
 
-    printf("[Boot] Supabase HTTPS 연결 시작...\n");
-    if (modem.modem_HttpOpen(SUPABASE_HOST, SUPABASE_PORT)) {
-        // 1. 부팅 로그 전송
-        printf("[Boot] 1. 부팅 자가 진단 로그 전송 중...\n");
-        if (modem.modem_HttpPost("/rest/v1/rpc/b", json_payload)) {
-            boot_report_success = true;
-            printf("[Boot] 부팅 자가 진단 로그 전송 성공.\n");
-            
-            // 2. 연결을 유지한 채 센서 매핑 정보 조회
-            printf("[Boot] 2. 디바이스 센서 매핑 정보 조회 중...\n");
-            char sensor_req_payload[128];
-            snprintf(sensor_req_payload, sizeof(sensor_req_payload), "{\"p_imei\":\"%s\"}", modem.get_imei());
-            
-            if (modem.modem_HttpPost("/rest/v1/rpc/get_device_sensors", sensor_req_payload, response_buf, sizeof(response_buf))) {
-                sensor_fetch_success = true;
-                printf("[Boot] 디바이스 센서 매핑 정보 수신 성공.\n");
+    char boot_topic[64];
+    snprintf(boot_topic, sizeof(boot_topic), "devices/%s/boot", modem.get_imei());
+    char config_topic[64];
+    snprintf(config_topic, sizeof(config_topic), "devices/%s/config", modem.get_imei());
+
+    printf("[Boot] EMQX MQTTS 브로커 연결 시도 (%s:%s)...\n", MQTT_BROKER_HOST, MQTT_BROKER_PORT);
+    
+    // IMEI(아이디) / IMSI(비밀번호) 접속 시도
+    if (modem.modem_MqttOpen(MQTT_BROKER_HOST, MQTT_BROKER_PORT, modem.get_imei(), modem.get_imei(), modem.get_cimi())) {
+        // 1. 단말 설정값을 받아오기 위해 config 토픽 구독 (QoS 2)
+        printf("[Boot] 1. 단말 설정 정보 토픽 구독 등록...\n");
+        if (modem.modem_MqttSubscribe(config_topic)) {
+            // 2. 부팅 로그 메시지 발행 (QoS 2)
+            printf("[Boot] 2. 부팅 자가 진단 로그 MQTTS 발행 중...\n");
+            if (modem.modem_MqttPublish(boot_topic, json_payload)) {
+                boot_report_success = true;
+                printf("[Boot] 부팅 자가 진단 로그 MQTTS 발행 성공. 설정 대기 중...\n");
+                
+                // 3. URC 응답 대기 및 파싱 (최대 6초간 스캔)
+                uint32_t wait_elapsed = 0;
+                while (wait_elapsed < 6000) {
+                    modem_sleep(100);
+                    wait_elapsed += 100;
+                    modem.modem_ReadResponse(0);
+                    
+                    if (strstr(modem.get_rx_buffer(), "+KMQTT_DATA:") != nullptr) {
+                        const char *payload_start = strchr(modem.get_rx_buffer(), '{');
+                        if (payload_start != nullptr) {
+                            strncpy(config_buffer, payload_start, sizeof(config_buffer) - 1);
+                            config_buffer[sizeof(config_buffer) - 1] = '\0';
+                            
+                            // JSON Payload 뒤의 닫는 따옴표나 기타 문자열 정리
+                            char *json_end = strrchr(config_buffer, '}');
+                            if (json_end != nullptr) {
+                                *(json_end + 1) = '\0';
+                            }
+                            config_received = true;
+                            printf("[Boot] 설정 데이터 URC 수신 성공: %s\n", config_buffer);
+                            break;
+                        }
+                    }
+                }
             } else {
-                printf("[Boot] 에러: 디바이스 센서 매핑 정보 수신 실패.\n");
+                printf("[Boot] 에러: 부팅 로그 MQTTS 발행 실패.\n");
             }
         } else {
-            printf("[Boot] 에러: 부팅 자가 진단 로그 전송 실패.\n");
+            printf("[Boot] 에러: 설정 토픽 구독 실패.\n");
         }
         
-        // 최종 세션 정리
-        modem.modem_HttpClose();
+        // MQTTS 세션 정상 닫기
+        modem.modem_MqttClose();
     } else {
-        printf("[Boot] 에러: Supabase HTTPS 연결 실패.\n");
-        modem.modem_HttpClose();
+        printf("[Boot] 에러: EMQX MQTTS 브로커 연결 실패.\n");
+        if (modem.is_unauthenticated) {
+            printf("[Boot] 🚨 인증 거부(Incorrect IMEI/IMSI) 상태 감지! LCD에 에러를 띄우고 진입을 차단합니다.\n");
+            lcd_params.is_unauthenticated = true;
+            lcd_params.is_booting = false; // 부팅화면을 종료하여 LCD에 즉시 Unauth 에러 팝업
+            lcd_params.is_transmitting = false;
+            vTaskDelete(NULL); // 부팅 스레드 영구 종료
+            return;
+        }
     }
 
-    if (sensor_fetch_success && response_buf[0] != '\0') {
-        g_sensor_count = parse_sensors_json(response_buf, g_sensors, 2);
+    if (config_received && config_buffer[0] != '\0') {
+        g_sensor_count = parse_sensors_json(config_buffer, g_sensors, 2);
+        
+        // 💡 [피드백 반영] usersettings 테이블의 tempUpperLimitValue를 파싱하여 적용합니다.
+        float limit_val = extract_json_float(config_buffer, "tempUpperLimitValue");
+        if (limit_val > -990.0f) {
+            g_temp_upper_limit = limit_val;
+            printf("[Boot] 수신된 온도 임계 상한값 캐시 갱신 완료: %.1f C\n", limit_val);
+        }
     }
 
     // 센서 조회 실패했거나 매핑된 센서가 없을 때의 안전 폴백 (기본 1개 센서 동작)
