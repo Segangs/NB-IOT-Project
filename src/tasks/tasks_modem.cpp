@@ -10,29 +10,21 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-// EMQX Default Root CA certificate for self-signed broker verification (Compressed PEM, 1204 bytes)
-static const char *EMQX_ROOT_CA_CERT =
-    "-----BEGIN CERTIFICATE-----"
-    "MIIDcTCCAlmgAwIBAgIUZQSJFsPvMSPOGtUW0pET8Uxlo60wDQYJKoZIhvcNAQEL"
-    "BQAwQDELMAkGA1UEBhMCU0UxEjAQBgNVBAgMCVN0b2NraG9sbTEMMAoGA1UECgwD"
-    "RU1RMQ8wDQYDVQQDDAZSb290Q0EwHhcNMjYwMzA4MDkzODQ2WhcNMzEwMzA3MDkz"
-    "ODQ2WjBAMQswCQYDVQQGEwJTRTESMBAGA1UECAwJU3RvY2tob2xtMQwwCgYDVQQK"
-    "DANFTVExDzANBgNVBAMMBlJvb3RDQTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC"
-    "AQoCggEBAPBDxqqb83b43DtYpXPMQmt5bU6ixIvsVomvs5E//+wqSfjpsMme7tj1"
-    "vC0N/qiM3Zjlo2NZvMx44UKl7H6mxsTli7yHPOruFPUoDC8est6R3ij6mmOEUavd"
-    "PR3XDXnrWt3atcQCxL9gE0R4ngc9maa8KIAKTuuVPdpVYjq+aYeWzYjbROiK0dO3"
-    "2SsGIH3pmMRTug4rLtAZED/eGiTfdwM9/fAppqgC8Gt62I7dk3cqaN9PpFIKHQ3L"
-    "24LAripIGryA8XivYYVivjnZlMnfKdHWJhBZPAf0Mxs40IHU+6kOBUjf0UxmqACJ"
-    "RfQ3KmD7I66kDzaxNnby3j8iw4tZ+jUCAwEAAaNjMGEwHQYDVR0OBBYEFIpCVk8w"
-    "Er3hlCsp2SPmaQfVAQtbMB8GA1UdIwQYMBaAFIpCVk8wEr3hlCsp2SPmaQfVAQtb"
-    "MA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEBCwUA"
-    "A4IBAQAQkDRlFtLqSd4WAXL23N4bi7mlgIRSMaLeq4a6q4e7g3FZWP4J/mi51uQR"
-    "Stapf7T2s2dCKgswKpz0iwGT1MhoPsoif4BBVAwsoeI9Y9qujvPeIQ/gi/WEetPO"
-    "HEL7w0linvzv+Y5ggkPSazb4GJcxZIHAOBLoo+6nTS/vmPreg6blqvFaipP1mt8v"
-    "DpxYhrBwrxkwD+NskV3xaTYhp16KdgP0pWwhR8JHVEsLuDcg8ZI4ICOrpRseuyVL"
-    "eV9hCSJvRjQkCSMDRhMzl6j/ltBPT0tRO8kBE5Og5UqZJtFCptlHvmWPl6DVzT0T"
-    "T9Mm2uDIPr8SeDL2KLXij6GBqByE"
-    "-----END CERTIFICATE-----";
+// Google Trust Services (GTS) Root R4 certificate to act as a dummy CA (765 bytes)
+static const char *GTS_ROOT_R4_CERT =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD\n"
+    "VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG\n"
+    "A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw\n"
+    "WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz\n"
+    "IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi\n"
+    "AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi\n"
+    "QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR\n"
+    "HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW\n"
+    "BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D\n"
+    "9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8\n"
+    "p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD\n"
+    "-----END CERTIFICATE-----\n";
 
 // ====================================================================================
 // Cooperative Sleep Helper: Performs non-blocking yields when FreeRTOS is active
@@ -348,9 +340,66 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     retrieve_cimi(device_cimi);
     modem_sleep(2000);
 
-    // 💡 [트러블슈팅] HL7811 모뎀의 NVRAM 인증서 저장 한계(1024바이트)로 인해 1204바이트 압축 PEM 주입 시 +CME ERROR: 931 발생.
-    // 이에 따라 MQTTS/HTTPS의 보안 검증 레벨을 0으로 강제 낮추고(verify_none) 인증서 주입 시퀀스는 생략합니다.
-    printf("[System] SSL Root CA 인증서 검증 우회 설정으로 주입 시퀀스 생략.\n");
+    // 💡 [트러블슈팅] HL7811 모뎀의 NVRAM 인증서 저장 한계(1024바이트) 극복 방안:
+    // 765바이트의 GTS_ROOT_R4_CERT를 0번 슬롯에 더미 CA로 우선 저장(CME 931 및 MQTTCFG의 CME 0 방지용)하고,
+    // 실제 통신 시에는 KSSLCFG=0,0(verify_none) 설정을 통해 서버 사설/공인 인증서 불일치 검증을 우회합니다.
+    printf("[System] SSL Root CA 인증서(더미용 765바이트) 주입 개시 (0번 슬롯)...\n");
+    this->modem_SendCmdWaitResponse("AT+KCERTDELETE=0,0", "OK", "ERROR", 3000);
+    modem_sleep(1000);
+
+    char cert_cmd[64];
+    int cert_len = strlen(GTS_ROOT_R4_CERT);
+    snprintf(cert_cmd, sizeof(cert_cmd), "AT+KCERTSTORE=0,%d,0", cert_len);
+
+    if (this->modem_SendCmdWaitResponse(cert_cmd, "CONNECT", nullptr, 5000))
+    {
+        modem_sleep(200);
+        this->modem_ClearRxBuffer();
+
+        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트)...\n", cert_len);
+        for (int i = 0; i < cert_len; i++)
+        {
+            uart_putc(UART_ID, GTS_ROOT_R4_CERT[i]);
+            sleep_us(200);
+            if (i > 0 && i % 200 == 0)
+            {
+                printf("[%d/%d 바이트 송신 완료]\n", i, cert_len);
+            }
+        }
+        printf("\n[System] 데이터 본문 전송 완료! 1.5초 대기 후 최종 OK 수집...\n");
+        modem_sleep(1500);
+
+        uint32_t elapsed = 0;
+        const uint32_t step_ms = 100;
+        bool store_ok = false;
+        while (elapsed < 5000)
+        {
+            modem_sleep(step_ms);
+            elapsed += step_ms;
+            this->modem_ReadResponse(0);
+            if (strstr(this->rx_buffer, "OK") != nullptr)
+            {
+                store_ok = true;
+                break;
+            }
+            if (strstr(this->rx_buffer, "ERROR") != nullptr)
+            {
+                break;
+            }
+        }
+        if (store_ok)
+        {
+            printf("\n[System] SSL Root CA 인증서 주입 및 저장 완료 (Index 0)!\n");
+        }
+        else
+        {
+            printf("\n[System] 에러: SSL Root CA 인증서 주입 실패.\n");
+        }
+    }
+    else
+    {
+        printf("[System] 에러: SSL Root CA 인증서 주입 프롬프트(CONNECT) 획득 실패.\n");
+    }
     modem_sleep(2000);
 
     return (cpin_status == 0);
