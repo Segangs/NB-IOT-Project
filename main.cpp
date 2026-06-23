@@ -295,9 +295,9 @@ void vPeriodicModemTask(void *pvParameters)
                             
                             if (send_val > -990.0f)
                             {
-                                // 💡 [피드백 반영] 80바이트 제한 극복용 압축 JSON 페이로드 구조
+                                // CSV 페이로드 구조 (sensor_id,send_val)
                                 char payload[64];
-                                snprintf(payload, sizeof(payload), "{\"id\":%d,\"v\":%.1f}", sensor_id, send_val);
+                                snprintf(payload, sizeof(payload), "%d,%.1f", sensor_id, send_val);
                                 
                                 if (modem.modem_MqttPublish(telemetry_topic, payload))
                                 {
@@ -822,13 +822,16 @@ void vBootTask(void *pvParameters)
     
     lcd_params.is_transmitting = true;
     
-    // 💡 [피드백 반영] 80바이트 모뎀 제한 극복을 위해 필드를 압축하고 Ch0/Ch1 센서 에러 상태를 각각 분할(ts0, ts1)합니다.
+    int oper_num = 0;
+    if (strcmp(oper_name, "SKT") == 0) oper_num = 1;
+    else if (strcmp(oper_name, "KT") == 0) oper_num = 2;
+    else if (strcmp(oper_name, "LGU+") == 0) oper_num = 3;
+
     char json_payload[128];
     snprintf(json_payload, sizeof(json_payload),
-        "{\"v\":%.1f,\"t\":%.1f,\"f\":%d,\"r\":0,\"a\":%d,\"c\":%d,\"q\":%d,\"o\":\"%.8s\","
-        "\"ts0\":%d,\"ts1\":%d,\"b\":%d,\"i\":%d}",
+        "%.1f,%.1f,%d,0,%d,%d,%d,%d,%d,%d,%d,%d",
         pico_voltage, pico_temp, flash_integrity_val, at_status, cpin_status, csq_val,
-        oper_name, status_ch0, status_ch1, g_boot_reason_code, g_boot_cmd_id);
+        oper_num, status_ch0, status_ch1, g_boot_reason_code, g_boot_cmd_id);
 
     bool boot_report_success = false;
     bool config_received = false;
