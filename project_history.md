@@ -26,6 +26,15 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] 모뎀 UART 선로 stdio 출력 간섭 해제 (무한 ERROR 해결)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: UART stdio disabling, CMakeLists.txt modification, Serial output conflict resolution
+* **작업 및 해결 내역**:
+  - `CMakeLists.txt` 내의 `pico_enable_stdio_uart(nb_iot_project 1)`가 활성화되어 있어 모든 `printf` 디버그 출력이 모뎀이 물려있는 `uart0` 물리 핀(GP0/GP1)으로 전송되는 심각한 충돌 버그를 발견.
+  - 이로 인해 Pico 2 W의 자가진단 및 통신 상태 디버그 메세지가 모뎀의 RX 핀으로 들어가 무수한 모뎀 구문 오류(`ERROR`)를 유발하고, 이 응답을 Pico가 다시 `printf`로 시리얼에 출력하면서 무한 피드백 루프(폭포수형 ERROR 로그)가 발생하는 현상을 파악.
+  - `pico_enable_stdio_uart(nb_iot_project 0)`로 설정을 변경하여 물리 UART로의 stdio 리디렉션을 차단함. USB를 통한 시리얼 디버깅(`pico_enable_stdio_usb`)은 유지되므로 모뎀과의 선로 간섭 없이 깨끗한 제어가 가능하도록 조치함.
+
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] AT 명령어 개행 문자(\r) 수정 및 PC 시리얼 노이즈 가드(DebugTask 비활성화) 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: AT Command Termination Character, Carriage Return, Serial Noise Guard, vDebugTask Suspension
