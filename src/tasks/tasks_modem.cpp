@@ -1271,18 +1271,19 @@ bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
         return false;
     }
 
-    // QoS 1 전송 성공 URC (+KMQTT_IND: <session_id>,3) 대기
+    // QoS 1/2 전송 성공 URC (+KMQTT_IND: <session_id>,4 또는 3) 대기
     uint32_t elapsed = 0;
     bool pub_success = false;
-    char expected_urc[32];
-    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,3", this->mqtt_session_id);
+    char expected_urc1[32], expected_urc2[32];
+    snprintf(expected_urc1, sizeof(expected_urc1), "+KMQTT_IND: %d,4", this->mqtt_session_id);
+    snprintf(expected_urc2, sizeof(expected_urc2), "+KMQTT_IND: %d,3", this->mqtt_session_id);
 
     while (elapsed < 10000)
     {
         modem_sleep(100);
         elapsed += 100;
         this->modem_ReadResponse(0);
-        if (strstr(this->rx_buffer, expected_urc) != nullptr)
+        if (strstr(this->rx_buffer, expected_urc1) != nullptr || strstr(this->rx_buffer, expected_urc2) != nullptr)
         {
             pub_success = true;
             break;
