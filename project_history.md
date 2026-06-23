@@ -22,6 +22,37 @@
 
 본 문서는 **PicoTeam 지능형 이상감지 관제 시스템** 및 **NB-IoT (HL7811) Pico 2 W 단말 장치** 개발 프로젝트의 시작부터 현재까지 진행된 모든 대화 세션의 요청 사항, 작업 내역, 기술적 의사결정 및 트러버슈팅 세부 내역을 총망라하여 기록한 통합 역사 파일입니다.
 
+모든 신규 기능 추가, 문제 해결 및 튜닝 이력은 **최신순(역순)**으로 지속적이고 누적하여 기록됩니다.
+
+---
+
+## 📅 2026-06-23: [단말 펌웨어 & 서버] MQTTS (TLS 8883) 통신 마이그레이션 및 Supabase 인증/규칙 연동
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: MQTTS (QoS 2 / Clean Session 1) Migration, HL7811 MQTT AT, Supabase pg_cron Offline Check, authentication_logs DB Schema, LCD Unauth Layout
+
+### 1. 작업 개요 (Goal & Requirements)
+* 단말(Pico 2 W)의 데이터 전송 방식을 기존 HTTP REST API에서 암호화된 MQTTS(TLS, 포트 8883) 방식으로 완전 마이그레이션하여 통신 지연 및 전력 소모 감축.
+* EMQX 6.2.1 서버 단에 Supabase PostgreSQL DB를 연동하여 기기(IMEI/IMSI) 접속 인증을 수행하고, 접속 통과/실패 내역을 Supabase `authentication_logs` 테이블에 자동 적재.
+* 데이터 미전송 상태를 감지하여 30분 이상 무수신 시 DB 내에서 자동으로 단말 상태를 `'offline'`으로 갱신하는 크론 배치 스케줄러 등록.
+* 인증 실패 URC 감지 시 안테나/송수신 애니메이션은 LCD에 그대로 작동시키면서 하단 왼쪽에 `Unauth` 에러를 선명하게 표시하도록 펌웨어 개정.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **단말 MQTTS 통신 추가 및 80바이트 제한 방어 (`tasks_modem.cpp / main.cpp` 수정)**:
+  - HL7811 모뎀의 `AT+KMQTTPUB` 페이로드 용량이 최대 80바이트로 한정되므로, JSON 구조를 대폭 축소하고 Ch0/Ch1 상태 필드를 각각 `ts0`, `ts1`로 분할하여 75바이트 이하로 압축 송신 및 소스 한글 상세 주석 주입.
+  - 램 자가진단 검사는 일시 보류하여 항상 `ram_test_val = 0`(정상) 값으로 포워딩하도록 변경.
+  - `AT+KSSLCFG=2,0` 명시를 통해 PSM/TLS 세션 재개(Session Resumption)를 가동하여 재접속 핸드셰이크에 수반되는 리소스 손실 방지.
+  - 전송 직후 `devices/[IMEI]/config` 토픽을 구독 대기하여 Supabase 규칙 엔진이 보낸 실시간 임계 상한 온도(`tempUpperLimitValue`) 및 기기 제어 명령(`cmd`/`cmdId`)을 동적으로 갱신받는 비동기 양방향 동기화 시퀀스 수립.
+* **QoS 2 및 Clean Session 1 적용**:
+  - 데이터 유실 및 중복 배달을 완벽 차단하기 위해 **QoS 2 (Exactly Once)**를 적용하고, 20분 간격 초저전력 딥슬립 전환 시 메모리 세션 파편화를 방지하기 위해 **Clean Session 1** 적용.
+* **LCD Unauth 렌더러 추가 (`tasks_lcd.cpp` 수정)**:
+  - `is_unauthenticated` URC 감지 시, LCD 우측 작동 UI는 유지하되 하단 온도를 띄우는 라인에 `"Unauth"` 텍스트가 마스킹 출력되도록 렌더 분기 구현.
+* **EMQX Supabase 연동 자동화 쉘 스크립트 작성 (`emqx_setup.sh` 신규 작성)**:
+  - REST API 및 curl를 사용하여 우분투 서버에서 원클릭으로 PostgreSQL 인증 모듈, Webhook 데이터 브릿지, Republish 및 데이터 적재 규칙 엔진을 자동으로 구성하는 유틸리티 스크립트를 작성하여 서버로 배포 완료.
+* **Supabase SQL 스키마 및 크론 스케줄 등록**:
+  - `authentication_logs` 테이블 생성 및 `pg_cron` 확장 기반 매 1분마다 `last_seen_at`이 30분 이전인 기기의 status를 offline으로 일괄 업데이트하는 스케줄러(`device-offline-check`) 등록 완료.
+
+---
+
 ## 📅 2026-06-22: [단말 펌웨어] 5V 부팅 임시 우회(자가진단 Bypass) 복구 롤백 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: Rollback, Diagnostics Bypass, Stability Recovery
