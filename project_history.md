@@ -26,6 +26,14 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] 디버그 태스크 시리얼 가로채기(Race Condition) 방지 가드 락 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: FreeRTOS Tasks, Race Condition, UART RX Buffer, Debug Bypass
+* **작업 및 해결 내역**:
+  - 부팅 지연을 피하기 위해 `vBootTask` 진입 즉시 `lcd_params.is_booting = false;`를 선언하면서, 디버그 쉘 태스크(`vDebugTask`)가 모뎀 초기화가 완전히 끝나기도 전에 기동되는 문제를 확인.
+  - 이로 인해 `vBootTask`가 AT 명령을 송신하고 응답을 대기하는 동안 `vDebugTask`가 UART RX 버퍼의 문자를 10ms 주기로 가로채 가(Race Condition) 모뎀 초기화 시퀀스가 붕괴하고 시리얼에 지속적으로 `ERROR`가 출력되는 현상이 유발됨.
+  - `vBootTask`와 `vPeriodicModemTask`의 주요 모뎀 통신 구간 시작 시점에 `lcd_params.is_modem_busy = true;` 가드 락을 확실히 설정하고 완료 후 해제하도록 조치하여 충돌을 원천 차단하고 빌드 성공.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] HL7811 모뎀 하드웨어 부팅 펄스 시퀀스 오류 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: Hardware Power-on, PWR_ON_PIN Pulse Sequence, Modem Initialization

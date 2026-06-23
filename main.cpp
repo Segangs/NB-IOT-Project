@@ -260,6 +260,10 @@ void vPeriodicModemTask(void *pvParameters)
             {
                 printf("[PeriodicModemTask] 주기적 온도 MQTTS 전송 시도...\n");
                 
+                // 디버그 태스크의 시리얼 데이터 가로채기 방지 락 온
+                lcd_params.is_modem_busy = true;
+                vTaskDelay(pdMS_TO_TICKS(10));
+                
                 int cereg_val = modem.check_network_registration();
                 int csq_val = modem.check_rssi_csq();
                 lcd_params.current_csq = csq_val;
@@ -388,6 +392,9 @@ void vPeriodicModemTask(void *pvParameters)
                     flash_log_write(0.0f, lcd_params.current_vsys_voltage, 0, 0, -1, 0);
                     last_temp_send_time_ms = current_time_ms - (SENSOR_TEMP_CHECK_INTERVAL_MIN * 60 * 1000) + (60 * 1000);
                 }
+                
+                // 가로채기 방지 락 해제
+                lcd_params.is_modem_busy = false;
             }
         }
 
@@ -408,6 +415,10 @@ void vPeriodicModemTask(void *pvParameters)
                 
                 if (!vsys_stable || ntc_fault)
                 {
+                    // 디버그 태스크의 시리얼 데이터 가로채기 방지 락 온
+                    lcd_params.is_modem_busy = true;
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                    
                     printf("[PeriodicModemTask] 🚨 시스템 이상 동작 검출! 긴급 MQTTS 알림 전송 시도...\n");
                     
                     int cereg_val = modem.check_network_registration();
@@ -447,6 +458,9 @@ void vPeriodicModemTask(void *pvParameters)
                         printf("[PeriodicModemTask] 이상 검출 경보 MQTTS 송출 실패. 1분 뒤 재시도 예약.\n");
                         last_error_check_time_ms = current_time_ms - (5 * 60 * 1000) + (60 * 1000);
                     }
+                    
+                    // 가로채기 방지 락 해제
+                    lcd_params.is_modem_busy = false;
                 }
                 else
                 {
@@ -714,8 +728,11 @@ void vBootTask(void *pvParameters)
     g_sensor_count = 1;
 
     // ====================================================================================
-    // 백그라운드 모뎀 초기화 및 MQTTS 부팅 보고 송출
+    // 백그라운드 모뎀 초기화 및 MQTTS 부팅 보고 송출 (디버그 태스크 개입 차단)
     // ====================================================================================
+    lcd_params.is_modem_busy = true; // 가로채기 방지 락 온
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
     int at_status = 1;
     int cpin_status = 1;
     
@@ -769,6 +786,8 @@ void vBootTask(void *pvParameters)
     } else {
         printf("[BootTask] 에러: 모뎀 초기화 실패. 망 등록 및 보고 생략.\n");
     }
+    
+    lcd_params.is_modem_busy = false; // 가로채기 방지 락 해제
     
     printf("[BootTask] 비동기 부팅 태스크 완료. 자가 소멸합니다.\n");
     vTaskDelete(NULL);
