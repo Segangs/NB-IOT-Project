@@ -204,18 +204,17 @@ void nb_iot::modem_hw_power_on()
 {
     printf("[System] 모뎀 하드웨어 부팅 시퀀스 개시...\n");
 
-    modem_sleep(5000);
-
+    // 1. 초기 상태: 확실히 HIGH(비활성)로 유지
     gpio_put(PWR_ON_PIN, 1);
-    modem_sleep(500);
-
-    gpio_put(PWR_ON_PIN, 0);
     modem_sleep(1000);
 
-    gpio_put(PWR_ON_PIN, 1);
-    modem_sleep(2000);
-
+    // 2. LOW로 1.5초(1500ms) 동안 유지하여 모뎀 켜기 트리거
     gpio_put(PWR_ON_PIN, 0);
+    modem_sleep(1500);
+
+    // 3. 다시 HIGH(비활성)로 복구하여 릴리즈
+    gpio_put(PWR_ON_PIN, 1);
+    
     printf("[System] 모뎀 OS 부팅 완료 대기 중 (30초)...\n");
     modem_sleep(30000);
 

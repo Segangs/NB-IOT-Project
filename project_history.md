@@ -26,6 +26,14 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] HL7811 모뎀 하드웨어 부팅 펄스 시퀀스 오류 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: Hardware Power-on, PWR_ON_PIN Pulse Sequence, Modem Initialization
+* **작업 및 해결 내역**:
+  - 모뎀 기동을 위한 하드웨어 부팅 시퀀스(`modem_hw_power_on()`) 완료 시점에 `PWR_ON_PIN`을 0(LOW)으로 끝내도록 되어 있던 버그를 수정.
+  - Active Low로 동작하는 HL7811의 `PWR_ON_N` 핀이 계속 LOW 상태로 묶여 부팅 도중 무한 리셋이나 오동작(시리얼 콘솔에 ERROR가 지속적으로 출력되는 현상)을 일으키던 현상을 해결.
+  - 펄스 시퀀스를 1(HIGH, 1초 대기) -> 0(LOW, 1.5초 유지하여 트리거) -> 1(HIGH, 최종 릴리즈 및 복구)로 변경하여 기기 부팅 시퀀스를 안정화하고 리빌드 완료.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] USB CDC stdio 재활성화 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: CMake Configuration, USB stdio enabling, Debugging recovery
