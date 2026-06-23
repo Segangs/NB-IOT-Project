@@ -26,6 +26,15 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] 비동기 부팅 바이패스(Bypass) 모드 도입
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: FreeRTOS Boot Task, Diagnostics Bypass, Non-blocking LCD
+* **작업 및 해결 내역**:
+  - 5V 환경 및 기동 직후 NTC/VSYS 전압 측정 및 RAM/플래시 자가진단 수행 시 발생하는 하드웨어 락업 및 부팅 지연으로 인한 LCD `Boot.. Check Pico` 멈춤 현상 원천 예방.
+  - `vBootTask` 실행 즉시 `lcd_params.is_booting = false;` 및 `"Ready"` 상태로 LCD 화면을 즉각 해제하도록 구조 변경 (부팅 지연 0초).
+  - 기존의 블로킹 유발형 자가진단 단계를 모두 스킵하고 디폴트값(전압 5.0V, 정상 코드 등)으로 포워딩하도록 단순화.
+  - 모뎀 기동 및 1회성 MQTTS 부팅 보고 송출은 백그라운드 태스크에서 LCD 및 타 태스크 간섭 없이 비동기 구동되어 소멸하도록 개정 및 리빌드 성공.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] MQTT QoS 1 하향 조정 적용
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: MQTT QoS 1, tasks_modem.cpp modification
