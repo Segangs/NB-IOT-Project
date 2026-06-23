@@ -96,7 +96,7 @@ void nb_iot::modem_SendCmd(const char *cmd)
 
     // Send AT command
     uart_puts(UART_ID, cmd);
-    uart_puts(UART_ID, "\r\n");
+    uart_puts(UART_ID, "\r");
 
     printf("[AT Tx] %s\n", cmd);
 }

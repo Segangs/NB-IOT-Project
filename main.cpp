@@ -1011,6 +1011,8 @@ int main()
     );
 
     // 6. Register resource-locked Interactive AT Command Bypass thread (Priority 1)
+    // 💡 [노이즈 가드] PC 터미널 입력 등에 따른 모뎀 무한 ERROR 유입 차단을 위해 비활성화합니다.
+    /*
     xTaskCreate(
         vDebugTask,
         "DebugTask",
@@ -1019,6 +1021,7 @@ int main()
         1,
         NULL
     );
+    */
 
     // 7. Register periodic modem communication controller task (Priority 1)
     xTaskCreate(

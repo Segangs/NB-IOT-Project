@@ -26,6 +26,14 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] AT 명령어 개행 문자(\r) 수정 및 PC 시리얼 노이즈 가드(DebugTask 비활성화) 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: AT Command Termination Character, Carriage Return, Serial Noise Guard, vDebugTask Suspension
+* **작업 및 해결 내역**:
+  - `modem_SendCmd()` 에서 송출 시 개행 문자를 `\r\n`으로 보낼 때, HL7811 모뎀 측에서 뒤이어 들어오는 `\n` (Line Feed)을 불필요한 빈 명령어로 인식하여 실행 직후 무조건 `ERROR`를 내뱉게 만들던 증상을 확인.
+  - 송신 터미네이터를 `\r\n` 대신 모뎀 전용인 `\r` (Carriage Return)만 송출하도록 수정.
+  - PC 터미널 모니터가 연결될 때 유입되는 비정상 데이터나 시리얼 노이즈가 `vDebugTask`를 타고 모뎀으로 흘러들어 가 통신 전체를 꼬이게 하고 무한 에러를 유발하는 요소를 원천 차단하기 위해 `main.cpp` 내 `vDebugTask` 생성을 임시 비활성화(주석 처리)하여 빌드 성공.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] 자가진단(Self-Diagnostics) 원상복구 및 RAM 무결성 검사 정상 고정
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: Rollback, Self-Diagnostics Restoring, RAM Test Force OK
