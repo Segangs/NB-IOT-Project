@@ -1247,8 +1247,8 @@ bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
     printf("[MQTTS] Publish 전송 토픽: %s | 페이로드: %s\n", topic, payload);
 
     char pub_cmd[512];
-    // QoS 2로 전송 시도
-    snprintf(pub_cmd, sizeof(pub_cmd), "AT+KMQTTPUB=%d,\"%s\",2,0,\"%s\"", this->mqtt_session_id, topic, payload);
+    // QoS 1로 전송 시도
+    snprintf(pub_cmd, sizeof(pub_cmd), "AT+KMQTTPUB=%d,\"%s\",1,0,\"%s\"", this->mqtt_session_id, topic, payload);
     
     if (!this->modem_SendCmdWaitOK(pub_cmd, 5000))
     {
@@ -1256,11 +1256,11 @@ bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
         return false;
     }
 
-    // QoS 2 전송 성공 URC (+KMQTT_IND: <session_id>,4) 대기
+    // QoS 1 전송 성공 URC (+KMQTT_IND: <session_id>,3) 대기
     uint32_t elapsed = 0;
     bool pub_success = false;
     char expected_urc[32];
-    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,4", this->mqtt_session_id);
+    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,3", this->mqtt_session_id);
 
     while (elapsed < 10000)
     {
@@ -1278,7 +1278,7 @@ bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
 
     if (!pub_success)
     {
-        printf("[MQTTS] 에러: Publish URC 수신 실패 (QoS 2 핸드셰이크 누락)\n");
+        printf("[MQTTS] 에러: Publish URC 수신 실패 (QoS 1 핸드셰이크 누락)\n");
         return false;
     }
 
@@ -1293,8 +1293,8 @@ bool nb_iot::modem_MqttSubscribe(const char *topic)
     printf("[MQTTS] Subscribe 신청 토픽: %s\n", topic);
 
     char sub_cmd[256];
-    // QoS 2로 구독 신청
-    snprintf(sub_cmd, sizeof(sub_cmd), "AT+KMQTTSUB=%d,\"%s\",2", this->mqtt_session_id, topic);
+    // QoS 1로 구독 신청
+    snprintf(sub_cmd, sizeof(sub_cmd), "AT+KMQTTSUB=%d,\"%s\",1", this->mqtt_session_id, topic);
 
     if (!this->modem_SendCmdWaitOK(sub_cmd, 5000))
     {
