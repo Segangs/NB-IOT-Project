@@ -26,6 +26,16 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [서버] EMQX 도커 컨테이너 데이터 볼륨 유실 복구 및 설정 원상복구
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: EMQX Config Restoration, Docker Volume Mount, API Key Generation
+* **작업 및 해결 내역**:
+  - 이전 작업에서 EMQX Docker 컨테이너에 Let's Encrypt 공인 인증서를 연동하는 과정 중, `/opt/emqx/data` 데이터 볼륨이 컨테이너에 정상 마운트되지 않아 기존에 구성된 모든 설정(Supabase 웹훅 연동, 규칙 데시벨, 기기 인증 규칙 등)이 유실 및 초기화되었던 장애를 진단.
+  - 호스트 서버 내의 Docker anonymous volume들을 검사하여, 이전 데이터 파일 및 `cluster.hocon`이 온전히 잔존하는 볼륨명 `55a915af067edf58f7598aeb3b89c296390a1e5535eba9c32877b9f0e7a65fcb`을 특정하고 확인.
+  - 해당 볼륨을 `-v 55a915af067edf58f7598aeb3b89c296390a1e5535eba9c32877b9f0e7a65fcb:/opt/emqx/data` 형태로 매핑하여 EMQX 컨테이너를 재기동함에 따라 기존의 모든 Supabase 인증 및 데이터 릴레이 규칙을 온전히 복구 완료.
+  - 데이터 볼륨이 복구됨에 따라 새로운 API Key `supabase_setup`를 재발급하고, 이를 기반으로 `emqx_setup.sh` 셋업 스크립트 내의 `AUTH_HEADER` 인증 헤더 정보를 동기화 업데이트하여 향후 스크립트 실행 안정성을 확보.
+
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] MQTTCFG CME ERROR 0 조치를 위한 더미 CA 인증서 주입 복구
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: MQTTS SSL Bypass, GTS_ROOT_R4_CERT, AT+KCERTSTORE, AT+KMQTTCFG
