@@ -26,6 +26,14 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] UART 노이즈에 의한 무한 수신 루프(Lockup) 방지 및 풀업 가드 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: UART Pull-up, Serial Stability, Read response Timeout/Guard, Infinite Loop Prevent
+* **작업 및 해결 내역**:
+  - 모뎀 기동 초기나 노이즈 환경 하에서 `uart_is_readable()`이 계속 참을 반환할 때 `modem_ReadResponse()` 함수 내 수신 루프가 무한 루프에 빠져 CPU를 100% 점유하고 다음 AT 명령어 시퀀스(`ATE0` 등)가 아예 실행되지 않던 버그를 확인.
+  - `modem_ReadResponse()` 함수에 1회 호출 시 최대 256바이트까지만 읽도록 수신 바이트 제한 가드를 주입하여 무한 루프 락업을 완벽히 차단.
+  - Pico의 UART TX(GP0)/RX(GP1) 핀에 `gpio_pull_up()` 설정을 강제 활성화하여 플로팅 상태에서의 UART 선로 유입 노이즈(이로 인해 모뎀이 ERROR를 자가 유발하는 현상)를 원천 차단하고 빌드 성공.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] 디버그 태스크 시리얼 가로채기(Race Condition) 방지 가드 락 패치
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: FreeRTOS Tasks, Race Condition, UART RX Buffer, Debug Bypass

@@ -61,6 +61,10 @@ nb_iot::nb_iot()
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
 
+    // 강제 내부 풀업(Pull-up) 설정을 통해 플로팅 노이즈에 의한 모뎀 무한 ERROR 피드백 방지
+    gpio_pull_up(UART_TX_PIN);
+    gpio_pull_up(UART_RX_PIN);
+
     // Disable hardware flow control
     uart_set_hw_flow(UART_ID, false, false);
 
@@ -122,8 +126,12 @@ void nb_iot::modem_SendCmdUserInput()
 // ====================================================================================
 void nb_iot::modem_ReadResponse(int check)
 {
-    while (uart_is_readable(UART_ID))
+    int max_bytes = 256; // 무한 루프 방지를 위해 한 번에 최대 256바이트만 수집
+    int count = 0;
+
+    while (uart_is_readable(UART_ID) && count < max_bytes)
     {
+        count++;
         if (this->buffer_idx < 1023)
         {
             char response = uart_getc(UART_ID);
