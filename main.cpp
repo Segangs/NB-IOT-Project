@@ -295,9 +295,9 @@ void vPeriodicModemTask(void *pvParameters)
                             
                             if (send_val > -990.0f)
                             {
-                                // CSV 페이로드 구조 (sensor_id,send_val)
+                                // JSON 배열 페이로드 구조 [sensor_id,send_val]
                                 char payload[64];
-                                snprintf(payload, sizeof(payload), "%d,%.1f", sensor_id, send_val);
+                                snprintf(payload, sizeof(payload), "[%d,%.1f]", sensor_id, send_val);
                                 
                                 if (modem.modem_MqttPublish(telemetry_topic, payload))
                                 {
@@ -829,7 +829,7 @@ void vBootTask(void *pvParameters)
 
     char json_payload[128];
     snprintf(json_payload, sizeof(json_payload),
-        "%.1f,%.1f,%d,0,%d,%d,%d,%d,%d,%d,%d,%d",
+        "[%.1f,%.1f,%d,0,%d,%d,%d,%d,%d,%d,%d,%d]",
         pico_voltage, pico_temp, flash_integrity_val, at_status, cpin_status, csq_val,
         oper_num, status_ch0, status_ch1, g_boot_reason_code, g_boot_cmd_id);
 
