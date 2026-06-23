@@ -297,7 +297,7 @@ void vPeriodicModemTask(void *pvParameters)
                             {
                                 // 💡 [피드백 반영] 80바이트 제한 극복용 압축 JSON 페이로드 구조
                                 char payload[64];
-                                snprintf(payload, sizeof(payload), "{\"id\":%d,\"v\":%.2f}", sensor_id, send_val);
+                                snprintf(payload, sizeof(payload), "{\"id\":%d,\"v\":%.1f}", sensor_id, send_val);
                                 
                                 if (modem.modem_MqttPublish(telemetry_topic, payload))
                                 {
@@ -714,8 +714,8 @@ void vBootTask(void *pvParameters)
     printf("[BootTask] 🚀 비동기 부팅 자가 진단 태스크 구동 시작 (자가진단 복원)\n");
     
     // 디버그 태스크 개입 차단 가드 락 온
-    lcd_params.is_modem_busy = true;
-    vTaskDelay(pdMS_TO_TICKS(10));
+    // lcd_params.is_modem_busy = true;
+    // vTaskDelay(pdMS_TO_TICKS(10));
 
     // ====================================================================================
     // Phase 1: Pico MCU Self-Diagnostics
@@ -825,7 +825,7 @@ void vBootTask(void *pvParameters)
     // 💡 [피드백 반영] 80바이트 모뎀 제한 극복을 위해 필드를 압축하고 Ch0/Ch1 센서 에러 상태를 각각 분할(ts0, ts1)합니다.
     char json_payload[128];
     snprintf(json_payload, sizeof(json_payload),
-        "{\"v\":%.2f,\"t\":%.2f,\"f\":%d,\"r\":0,\"a\":%d,\"c\":%d,\"q\":%d,\"o\":\"%.8s\","
+        "{\"v\":%.1f,\"t\":%.1f,\"f\":%d,\"r\":0,\"a\":%d,\"c\":%d,\"q\":%d,\"o\":\"%.8s\","
         "\"ts0\":%d,\"ts1\":%d,\"b\":%d,\"i\":%d}",
         pico_voltage, pico_temp, flash_integrity_val, at_status, cpin_status, csq_val,
         oper_name, status_ch0, status_ch1, g_boot_reason_code, g_boot_cmd_id);
