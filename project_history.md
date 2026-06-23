@@ -26,6 +26,15 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] 진짜 SSL Root CA (ISRG Root X2) 분할 연속 주입 및 전체 검증 활성화 적용
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: Let's Encrypt ISRG Root X2, AT+KCERTSTORE, AT+KSSLCFG, Chunk-based UART Transmission
+* **작업 및 해결 내역**:
+  - 기존의 더미 CA(`GTS_ROOT_R4_CERT`)를 활용한 보안 검증 우회 구조 대신, `p.zxcx.io:8883` 실서버가 사용하는 진짜 Let's Encrypt ECDSA 체인의 루트 CA 인증서인 `ISRG Root X2` (Root YE, 776바이트)를 압축 정의하여 실장 완료.
+  - 데이터 전송 안정성을 확보하기 위해, 776바이트 인증서 데이터를 64바이트 단위의 조각(fragments)으로 나누어 10ms 딜레이를 주며 연속으로 송신하는 청크 기반 분할 주입 로직을 `tasks_modem.cpp`에 구현하여 UART 버퍼 오버런 및 데이터 유실 문제를 방지.
+  - 보안 검증 단계를 원래 요구 사양에 맞게 다시 정상 가동하기 위해, `modem_HttpOpen` 및 `modem_MqttOpen` 내부의 `AT+KSSLCFG=0,0` 설정을 `AT+KSSLCFG=0,3` (서버 및 클라이언트 전체 검증 레벨 3)으로 정상 원복 적용하여 빌드 성공.
+
+
 ## 📅 2026-06-23 (추가): [서버] EMQX 도커 컨테이너 데이터 볼륨 유실 복구 및 설정 원상복구
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: EMQX Config Restoration, Docker Volume Mount, API Key Generation
