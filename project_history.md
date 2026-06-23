@@ -26,6 +26,13 @@
 
 ---
 
+## 📅 2026-06-23 (추가): [단말 펌웨어] USB CDC stdio 재활성화 패치
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: CMake Configuration, USB stdio enabling, Debugging recovery
+* **작업 및 해결 내역**:
+  - 부팅 지연 및 락업 문제가 바이패스 모드로 원천 해결되었고, stdio 타임아웃도 `0ms`로 이미 안전하게 설정되어 있으므로, 디버깅 모니터링 편의를 위해 USB stdio 출력 기능을 재활성화.
+  - `CMakeLists.txt` 내 `pico_enable_stdio_usb(nb_iot_project 1)`로 매핑하여 PC의 시리얼 콘솔 프로그램을 통한 모니터링이 가능하도록 조치 및 리빌드 성공.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] 비동기 부팅 바이패스(Bypass) 모드 도입
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: FreeRTOS Boot Task, Diagnostics Bypass, Non-blocking LCD
