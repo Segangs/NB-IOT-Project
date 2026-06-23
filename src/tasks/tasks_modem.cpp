@@ -747,7 +747,7 @@ bool nb_iot::modem_HttpOpen(const char *host, const char *port)
         modem_sleep(1000);
     }
 
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000);
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,0", 5000);
     modem_sleep(1000);
     this->modem_SendCmdWaitOK("AT+KSSLCRYPTO=0,8,3,25392,12,4,1,0", 5000);
     modem_sleep(1000);
@@ -1169,7 +1169,7 @@ bool nb_iot::modem_MqttOpen(const char *host, const char *port, const char *clie
 
     // SSL 및 TLS 세션 재개(Session Resumption) 설정
     printf("[MQTTS] TLS 암호화 세션 재개 활성화 구성 중...\n");
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000); // TLS 활성화
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,0", 5000); // TLS 활성화
     modem_sleep(1000);
     this->modem_SendCmdWaitOK("AT+KSSLCFG=2,0", 5000); // Session Mode: 0 (Automatic session resumption)
     modem_sleep(1000);
