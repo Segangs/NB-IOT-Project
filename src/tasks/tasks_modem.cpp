@@ -366,7 +366,7 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
             for (int j = 0; j < current_chunk; j++)
             {
                 uart_putc(UART_ID, LE_ROOT_YE_CERT[i + j]);
-                sleep_us(2000); // 바이트 간 2ms 페이싱 딜레이로 오버런 완벽 차단
+                sleep_us(500); // 바이트 간 2ms 페이싱 딜레이로 오버런 완벽 차단
             }
             modem_sleep(500); // 청크 간 500ms 대기 시간을 두어 모뎀 처리 여유 제공
             printf("[%d/%d 바이트 송신 완료]\n", (i + current_chunk), cert_len);
@@ -1255,6 +1255,7 @@ bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
     if (payload_len > 80)
     {
         printf("[MQTTS] ⚠️ 경고: 페이로드 크기(%d 바이트)가 모뎀의 80바이트 한도를 초과합니다!\n", payload_len);
+        printf("[MQTTS] 초과된 페이로드: %s\n", payload);
         return false;
     }
 
