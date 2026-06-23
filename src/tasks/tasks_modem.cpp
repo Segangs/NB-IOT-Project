@@ -348,64 +348,9 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     retrieve_cimi(device_cimi);
     modem_sleep(2000);
 
-    // Supabase Root 2021 CA 인증서 주입 시퀀스
-    printf("[System] SSL Root CA 인증서 주입 개시 (0번 슬롯)...\n");
-    this->modem_SendCmdWaitResponse("AT+KCERTDELETE=0,0", "OK", "ERROR", 3000);
-    modem_sleep(1000);
-
-    char cert_cmd[64];
-    int cert_len = strlen(EMQX_ROOT_CA_CERT);
-    snprintf(cert_cmd, sizeof(cert_cmd), "AT+KCERTSTORE=0,%d,0", cert_len);
-
-    if (this->modem_SendCmdWaitResponse(cert_cmd, "CONNECT", nullptr, 5000))
-    {
-        modem_sleep(200);
-        this->modem_ClearRxBuffer();
-
-        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트)...\n", cert_len);
-        for (int i = 0; i < cert_len; i++)
-        {
-            uart_putc(UART_ID, EMQX_ROOT_CA_CERT[i]);
-            sleep_us(200);
-            if (i > 0 && i % 200 == 0)
-            {
-                printf("[%d/%d 바이트 송신 완료]\n", i, cert_len);
-            }
-        }
-        printf("\n[System] 데이터 본문 전송 완료! 1.5초 대기 후 최종 OK 수집...\n");
-        modem_sleep(1500);
-
-        uint32_t elapsed = 0;
-        const uint32_t step_ms = 100;
-        bool store_ok = false;
-        while (elapsed < 5000)
-        {
-            modem_sleep(step_ms);
-            elapsed += step_ms;
-            this->modem_ReadResponse(0);
-            if (strstr(this->rx_buffer, "OK") != nullptr)
-            {
-                store_ok = true;
-                break;
-            }
-            if (strstr(this->rx_buffer, "ERROR") != nullptr)
-            {
-                break;
-            }
-        }
-        if (store_ok)
-        {
-            printf("\n[System] SSL Root CA 인증서 주입 및 저장 완료 (Index 0)!\n");
-        }
-        else
-        {
-            printf("\n[System] 에러: SSL Root CA 인증서 주입 실패.\n");
-        }
-    }
-    else
-    {
-        printf("[System] 에러: SSL Root CA 인증서 주입 프롬프트(CONNECT) 획득 실패.\n");
-    }
+    // 💡 [트러블슈팅] HL7811 모뎀의 NVRAM 인증서 저장 한계(1024바이트)로 인해 1204바이트 압축 PEM 주입 시 +CME ERROR: 931 발생.
+    // 이에 따라 MQTTS/HTTPS의 보안 검증 레벨을 0으로 강제 낮추고(verify_none) 인증서 주입 시퀀스는 생략합니다.
+    printf("[System] SSL Root CA 인증서 검증 우회 설정으로 주입 시퀀스 생략.\n");
     modem_sleep(2000);
 
     return (cpin_status == 0);
@@ -748,7 +693,7 @@ bool nb_iot::modem_HttpOpen(const char *host, const char *port)
         modem_sleep(1000);
     }
 
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000);
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,0", 5000);
     modem_sleep(1000);
     this->modem_SendCmdWaitOK("AT+KSSLCRYPTO=0,8,3,25392,12,4,1,0", 5000);
     modem_sleep(1000);
@@ -1170,7 +1115,7 @@ bool nb_iot::modem_MqttOpen(const char *host, const char *port, const char *clie
 
     // SSL 및 TLS 세션 재개(Session Resumption) 설정
     printf("[MQTTS] TLS 암호화 세션 재개 활성화 구성 중...\n");
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000); // TLS 활성화
+    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,0", 5000); // TLS 활성화
     modem_sleep(1000);
     this->modem_SendCmdWaitOK("AT+KSSLCFG=2,0", 5000); // Session Mode: 0 (Automatic session resumption)
     modem_sleep(1000);
