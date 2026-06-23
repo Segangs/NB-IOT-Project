@@ -346,9 +346,9 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     modem_sleep(2000);
 
     // 💡 [트러블슈팅] HL7811 모뎀의 NVRAM 인증서 저장 한계(1024바이트) 극복 방안:
-    // Let's Encrypt의 776바이트 ISRG Root X2(Root YE) 진짜 인증서를 압축하여 0번 슬롯에 저장하고,
+    // Let's Encrypt의 964바이트 ISRG Root X2(Root YE) 진짜 인증서를 압축하여 0번 슬롯에 저장하고,
     // 실제 통신 시에는 KSSLCFG=0,3(Full Verification) 설정을 통해 서버와 MQTTS/HTTPS의 보안 검증을 수행합니다.
-    printf("[System] Let's Encrypt 진짜 SSL Root CA 인증서(776바이트) 주입 개시 (0번 슬롯)...\n");
+    printf("[System] Let's Encrypt 진짜 SSL Root CA 인증서(964바이트) 주입 개시 (0번 슬롯)...\n");
     this->modem_SendCmdWaitResponse("AT+KCERTDELETE=0,0", "OK", "ERROR", 3000);
     modem_sleep(1000);
 
@@ -361,16 +361,17 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
         modem_sleep(200);
         this->modem_ClearRxBuffer();
 
-        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트, 64바이트 분할 전송)...\n", cert_len);
-        int chunk_size = 64;
+        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트, 200바이트 분할 전송)...\n", cert_len);
+        int chunk_size = 200;
         for (int i = 0; i < cert_len; i += chunk_size)
         {
             int current_chunk = (cert_len - i < chunk_size) ? (cert_len - i) : chunk_size;
             for (int j = 0; j < current_chunk; j++)
             {
                 uart_putc(UART_ID, LE_ROOT_YE_CERT[i + j]);
+                sleep_us(2000); // 바이트 간 2ms 페이싱 딜레이로 오버런 완벽 차단
             }
-            modem_sleep(10); // 10ms delay between chunks to prevent FIFO/buffer overrun
+            modem_sleep(500); // 청크 간 500ms 대기 시간을 두어 모뎀 처리 여유 제공
             printf("[%d/%d 바이트 송신 완료]\n", (i + current_chunk), cert_len);
         }
         printf("\n[System] 데이터 본문 전송 완료! 1.5초 대기 후 최종 OK 수집...\n");
