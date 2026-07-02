@@ -1,0 +1,39 @@
+# Project-scoped Codex configuration for NB-IOT.
+# Codex loads this file only when the project is trusted.
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+personality = "friendly"
+project_doc_max_bytes = 65536
+
+[sandbox_workspace_write]
+writable_roots = ["/Users/segang/Documents/NB-IOT"]
+network_access = false
+exclude_tmpdir_env_var = false
+exclude_slash_tmp = false
+
+[features]
+hooks = true
+multi_agent = true
+
+[mcp_servers.supabase]
+url = "https://mcp.supabase.com/mcp"
+enabled = true
+default_tools_approval_mode = "prompt"
+tool_timeout_sec = 120
+enabled_tools = [
+  "list_projects",
+  "get_project",
+  "get_project_url",
+  "list_tables",
+  "get_logs",
+  "get_advisors",
+  "execute_sql"
+]
+
+# Authenticate with:
+#   codex mcp login supabase
+#
+# Keep provider credentials, access tokens, and user-level model/provider
+# settings in ~/.codex/config.toml or the OS keychain, not in this repo.

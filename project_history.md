@@ -26,6 +26,18 @@
 
 ---
 
+## 📅 2026-07-02 (추가): [Codex 마이그레이션] Antigravity 설정/워크플로우를 Codex 프로젝트 지침, 설정, repo skill로 이전
+* **연동 대화 ID**: Codex 마이그레이션 세션
+* **개발 범주**: Codex Configuration, AGENTS.md, Repository Skills, Supabase MCP, Migration Checklist
+* **작업 및 해결 내역**:
+  - `DOCS/codex/mig/`의 `AGENTS.md`, `codex.config.toml`, `codex-skills-plan.md`, `migration-checklist.md`를 모두 검토한 뒤, Antigravity 전용 승인/파일 접근 정책(`suggest`, `auto-edit`, `ASK/OFF` 등)을 그대로 복사하지 않고 Codex 0.142.5 공식 매뉴얼 기준의 실제 설정 구조로 재작성.
+  - 프로젝트 루트에 `AGENTS.md`를 신규 배치하여 Codex가 자동으로 읽는 프로젝트 지침을 구성. 기존 `/Users/segang/Documents/PicoTeam` 경로는 더 이상 참조하지 않고, 통합 서버 경로를 `/Users/segang/Documents/NB-IOT/Segang/project`로 정리.
+  - `.codex/config.toml`을 신규 작성하여 `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, `[sandbox_workspace_write]`, `[mcp_servers.supabase]` 구조를 적용. 모델/프로바이더/토큰은 프로젝트 파일에 고정하지 않고 사용자 설정 및 OAuth 저장소를 따르도록 보안 경계를 유지.
+  - `codex-skills-plan.md`의 9개 반복 워크플로우를 실제 repo-scoped Codex skill로 생성: `build-firmware`, `run-server`, `supabase-inspect`, `db-migrate`, `commit-and-log`, `modem-debug`, `emqx-setup`, `mock-test`, `project-history-update`.
+  - Supabase MCP OAuth 상태를 Codex에서 검증하여 `NB_IOT` 프로젝트(`yzorfvgpmkwnjpdfyqsk`, `ACTIVE_HEALTHY`, API URL `https://yzorfvgpmkwnjpdfyqsk.supabase.co`) 조회와 `public` 테이블 목록 조회가 정상 동작함을 확인.
+  - Supabase advisor 확인 중 `public` 스키마 16개 테이블의 RLS 비활성, 다수 함수의 mutable `search_path`, `SECURITY DEFINER` 함수 공개 실행 가능 경고를 확인. 이번 작업에서는 DB를 변경하지 않았으며, 별도 RLS/권한 정책 설계와 사용자 승인 후 처리할 후속 보안 작업으로 기록.
+  - `DOCS/codex/mig/migration-checklist.md`를 실제 완료/부분완료 상태로 갱신하고, 원본 `codex.config.toml` 및 skills plan의 PicoTeam 잔여 경로를 통합 경로 기준으로 보정.
+
 ## 📅 2026-06-23 (추가): [단말 펌웨어] 진짜 SSL Root CA (ISRG Root X2) 분할 연속 주입 및 전체 검증 활성화 적용
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: Let's Encrypt ISRG Root X2, AT+KCERTSTORE, AT+KSSLCFG, Chunk-based UART Transmission

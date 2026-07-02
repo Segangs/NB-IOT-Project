@@ -26,6 +26,23 @@
 
 ---
 
+## 📅 2026-07-02: [Codex 마이그레이션] Antigravity 설정/워크플로우를 Codex 프로젝트 표면으로 이전
+* **개발 범주**: Codex Configuration, AGENTS.md, Repository Skills, Supabase MCP
+
+### 1. 작업 개요
+* `DOCS/codex/mig/`에 생성된 Antigravity → Codex 마이그레이션 산출물 4개를 검토하고, Codex 0.142.5 공식 매뉴얼 기준으로 실제 프로젝트 루트에 적용 가능한 설정과 지침으로 정리했습니다.
+* PicoTeam 별도 경로는 더 이상 사용하지 않고, 통합 서버 경로를 `/Users/segang/Documents/NB-IOT/Segang/project`로 고정했습니다.
+
+### 2. 주요 반영 사항
+* 루트 `AGENTS.md`를 신규 작성하여 프로젝트 개요, 기록/커밋 원칙, 펌웨어/서버/Supabase/EMQX 작업 규칙, 검증 기준을 Codex가 자동 로드할 수 있게 했습니다.
+* `.codex/config.toml`을 신규 작성하여 `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, `[sandbox_workspace_write]`, `[mcp_servers.supabase]` 형식으로 구성했습니다. Antigravity 전용 `suggest`, `auto-edit`, `full-auto`, `ASK/OFF` 구조는 Codex 실제 키가 아니므로 이식하지 않았습니다.
+* `.agents/skills/` 아래에 9개 repo-scoped skill을 생성했습니다: `build-firmware`, `run-server`, `supabase-inspect`, `db-migrate`, `commit-and-log`, `modem-debug`, `emqx-setup`, `mock-test`, `project-history-update`.
+* Supabase MCP OAuth 접근을 검증하여 `NB_IOT` 프로젝트(`yzorfvgpmkwnjpdfyqsk`)와 `public` 테이블 목록 조회가 정상 동작함을 확인했습니다.
+
+### 3. 후속 주의사항
+* Supabase advisor에서 `public` 테이블 RLS 비활성 및 공개 실행 가능한 `SECURITY DEFINER` 함수 경고가 확인되었습니다. 이번 마이그레이션에서는 DB를 변경하지 않았으며, 별도 보안 정책 설계와 승인 후 처리해야 합니다.
+* Codex 루트 `AGENTS.md`와 `.codex/config.toml`은 새 Codex 세션에서 프로젝트를 신뢰한 뒤 자동 로드 여부를 최종 확인하면 됩니다.
+
 ## 📅 2026-06-23: [단말 펌웨어 & 서버] MQTTS (TLS 8883) 통신 마이그레이션 및 Supabase 인증/규칙 연동
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
 * **개발 범주**: MQTTS (QoS 2 / Clean Session 1) Migration, HL7811 MQTT AT, Supabase pg_cron Offline Check, authentication_logs DB Schema, LCD Unauth Layout
