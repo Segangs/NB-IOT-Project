@@ -38,6 +38,7 @@
 * `CMakeLists.txt` 및 `main.cpp`의 Pico stdio/flash 관련 빌드 의존성 보강
 * `Segang/project/app.py`의 `www.zxcx.io` → `zxcx.io` 301 리다이렉트 추가
 * `Segang/project/main.py`의 Cloudflare Tunnel 전제 HTTP 모드 고정 및 DuckDNS 자동 동기화 비활성화
+* submodule 내부 생성물 및 `project_history.md.bak*` 백업 파일 ignore 규칙 정리
 * Git 커밋 후 `origin/main` 원격 동기화 대상 정리
 
 ## 📅 2026-07-02: [Codex 마이그레이션] Antigravity 설정/워크플로우를 Codex 프로젝트 표면으로 이전
