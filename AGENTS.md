@@ -18,10 +18,11 @@ Do not refer to the old `/Users/segang/Documents/PicoTeam` path. The server has 
 - Respond to the user in Korean unless they ask otherwise.
 - Keep code identifiers, commands, file paths, API names, and model names in English.
 - After every completed work item, update `project_history.md` using the existing top-appended date format.
-- Also update `README.md` with a concise summary of completed work.
+- Also update `README.md` with a concise summary of completed work, grouped under one section per date. If a date already exists, append the new work item inside that date section instead of creating another same-date heading.
 - Use Korean noun-ending style for new `README.md` and `project_history.md` entries, avoiding explanatory sentence endings such as `했습니다`, `합니다`, or `됩니다`.
 - Preserve previous history. Never replace the accumulated project history with only the current task.
-- Commit messages must be short Korean conventional messages, for example `docs: Codex 마이그레이션`.
+- Do not automatically commit or push at the end of each work item. Leave git changes uncommitted unless the user explicitly asks to commit, sync, or push.
+- When the user explicitly asks for a commit, commit messages must be short Korean conventional messages, for example `docs: Codex 마이그레이션`.
 
 ## Safety
 

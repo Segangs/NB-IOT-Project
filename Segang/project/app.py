@@ -17,6 +17,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=30)
 
 # Global storage for pending desktop logins
 pending_logins = {}
@@ -156,6 +157,12 @@ def redirect_www():
     if host.startswith("www.zxcx.io"):
         new_url = request.url.replace("www.zxcx.io", "zxcx.io", 1)
         return redirect(new_url, code=301)
+
+@app.after_request
+def add_static_font_cache_headers(response):
+    if request.path.startswith("/static/fonts/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
 
 @app.before_request
 def check_admin_inactivity():

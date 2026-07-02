@@ -45,7 +45,7 @@
 #endif
 
 #ifndef MQTT_BROKER_HOST
-#define MQTT_BROKER_HOST  "p.zxcx.io"
+#define MQTT_BROKER_HOST  "YOUR_MQTT_BROKER_HOST_PLACEHOLDER"
 #endif
 
 #ifndef MQTT_BROKER_PORT
@@ -59,7 +59,13 @@
 #define SENSOR_TEMP_CHECK_INTERVAL_MIN   20
 
 // ====================================================================================
-// [6] Self-Diagnostic Thresholds
+// [6] External Power Detect Configurations
+// ====================================================================================
+#define POWER_ADAPTER_DETECT_PIN         7
+#define POWER_ADAPTER_PRESENT_LEVEL      1
+
+// ====================================================================================
+// [7] Self-Diagnostic Thresholds
 // ====================================================================================
 #define VSYS_VOLTAGE_MIN  3.0f    // Minimum stable Pico input voltage (V)
 #define VSYS_VOLTAGE_MAX  5.5f    // Maximum stable Pico input voltage (V)
@@ -74,7 +80,19 @@
 #define NTC_TEMP_OFFSET   -3.8f     // NTC sensor software calibration offset (Celsius)
 
 // ====================================================================================
-// [7] Buzzer Configurations
+// [8] LED Configurations
+// ====================================================================================
+#define STATUS_LED_RED_PIN              8
+#define STATUS_LED_GREEN_PIN            9
+#define RJ45_PORT1_TEMP_LED_PIN         10
+#define RJ45_PORT1_MIC_LED_PIN          11
+#define RJ45_PORT2_TEMP_LED_PIN         12
+#define RJ45_PORT2_MIC_LED_PIN          13
+#define MODEM_TXON_INPUT_PIN            5
+#define TXON_LED_PIN                    28
+
+// ====================================================================================
+// [9] Buzzer Configurations
 // ====================================================================================
 #define BUZZER_PIN                      16
 #define DEFAULT_TEMP_UPPER_LIMIT        -9.0f

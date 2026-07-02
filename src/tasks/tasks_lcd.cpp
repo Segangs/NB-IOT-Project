@@ -143,7 +143,9 @@ void vLcdTask(void *pvParameters)
             
             // Normal operational layout
             char temp_str[16];
-            if (params->is_unauthenticated) {
+            if (params->is_battery_mode) {
+                snprintf(temp_str, sizeof(temp_str), "BAT MODE");
+            } else if (params->is_unauthenticated) {
                 // MQTT 인증 실패 시 온도를 표시하는 하단 줄에 "Unauth" 고정 출력
                 snprintf(temp_str, sizeof(temp_str), "Unauth");
             } else if (displayed_temp <= -990.0f) {

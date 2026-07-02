@@ -61,7 +61,7 @@ set(FREERTOS_CONFIG_DIR "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Config" CACHE STRING
 include_directories("${FREERTOS_CONFIG_DIR}")
 
 # 2) FreeRTOS 커널 폴더 경로 지정
-# set(FREERTOS_KERNEL_PATH "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Kernel" CACHE STRING "FreeRTOS Kernel Path")
+set(FREERTOS_KERNEL_PATH "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Kernel" CACHE PATH "FreeRTOS Kernel Path" FORCE)
 
 # 3) RP2350 전용 FreeRTOS 임포트 스크립트 실행 (헤더 경로 자동 매핑)
 include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/Community-Supported-Ports/GCC/RP2350_ARM_NTZ/FreeRTOS_Kernel_import.cmake)
@@ -73,9 +73,16 @@ include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/Community-Supported-Ports/GC
 add_executable(nb_iot_project
     main.cpp
     lib/LCD_I2C.cpp
+    src/tasks/app_context.cpp
+    src/tasks/tasks_boot.cpp
+    src/tasks/tasks_buzzer.cpp
+    src/tasks/tasks_debug.cpp
+    src/tasks/tasks_led.cpp
     src/tasks/tasks_sensor.cpp
+    src/tasks/tasks_sensor_reader.cpp
     src/tasks/tasks_lcd.cpp
     src/tasks/tasks_modem.cpp
+    src/tasks/tasks_periodic_modem.cpp
     src/lib/flash_logger.cpp
 )
 

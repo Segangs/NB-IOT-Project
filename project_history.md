@@ -26,6 +26,65 @@
 
 ---
 
+## 📅 2026-07-02 (추가): [펌웨어] RTOS 태스크 파일 분리 및 main.cpp 정리
+* **연동 대화 ID**: Codex RTOS 태스크 분리 리팩터링 세션
+* **개발 범주**: Firmware Refactor, FreeRTOS, Task Structure, Build System
+* **작업 및 해결 내역**:
+  - `main.cpp`에 집중되어 있던 FreeRTOS 태스크 구현을 `src/tasks/` 하위 전용 파일로 분리
+  - `tasks_led.cpp/hpp`, `tasks_periodic_modem.cpp/hpp`, `tasks_buzzer.cpp/hpp`, `tasks_sensor_reader.cpp/hpp`, `tasks_debug.cpp/hpp`, `tasks_boot.cpp/hpp` 신규 생성
+  - `app_context.cpp/hpp` 신규 생성 및 `lcd_params`, `modem`, 센서 캐시, 알람/LED 공유 상태, JSON 파싱 헬퍼, 안전 재부팅 헬퍼 이동
+  - `main.cpp`를 부팅 이유 판정, 하드웨어/상태 초기화, 태스크 등록, FreeRTOS hook 중심 구조로 축소
+  - `CMakeLists.txt`에 신규 태스크 소스 파일 추가
+  - `/private/tmp/nb-iot-refactor-verify` 신규 빌드 디렉터리 기준 CMake 구성 및 펌웨어 빌드 통과 확인
+
+## 📅 2026-07-02 (추가): [대시보드] 웹폰트 로딩 안정화 변경 서버 반영
+* **연동 대화 ID**: Codex 대시보드 서버 반영 세션
+* **개발 범주**: Dashboard Deploy, Flask, Cloudflare, Font Cache
+* **작업 및 해결 내역**:
+  - `Segang/project/app.py`, `templates/layout.html`, `templates/dashboard.html` 변경분을 `segang.local:/home/segang/project` 서버에 반영
+  - 반영 전 원격 백업 생성: `/home/segang/project/deploy_backup_20260702_081055`
+  - 원격 `./venv/bin/python3 -m py_compile app.py` 문법 검사 통과 및 로컬/원격 SHA256 해시 일치 확인
+  - `~/project/venv/bin/python3 main.py` Flask 대시보드 프로세스 재시작
+  - 서버 내부 `http://127.0.0.1:18180/dashboard` 302 로그인 리다이렉트 응답 확인
+  - 외부 `https://zxcx.io/dashboard` Cloudflare 경유 302 로그인 리다이렉트 응답 확인
+  - `/static/fonts/SUITE-Regular.woff2` 응답의 `Cache-Control: public, max-age=31536000, immutable` 헤더 확인
+
+## 📅 2026-07-02 (추가): [펌웨어/대시보드] RJ45 LED, 배터리 모드 표시, 웹폰트 로딩 안정화
+* **연동 대화 ID**: Codex RJ45 LED·전원 감지·대시보드 폰트 개선 세션
+* **개발 범주**: Firmware, FreeRTOS, GPIO, LCD, Dashboard, Font Loading, Config
+* **작업 및 해결 내역**:
+  - `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md`의 RJ45 LED 및 GP7 전원 감지 의도 확인
+  - `src/config.h`에 GP10/GP11/GP12/GP13 RJ45 LED, GP7 전원 어댑터 감지, MQTT 브로커 placeholder 상수 반영
+  - `main.cpp`의 `vStatusLedTask`에서 RJ45 온도센서 LED 정상 샘플 기반 점등 및 샘플 수신 blink 처리 추가
+  - I2S/Edge AI 마이크 수집 루틴 미구현 상태를 고려하여 GP11/GP13 마이크 LED는 미사용 OFF 유지
+  - GP7 전원 어댑터 감지 입력 샘플링 및 어댑터 분리 시 LCD 하단 `BAT MODE` 우선 표시 플래그 추가
+  - `tasks_lcd` 공유 상태에 배터리 모드 표시 로직 추가
+  - 대시보드 공통 `layout.html`의 SUITE 웹폰트 preload 및 `font-display: block` 적용, `dashboard.html` 차트 폰트 family 정합화
+  - Flask `app.py` 정적 폰트 캐시 헤더 추가로 화면 전환 시 웹폰트 재로딩/폰트 swap 현상 완화
+  - `.env.example`에 `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT` 템플릿 키 추가
+  - 신규 빌드 디렉터리 검증 중 `FREERTOS_KERNEL_PATH` 캐시 의존 문제 확인 및 `CMakeLists.txt` 경로 명시 보정
+
+## 📅 2026-07-02 (추가): [펌웨어] PCB 기준 상태 LED 및 TXON 표시 LED 제어 추가
+* **연동 대화 ID**: Codex PCB LED 펌웨어 반영 세션
+* **개발 범주**: Firmware, FreeRTOS, GPIO, PCB Integration, LED Status
+* **작업 및 해결 내역**:
+  - `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md`의 LED 최종 배정 기준 확인
+  - `src/config.h`에 GP8 빨강 상태 LED, GP9 초록 상태 LED, GP5 RM78-1 TXON 입력, GP28 TXON 표시 LED 상수 추가
+  - `main.cpp`에 `vStatusLedTask` 추가 및 FreeRTOS 태스크 등록
+  - 부팅 중 GP8 빨강 LED 1초 간격 점멸, 부팅 완료 후 GP9 초록 LED 상시 ON 로직 구성
+  - GP5 TXON 입력을 50ms 주기로 샘플링하고 GP28 LED를 평상시 ON, TXON 감지 시 LOW 반전 표시하도록 구성
+  - LED 태스크에서 공유 락 미사용 및 `vTaskDelay` 기반 주기 양보 적용, 모뎀/LCD/센서 태스크와 교착상태 회피
+
+## 📅 2026-07-02 (추가): [운영 지침] 작업 기록 및 Git 보류 원칙 반영
+* **연동 대화 ID**: Codex 운영 지침 수정 세션
+* **개발 범주**: Documentation Policy, Git Workflow, README Structure, Agent Instructions
+* **작업 및 해결 내역**:
+  - 작업 완료 후 `project_history.md` 및 `README.md` 기록 유지 원칙 재확인
+  - 작업 완료 시점 자동 Git commit/push 보류 및 사용자 명시 요청 시에만 커밋·동기화 진행 원칙 반영
+  - `README.md`의 작업 건별 날짜 제목 반복 방식 중단 및 날짜별 섹션 1개 안에 여러 작업 내용 순차 누적 방식 반영
+  - `AGENTS.md`, `.agents/AGENTS.md`, `.agents/skills/commit-and-log/SKILL.md` 운영 지침 갱신
+  - `README.md`의 2026-07-02 항목들을 단일 날짜 섹션으로 통합 정리
+
 ## 📅 2026-07-02 (추가): [PCB 설계자료] SPH0645LM4H Edge AI 음향 센서 의도 반영
 * **연동 대화 ID**: Codex PCB 마이크 설계 의도 재반영 세션
 * **개발 범주**: Hardware Design, Edge AI, I2S Audio, PCB Documentation

@@ -26,66 +26,64 @@
 
 ---
 
-## 📅 2026-07-02: [PCB 설계자료] SPH0645LM4H Edge AI 음향 센서 의도 반영
-* **개발 범주**: Hardware Design, Edge AI, I2S Audio, PCB Documentation
+## 📅 2026-07-02
 
-### 1. 작업 개요
-* `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` 및 HTML 문서의 SPH0645LM4H 마이크 설계 의도 재확인
+### [펌웨어] RTOS 태스크 파일 분리 및 main.cpp 정리
+* `main.cpp`에 몰려 있던 RTOS 태스크를 `src/tasks/` 아래 전용 `cpp/hpp` 파일로 분리
+* `tasks_led`, `tasks_periodic_modem`, `tasks_buzzer`, `tasks_sensor_reader`, `tasks_debug`, `tasks_boot` 신규 구성
+* 공용 전역 상태와 JSON/리부트 헬퍼를 `app_context.cpp/hpp`로 이동하여 태스크 파일 간 의존성 정리
+* `main.cpp`를 부팅 이유 판정, 초기화, FreeRTOS 태스크 등록, RTOS 훅 중심으로 축소
+* `CMakeLists.txt`에 신규 태스크 소스 파일 연결 및 깨끗한 임시 빌드 검증
+
+### [대시보드] 웹폰트 로딩 안정화 변경 서버 반영
+* `/home/segang/project` 원격 서버에 `app.py`, `templates/layout.html`, `templates/dashboard.html` 반영
+* 반영 전 원격 백업 경로 생성: `/home/segang/project/deploy_backup_20260702_081055`
+* Flask 대시보드 프로세스 재시작 및 `zxcx.io/dashboard` 302 응답 확인
+* `/static/fonts/SUITE-Regular.woff2` 응답의 `Cache-Control: public, max-age=31536000, immutable` 헤더 확인
+
+### [펌웨어/대시보드] RJ45 LED, 배터리 모드 표시, 웹폰트 로딩 안정화
+* GP10/GP12 RJ45 온도센서 LED를 정상 샘플 수신 시 점등, 센서 샘플 수신 시 짧은 blink 처리
+* GP11/GP13 마이크 LED는 I2S/Edge AI 수집 루틴 적용 전까지 미사용 OFF 유지
+* GP7 전원 어댑터 감지 입력 추가 및 어댑터 분리 시 LCD 하단 `BAT MODE` 우선 표시
+* 대시보드 공통 레이아웃의 SUITE 웹폰트 preload, `font-display: block`, 폰트 정적 캐시 헤더 적용
+* `MQTT_BROKER_HOST` 기본값 placeholder 전환 및 `.env.example` MQTT 브로커 키 추가
+* 신규 빌드 디렉터리에서도 FreeRTOS import 경로가 재현되도록 `FREERTOS_KERNEL_PATH` CMake 변수 명시
+
+### [펌웨어] PCB 기준 상태 LED 및 TXON 표시 LED 제어 추가
+* `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` 기준 GP8 빨강 상태 LED, GP9 초록 상태 LED, GP28 TXON 표시 LED 반영
+* 부팅 중 GP8 빨강 LED 1초 간격 점멸, 부팅 완료 후 GP9 초록 LED 상시 ON 구성
+* RM78-1 TXON 입력 GP5를 50ms 주기로 샘플링하고 GP28 LED를 평상시 ON, TXON 감지 시 LOW로 반전 표시
+* 별도 FreeRTOS `StatusLedTask` 구성 및 공유 락 미사용, 짧은 GPIO 갱신 후 `vTaskDelay` 양보 방식으로 교착상태 회피
+
+### [운영 지침] 작업 기록 및 Git 보류 원칙 반영
+* 작업 완료 후 `project_history.md` 및 `README.md` 기록 유지
+* 작업 완료 시점 자동 Git commit/push 보류, 사용자 명시 요청 시에만 커밋·동기화 진행
+* `README.md` 날짜별 섹션 1개 안에 여러 작업 내용 순차 누적 방식 적용
+
+### [PCB 설계자료] SPH0645LM4H Edge AI 음향 센서 의도 반영
 * SPH0645LM4H를 단순 기계음 녹음용이 아닌 Edge AI/TinyML 입력용 장비 음향 데이터 수집 채널로 재정의한 내용 반영
+* 정상 운전음, 비정상 운전음, 이상 동작 예측 신호 구분을 위한 장기 음향 패턴 수집 목적 숙지
+* Pico 측 원시 PCM 또는 FFT, RMS, 주파수 대역별 에너지, MFCC 유사 특징량 전처리 가능성 기록
+* 3m UTP 케이블 조건을 고려한 8kHz~16kHz 기본 운용 및 필요 시 24kHz 수준 샘플링 방향 기록
 
-### 2. 주요 숙지 사항
-* 정상 운전음, 비정상 운전음, 이상 동작 예측 신호 구분을 위한 장기 음향 패턴 수집 목적
-* Pico 측 원시 PCM 또는 FFT, RMS, 주파수 대역별 에너지, MFCC 유사 특징량 전처리 가능성
-* 3m UTP 케이블 조건을 고려한 8kHz~16kHz 기본 운용 및 필요 시 24kHz 수준 샘플링 방향
-* 온도 데이터와 음향 데이터를 함께 활용하는 복합 센싱 기반 상태 판단 구조
-
-## 📅 2026-07-02: [PCB 설계자료] EasyEDA 회로도·PCB 산출물 반입 및 작업 지침 반영
-* **개발 범주**: Hardware Design, EasyEDA, PCB, GPIO Map, Power Management
-
-### 1. 작업 개요
+### [PCB 설계자료] EasyEDA 회로도·PCB 산출물 반입 및 작업 지침 반영
 * `DOCS/PCB/` 내 회로도, PCB 이미지, EasyEDA JSON, 포트폴리오 문서 전체 확인
-* 향후 GPIO·전원·센서 케이블링·PCB 작업 기준을 `AGENTS.md`와 `.agents/AGENTS.md`에 반영
-
-### 2. 주요 숙지 사항
-* Pico 2 W, RM78-1 LTE-M, DS1129-04 듀얼 RJ45, DS18B20, SPH0645LM4H, LCD1602 I2C, 8002A, IP5306, MP1584EN, LTC2954CTS8-1 통합 설계
-* `+5V_IP5306` 상시 전원과 `+5V_SYS` 시스템 전원 분리 구조
-* GP0~GP5 RM78-1 모뎀, GP14/GP15 LTC2954, GP16/GP17 LCD I2C, GP18~GP22·GP26 센서/I2S 배정
-* RJ45 UTP Pair 기준 BCLK-GND Pair 배치, DS18B20 5.1kΩ Pull-up, I2S 47Ω 직렬 댐핑 구성
+* Pico 2 W, RM78-1 LTE-M, DS1129-04 듀얼 RJ45, DS18B20, SPH0645LM4H, LCD1602 I2C, 8002A, IP5306, MP1584EN, LTC2954CTS8-1 통합 설계 숙지
+* `+5V_IP5306` 상시 전원과 `+5V_SYS` 시스템 전원 분리 구조 및 GP0~GP28 주요 GPIO 배정 기록
+* RJ45 UTP Pair 기준 BCLK-GND Pair 배치, DS18B20 5.1kΩ Pull-up, I2S 47Ω 직렬 댐핑 구성 기록
 * 후속 확인 항목: R6 100kΩ → 1kΩ 변경, GP7 감지 전압 확인, C4 22µF 종료 지연 의도 확인
 
-## 📅 2026-07-02: [Git 동기화] 미커밋 변경 정리 및 원격 동기화
-* **개발 범주**: Git Sync, Firmware Build, Cloudflare Redirect, Flash Logger, Documentation Policy
-
-### 1. 작업 개요
-* 잔여 미커밋 변경 범위 확인 및 커밋 대상 정리
-* `README.md` 및 `project_history.md` 신규 항목의 명사형 종결 원칙 반영
-
-### 2. 주요 반영 사항
+### [Git 동기화] 미커밋 변경 정리 및 원격 동기화
 * `flash_logger.cpp`의 `flash_safe_execute` 기반 듀얼코어 플래시 I/O 보호 로직 반영
-* `CMakeLists.txt` 및 `main.cpp`의 Pico stdio/flash 관련 빌드 의존성 보강
-* `Segang/project/app.py`의 `www.zxcx.io` → `zxcx.io` 301 리다이렉트 추가
-* `Segang/project/main.py`의 Cloudflare Tunnel 전제 HTTP 모드 고정 및 DuckDNS 자동 동기화 비활성화
-* submodule 내부 생성물 및 `project_history.md.bak*` 백업 파일 ignore 규칙 정리
-* Git 커밋 후 `origin/main` 원격 동기화 대상 정리
+* Pico stdio/flash 관련 빌드 의존성 보강, `www.zxcx.io` → `zxcx.io` 301 리다이렉트 추가
+* Cloudflare Tunnel 전제 HTTP 모드 고정, DuckDNS 자동 동기화 비활성화, 생성물 ignore 규칙 정리
 
-## 📅 2026-07-02: [Codex 마이그레이션] Antigravity 설정/워크플로우를 Codex 프로젝트 표면으로 이전
-* **개발 범주**: Codex Configuration, AGENTS.md, Repository Skills, Supabase MCP
-
-### 1. 작업 개요
-* `DOCS/codex/mig/`의 Antigravity → Codex 마이그레이션 산출물 4개 검토 및 Codex 0.142.5 공식 매뉴얼 기준 적용
+### [Codex 마이그레이션] Antigravity 설정/워크플로우를 Codex 프로젝트 표면으로 이전
+* `DOCS/codex/mig/` 산출물 4개 검토 및 Codex 0.142.5 공식 매뉴얼 기준 적용
+* 루트 `AGENTS.md`, `.codex/config.toml`, `.agents/skills/` repo-scoped skill 구성
 * PicoTeam 별도 경로 미사용 및 통합 서버 경로 `/Users/segang/Documents/NB-IOT/Segang/project` 고정
-
-### 2. 주요 반영 사항
-* 루트 `AGENTS.md` 신규 작성 및 프로젝트 개요, 기록/커밋 원칙, 펌웨어/서버/Supabase/EMQX 작업 규칙, 검증 기준 자동 로드 구성
-* `.codex/config.toml` 신규 작성 및 `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, `[sandbox_workspace_write]`, `[mcp_servers.supabase]` 형식 구성
-* Antigravity 전용 `suggest`, `auto-edit`, `full-auto`, `ASK/OFF` 구조 미이식
-* `.agents/skills/` 아래 9개 repo-scoped skill 생성: `build-firmware`, `run-server`, `supabase-inspect`, `db-migrate`, `commit-and-log`, `modem-debug`, `emqx-setup`, `mock-test`, `project-history-update`
-* Supabase MCP OAuth 접근 검증 및 `NB_IOT` 프로젝트(`yzorfvgpmkwnjpdfyqsk`)와 `public` 테이블 목록 조회 정상 동작 확인
-
-### 3. 후속 주의사항
-* Supabase advisor의 `public` 테이블 RLS 비활성 및 공개 실행 가능 `SECURITY DEFINER` 함수 경고 확인
-* 이번 마이그레이션 범위 내 DB 변경 없음, 별도 보안 정책 설계와 승인 후 처리 필요
-* Codex 루트 `AGENTS.md`와 `.codex/config.toml`의 새 Codex 세션 자동 로드 확인 완료
+* Supabase MCP OAuth 접근 검증 및 `NB_IOT` 프로젝트(`yzorfvgpmkwnjpdfyqsk`) 조회 정상 동작 확인
+* Supabase RLS/SECURITY DEFINER 관련 후속 보안 작업 기록
 
 ## 📅 2026-06-23: [단말 펌웨어 & 서버] MQTTS (TLS 8883) 통신 마이그레이션 및 Supabase 인증/규칙 연동
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
