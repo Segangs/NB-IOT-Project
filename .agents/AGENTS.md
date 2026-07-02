@@ -8,3 +8,11 @@
   - 앞으로 Git에 커밋을 진행할 때 커밋 메시지는 반드시 **한글(Korean)**로 작성하십시오. (영어 메시지 지양)
   - 메시지는 길게 늘여 쓰지 말고, 핵심 키워드 위주로 **최대한 짧고 간결하게** 작성하십시오.
   - 형식 예시: `feat: FreeRTOS, 센서, 플래시, LCD 통합`
+
+- **README / project_history 작성 형식**:
+  - `README.md` 및 `project_history.md` 신규 항목 작성 시 `했습니다`, `합니다`, `됩니다` 등 풀이형 종결 지양.
+  - 항목 제목, bullet, 요약 문장은 `정리`, `반영`, `검증`, `동기화`, `기록` 등 명사형 종결 사용.
+
+- **사전 승인된 명령어 및 URL (반복 Allow 팝업 방지)**:
+  - `python3`, `pip3`, `curl`, `nano`, `echo`, `touch`, `rm`, `mv`, `chmod`, `uname`, `ps`, `kill`, `sleep`, `zip`, `unzip`, `tar`, `brew`, `node`, `npm`, `npx`, `ping`, `nslookup`, `dig`, `ssh-keygen` 명령어는 별도의 허가 요청 없이 실행 가능합니다.
+  - 웹 검색 및 기술 문서 URL 읽기(`read_url`)는 별도의 허가 요청 없이 수행 가능합니다.

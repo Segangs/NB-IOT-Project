@@ -5,6 +5,7 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "pico/multicore.h"
+#include "pico/flash.h"
 #include <time.h>
 
 // FreeRTOS headers
@@ -41,18 +42,26 @@ void flash_log_set_boot_epoch(uint32_t epoch_offset) {
     printf("[FlashLogger] Boot epoch offset initialized to: %u\n", g_boot_epoch_offset);
 }
 
-// 💡 RAM에서 직접 실행되어야 하는 안전한 저수준 플래시 I/O 래퍼 함수들
-// XIP 모드 하에서 플래시 쓰기/지우기 시 명령 페치 충돌을 방지합니다.
-static void __no_inline_not_in_flash_func(safe_flash_erase)(uint32_t offset, size_t size) {
-    uint32_t ints = save_and_disable_interrupts();
-    flash_range_erase(offset, size);
-    restore_interrupts(ints);
-}
+// 💡 flash_safe_execute 콜백용 파라미터 구조체 및 RAM 실행 함수
+// flash_safe_execute()는 양쪽 코어를 안전하게 동기화한 뒤 콜백을 실행합니다.
+// (기존 save_and_disable_interrupts는 현재 코어만 보호하여 듀얼코어 XIP 충돌 유발)
+struct FlashOpParams {
+    uint32_t erase_offset;
+    size_t erase_size;
+    bool do_erase;
+    uint32_t program_offset;
+    const uint8_t *program_data;
+    size_t program_size;
+};
 
-static void __no_inline_not_in_flash_func(safe_flash_program)(uint32_t offset, const uint8_t *data, size_t size) {
-    uint32_t ints = save_and_disable_interrupts();
-    flash_range_program(offset, data, size);
-    restore_interrupts(ints);
+static void __no_inline_not_in_flash_func(flash_op_callback)(void *param) {
+    FlashOpParams *p = (FlashOpParams *)param;
+    if (p->do_erase) {
+        flash_range_erase(p->erase_offset, p->erase_size);
+    }
+    if (p->program_size > 0 && p->program_data != nullptr) {
+        flash_range_program(p->program_offset, p->program_data, p->program_size);
+    }
 }
 
 // Scan the flash to find the first unused slot (timestamp == 0xFFFFFFFF)
@@ -115,20 +124,21 @@ void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t ntc_err, int1
     // Overwrite the specific log entry slot in the buffer
     memcpy(page_buffer + entry_offset_in_page, &new_entry, sizeof(FlashLogEntry));
 
-    // 🚨 FreeRTOS 스케줄러 일시 정지하여 컨텍스트 스위칭 완전 차단
-    vTaskSuspendAll();
-
-    // Check if we are at the start of a sector. If so, erase the sector (4KB) first.
-    if ((g_write_offset % FLASH_SECTOR_SIZE) == 0) {
+    // 🚨 flash_safe_execute로 양쪽 코어를 안전하게 동기화한 뒤 플래시 I/O 수행
+    bool need_erase = (g_write_offset % FLASH_SECTOR_SIZE) == 0;
+    if (need_erase) {
         printf("[FlashLogger] Erasing sector at offset: 0x%08X\n", g_write_offset);
-        safe_flash_erase(FLASH_LOG_OFFSET + g_write_offset, FLASH_SECTOR_SIZE);
     }
 
-    // Program the page back to Flash (Uses safe RAM-based wrapper)
-    safe_flash_program(FLASH_LOG_OFFSET + page_addr, page_buffer, FLASH_PAGE_SIZE);
+    FlashOpParams wp;
+    wp.erase_offset = FLASH_LOG_OFFSET + g_write_offset;
+    wp.erase_size = FLASH_SECTOR_SIZE;
+    wp.do_erase = need_erase;
+    wp.program_offset = FLASH_LOG_OFFSET + page_addr;
+    wp.program_data = page_buffer;
+    wp.program_size = FLASH_PAGE_SIZE;
 
-    // FreeRTOS 스케줄러 복구
-    xTaskResumeAll();
+    flash_safe_execute(flash_op_callback, &wp, UINT32_MAX);
 
     // Advance write offset
     g_write_offset += sizeof(FlashLogEntry);
@@ -168,14 +178,16 @@ void flash_log_dump_csv(void) {
 
 void flash_log_clear(void) {
     printf("[FlashLogger] Clearing all logs...\n");
-    
-    // FreeRTOS 스케줄러 일시 정지
-    vTaskSuspendAll();
-    
-    safe_flash_erase(FLASH_LOG_OFFSET, FLASH_LOG_SIZE);
-    
-    // FreeRTOS 스케줄러 복구
-    xTaskResumeAll();
+
+    FlashOpParams wp;
+    wp.erase_offset = FLASH_LOG_OFFSET;
+    wp.erase_size = FLASH_LOG_SIZE;
+    wp.do_erase = true;
+    wp.program_offset = 0;
+    wp.program_data = nullptr;
+    wp.program_size = 0;
+
+    flash_safe_execute(flash_op_callback, &wp, UINT32_MAX);
 
     g_write_offset = 0;
     printf("[FlashLogger] Logs cleared successfully.\n");

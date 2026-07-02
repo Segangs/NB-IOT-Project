@@ -61,7 +61,7 @@ set(FREERTOS_CONFIG_DIR "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Config" CACHE STRING
 include_directories("${FREERTOS_CONFIG_DIR}")
 
 # 2) FreeRTOS 커널 폴더 경로 지정
-set(FREERTOS_KERNEL_PATH "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Kernel" CACHE STRING "FreeRTOS Kernel Path")
+# set(FREERTOS_KERNEL_PATH "${CMAKE_CURRENT_LIST_DIR}/FreeRTOS-Kernel" CACHE STRING "FreeRTOS Kernel Path")
 
 # 3) RP2350 전용 FreeRTOS 임포트 스크립트 실행 (헤더 경로 자동 매핑)
 include(${FREERTOS_KERNEL_PATH}/portable/ThirdParty/Community-Supported-Ports/GCC/RP2350_ARM_NTZ/FreeRTOS_Kernel_import.cmake)
@@ -82,11 +82,14 @@ add_executable(nb_iot_project
 # 7. 라이브러리 연결
 target_link_libraries(nb_iot_project 
     pico_stdlib
+    pico_stdio
+    pico_stdio_usb
     hardware_uart
     hardware_adc
     hardware_i2c
     hardware_pio
     hardware_flash
+    pico_flash
     hardware_pwm
     pico_multicore      
     FreeRTOS-Kernel

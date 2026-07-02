@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "pico/stdio.h" 
+#include "pico/stdio_usb.h" 
 #include "hardware/watchdog.h"
 #include "hardware/structs/powman.h"
 #include "hardware/regs/powman.h"
@@ -962,6 +964,8 @@ int main()
     // 1. Initialize serial monitoring
     stdio_init_all();
     
+
+
     // printf("\n==================================================\n");
     // printf("❄️ Pico 2 W 부팅 자가 진단 및 데이터 수집 클라이언트\n");
     // printf("==================================================\n");

@@ -65,21 +65,18 @@ def run_flask_server():
     """Wrapper to run the Flask Web/API server."""
     sys.stdout.reconfigure(line_buffering=True)
     
-    # Start DuckDNS automatic sync thread
-    print("📡 [DuckDNS] Starting automatic IP synchronization thread...")
-    t = threading.Thread(target=duckdns_loop, daemon=True)
-    t.start()
+    # Start DuckDNS automatic sync thread - DISABLED for Cloudflare Tunnel testing
+    # print("📡 [DuckDNS] Starting automatic IP synchronization thread...")
+    # t = threading.Thread(target=duckdns_loop, daemon=True)
+    # t.start()
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     cert_path = os.path.join(base_dir, "certbot/config/live/segang.duckdns.org/fullchain.pem")
     key_path = os.path.join(base_dir, "certbot/config/live/segang.duckdns.org/privkey.pem")
     
-    if os.path.exists(cert_path) and os.path.exists(key_path):
-        print("🔒 [Flask] Starting server with Let's Encrypt SSL certificates on port 18180...")
-        app.run(host="0.0.0.0", port=18180, debug=False, use_reloader=False, ssl_context=(cert_path, key_path))
-    else:
-        print("⚠️ [Flask] Let's Encrypt SSL certificates not found. Starting server in HTTP mode on port 18180...")
-        app.run(host="0.0.0.0", port=18180, debug=False, use_reloader=False)
+    # Force HTTP mode (port 18180) to support Cloudflare Quick Tunnel forwarding correctly
+    print("⚠️ [Flask] Starting server in HTTP mode on port 18180 for Cloudflare Tunnel forwarding...")
+    app.run(host="0.0.0.0", port=18180, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
     print("=" * 70)

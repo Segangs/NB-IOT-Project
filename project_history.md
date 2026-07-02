@@ -26,17 +26,92 @@
 
 ---
 
+## 📅 2026-07-02 (추가): [Git 동기화] 미커밋 변경 정리 및 원격 동기화
+* **연동 대화 ID**: Codex 동기화 세션
+* **개발 범주**: Git Sync, Firmware Build, Cloudflare Redirect, Flash Logger, Documentation Policy
+* **작업 및 해결 내역**:
+  - 잔여 미커밋 변경 범위 확인 및 커밋 대상 정리
+  - `README.md` 및 `project_history.md` 신규 항목 작성 시 명사형 종결 원칙 반영
+  - `flash_logger.cpp`의 `flash_safe_execute` 기반 듀얼코어 플래시 I/O 보호 로직 반영
+  - `CMakeLists.txt` 및 `main.cpp`의 Pico stdio/flash 관련 빌드 의존성 보강
+  - `Segang/project/app.py`의 `www.zxcx.io` → `zxcx.io` 301 리다이렉트 추가
+  - `Segang/project/main.py`의 Cloudflare Tunnel 전제 HTTP 모드 고정 및 DuckDNS 자동 동기화 비활성화
+  - 로컬 커밋 후 `origin/main` 원격 동기화 대상 정리
+
 ## 📅 2026-07-02 (추가): [Codex 마이그레이션] Antigravity 설정/워크플로우를 Codex 프로젝트 지침, 설정, repo skill로 이전
 * **연동 대화 ID**: Codex 마이그레이션 세션
 * **개발 범주**: Codex Configuration, AGENTS.md, Repository Skills, Supabase MCP, Migration Checklist
 * **작업 및 해결 내역**:
-  - `DOCS/codex/mig/`의 `AGENTS.md`, `codex.config.toml`, `codex-skills-plan.md`, `migration-checklist.md`를 모두 검토한 뒤, Antigravity 전용 승인/파일 접근 정책(`suggest`, `auto-edit`, `ASK/OFF` 등)을 그대로 복사하지 않고 Codex 0.142.5 공식 매뉴얼 기준의 실제 설정 구조로 재작성.
-  - 프로젝트 루트에 `AGENTS.md`를 신규 배치하여 Codex가 자동으로 읽는 프로젝트 지침을 구성. 기존 `/Users/segang/Documents/PicoTeam` 경로는 더 이상 참조하지 않고, 통합 서버 경로를 `/Users/segang/Documents/NB-IOT/Segang/project`로 정리.
-  - `.codex/config.toml`을 신규 작성하여 `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, `[sandbox_workspace_write]`, `[mcp_servers.supabase]` 구조를 적용. 모델/프로바이더/토큰은 프로젝트 파일에 고정하지 않고 사용자 설정 및 OAuth 저장소를 따르도록 보안 경계를 유지.
-  - `codex-skills-plan.md`의 9개 반복 워크플로우를 실제 repo-scoped Codex skill로 생성: `build-firmware`, `run-server`, `supabase-inspect`, `db-migrate`, `commit-and-log`, `modem-debug`, `emqx-setup`, `mock-test`, `project-history-update`.
-  - Supabase MCP OAuth 상태를 Codex에서 검증하여 `NB_IOT` 프로젝트(`yzorfvgpmkwnjpdfyqsk`, `ACTIVE_HEALTHY`, API URL `https://yzorfvgpmkwnjpdfyqsk.supabase.co`) 조회와 `public` 테이블 목록 조회가 정상 동작함을 확인.
-  - Supabase advisor 확인 중 `public` 스키마 16개 테이블의 RLS 비활성, 다수 함수의 mutable `search_path`, `SECURITY DEFINER` 함수 공개 실행 가능 경고를 확인. 이번 작업에서는 DB를 변경하지 않았으며, 별도 RLS/권한 정책 설계와 사용자 승인 후 처리할 후속 보안 작업으로 기록.
-  - `DOCS/codex/mig/migration-checklist.md`를 실제 완료/부분완료 상태로 갱신하고, 원본 `codex.config.toml` 및 skills plan의 PicoTeam 잔여 경로를 통합 경로 기준으로 보정.
+  - `DOCS/codex/mig/`의 `AGENTS.md`, `codex.config.toml`, `codex-skills-plan.md`, `migration-checklist.md` 전체 검토 및 Codex 0.142.5 공식 매뉴얼 기준 설정 구조 재작성
+  - Antigravity 전용 승인/파일 접근 정책(`suggest`, `auto-edit`, `ASK/OFF` 등) 미이식
+  - 프로젝트 루트 `AGENTS.md` 신규 배치 및 Codex 자동 로드 프로젝트 지침 구성
+  - 기존 `/Users/segang/Documents/PicoTeam` 경로 미참조 및 통합 서버 경로 `/Users/segang/Documents/NB-IOT/Segang/project` 정리
+  - `.codex/config.toml` 신규 작성 및 `approval_policy = "on-request"`, `sandbox_mode = "workspace-write"`, `[sandbox_workspace_write]`, `[mcp_servers.supabase]` 구조 적용
+  - 모델/프로바이더/토큰의 프로젝트 파일 고정 제외 및 사용자 설정/OAuth 저장소 기준 보안 경계 유지
+  - `codex-skills-plan.md`의 9개 반복 워크플로우를 실제 repo-scoped Codex skill로 생성: `build-firmware`, `run-server`, `supabase-inspect`, `db-migrate`, `commit-and-log`, `modem-debug`, `emqx-setup`, `mock-test`, `project-history-update`
+  - Supabase MCP OAuth 상태 검증 및 `NB_IOT` 프로젝트(`yzorfvgpmkwnjpdfyqsk`, `ACTIVE_HEALTHY`, API URL `https://yzorfvgpmkwnjpdfyqsk.supabase.co`) 조회와 `public` 테이블 목록 조회 정상 동작 확인
+  - Supabase advisor의 `public` 스키마 16개 테이블 RLS 비활성, 다수 함수 mutable `search_path`, `SECURITY DEFINER` 함수 공개 실행 가능 경고 확인
+  - DB 변경 없음, 별도 RLS/권한 정책 설계와 사용자 승인 후 처리할 후속 보안 작업 기록
+  - `DOCS/codex/mig/migration-checklist.md`의 완료/부분완료 상태 갱신 및 원본 `codex.config.toml`/skills plan의 PicoTeam 잔여 경로 보정
+
+## 📅 2026-06-24 (추가): [DB & 서버] get_device_sensors RPC 함수 갱신을 통한 단말 설정(임계치) 및 센서 정보 통합 수신 트러블슈팅
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: Supabase Database Functions (RPC), get_device_sensors, Usersettings Join, tempUpperLimitValue, EMQX config_fetch_rule
+* **작업 및 해결 내역**:
+  - **(원인 분석)**: 단말기(Pico 2 W)가 부팅 시 `devices/+/config` 토픽을 구독하여 센서 매핑 및 임계 온도 설정(`tempUpperLimitValue`) 정보를 수신하려 했으나, 기존 Supabase `get_device_sensors` RPC가 `sensorId`, `sensorType`, `sensorMemo`만 반환하여 단말기가 요구하는 임계 온도값 등의 설정을 함께 수신할 수 없었던 원인을 분석. 또한, 신규 `config_fetch_rule`이 EMQX에 배포되기 전 부팅 로그가 발행되어 단말이 이전에 설정 정보를 수신받지 못했음을 파악.
+  - **(RPC DDL 수정)**: `get_device_sensors` Postgres 함수를 DROP 후 재생성하여, `usermachine` 및 `usersettings` 테이블을 LEFT JOIN하도록 쿼리를 갱신. 이를 통해 각 단말 IMEI에 해당하는 개별 센서 정보 행에 `tempUpperLimitValue`와 `tempLowerLimitValue` 컬럼을 병합하여 실어 보낼 수 있도록 수정 완료.
+  - **(검증 완료)**: Supabase SQL을 직접 호출하여 `SELECT * FROM get_device_sensors('354720510314300')`를 수행했을 때, 센서 매핑 및 임계 온도(`tempUpperLimitValue: -10`)가 포함된 JSON 레코드셋이 정상적으로 출력됨을 확인. 이에 따라 EMQX `config_fetch_rule`에 의한 Republish 액션 시 단말이 설정 URC 및 임계 온도 캐시 갱신을 온전히 수행할 수 있도록 서버사이드 구성을 완성함.
+
+## 📅 2026-06-23 (추가): [단말 펌웨어 & DB] Supabase 인증 API 파라미터 불일치 해결 (+CME ERROR 907 해결 및 SSL 검증 0,3 복원)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: MQTTS SSL Verification, AT+KSSLCFG, auth_device parameters, CME ERROR 907, tasks_modem.cpp
+* **작업 및 해결 내역**:
+  - MQTTS 연결(`AT+KMQTTCNX`) 시 모뎀(HL7811)에서 `+CME ERROR: 907` (Generic Error) 이 지속되는 현상에 대해, SSL 검증 이슈가 아닌 **인증 API 매개변수 명칭 불일치**에 의한 접속 거절이 진짜 원인임을 규명 및 조치.
+  - Supabase `auth_device` 함수 갱신 시 인자명을 `p_username/p_password`로 명시하였으나, 실제 EMQX HTTP Authenticator가 쏘는 JSON 바디 키는 `username/password`여서 PostgREST가 400 에러를 뱉고 기기 연결을 거부하던 문제를 해결.
+  - Supabase `auth_device` 함수의 인자명을 `username text, password text`로 변경 및 DDL을 재배포하여 파라미터 매핑을 정상화하고 로그가 DB에 무결하게 남도록 조치.
+  - 기기의 MQTTS SSL 인증서 유효성 검증의 경우 아까까지 `0,3`으로도 정상 동작했었다는 피드백 및 설계 요구조건을 수용하여, 임시 우회 적용했던 `AT+KSSLCFG=0,0` 설정을 다시 원래 안전한 전체 검증 모드인 **`AT+KSSLCFG=0,3`**으로 원복 롤백하여 빌드 완료.
+
+## 📅 2026-06-23 (추가): [단말 펌웨어 & 서버 & DB] MQTTS 페이로드 JSON Array 마이그레이션 및 Supabase 연동 오류 완전 해결
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: JSON Array Payload, EMQX SQL json_decode, EMQX HTTP Action parameters, Supabase Integration
+* **작업 및 해결 내역**:
+  - EMQX v5 SQL 룰 엔진의 빌트인 문자열 파싱 함수 부재(CSV split/nth 파싱 예외 발생)로 인한 데이터 릴레이 장애를 해결하기 위해, MQTTS 페이로드 구조를 CSV에서 **JSON Array** 형식(`[v1, v2, ...]`)으로 전면 전환. (배열 구조 기준 29바이트로 모뎀 80바이트 제한 완벽 충족)
+  - `main.cpp` 내의 텔레메트리 및 부팅 로그 포맷팅 문자열을 각각 `[%d,%.1f]` 및 `[%.1f,%.1f,%d,0,%d,%d,%d,%d,%d,%d,%d,%d]` 형태의 JSON Array로 수정하고 빌드 완료.
+  - **(SQL 갱신)**: EMQX 룰 엔진 SQL(`telemetry_rule`, `boot_rule`)에서 CSV split 파싱 로직을 지우고, `json_decode(payload)` 및 `nth` 내장 함수를 도입. 이때 문자열 타입 지정을 싱글쿼트(`'float'`, `'integer'`)로 튜닝함. 추가로, JSON 디코딩을 통과한 원소들은 이미 고유의 Number 타입을 유지하고 있으므로 불필요한 `cast` 함수 호출을 전면 제거하여 타입 캐스팅 에러를 방지함.
+  - **(HTTP Action 수정)**: EMQX HTTP Action(`supabase_boot`, `supabase_telemetry`)의 Body 템플릿 변수 매핑이 기존 JSON 구조 방식인 `${payload.v}` 형태로 잔존하여 발생하던 400 Bad Request 에러를 해결하기 위해, SQL 컬럼 별칭에 맞춰 `${v}`, `${id}` 등 직접 참조 변수 형태로 동기화 갱신 완료. 이를 통해 부팅 자가진단 로그(`device_boot_logs`)의 Supabase DB 실시간 적재 및 기기 설정 매핑 조회 시퀀스를 100% 가동 및 검증 완료.
+  - Supabase `auth_device` RPC 함수에서 기존 `RAISE EXCEPTION` 기반 오류 처리 시 발생하던 트랜잭션 롤백 문제를 해결하기 위해, 에러를 던지는 대신 `allow`/`deny` 및 사유를 직접 `authentication_logs`에 INSERT한 뒤 결과 JSON을 반환하는 구조로 DDL 갱신 완료. 이를 통해 접속 이력이 DB에 정상 실시간 적재되도록 조치.
+
+## 📅 2026-06-23 (추가): [단말 펌웨어] MQTTS Publish 성공 URC 상태 감지 범위 보정 (QoS 1 Ack 수신 정상화)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: MQTTS Publish URC, +KMQTT_IND, QoS 1 Ack, tasks_modem.cpp
+* **작업 및 해결 내역**:
+  - 단말이 QoS 1로 데이터를 발행(`Publish`)한 직후 모뎀에서 리턴하는 `+KMQTT_IND: <session_id>,4` URC(데이터 수신 알림 또는 QoS 1 Puback 수신완료 알림)를 성공적으로 수집하도록 보정.
+  - 기존 펌웨어가 QoS 2용 성공 URC인 `+KMQTT_IND: <session_id>,3` 만을 대기하다가 `+KMQTT_IND: <session_id>,4`가 비동기로 수신되었을 때 이를 실패로 간주해 세션을 강제 폭파(`CLOSE`)하던 버그를 해결.
+  - `tasks_modem.cpp` 내의 `modem_MqttPublish`가 URC 상태 `3`과 `4` 모두를 전송 성공 상태로 유연하게 포용하도록 대기 시퀀스 조건식을 갱신하여 패킷 발행의 성공 판정 및 후속 설정 정보 수집의 안정성을 극대화.
+
+## 📅 2026-06-23 (추가): [단말 펌웨어 & 서버] MQTTS 페이로드 CSV 전환 및 EMQX SQL 규칙 갱신
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: CSV Payload Migration, EMQX SQL split/nth Parsing, Carrier Number Encoding, emqx_setup.sh
+* **작업 및 해결 내역**:
+  - 셀룰러 모뎀의 80바이트 전송 한도로 인한 패킷 유실 문제를 방지하기 위해, MQTTS로 송출되는 모든 데이터(부팅 로그 및 주기적 텔레메트리)를 JSON에서 **컴마로 구분된 CSV 형식**으로 전면 전환. (부팅 로그 86바이트 -> 23바이트로 단축)
+  - 통신사명 문자열을 정수(`1: SKT`, `2: KT`, `3: LGU+`, `0: 기타`)로 단말기에서 인코딩하여 전송하도록 `main.cpp`를 수정.
+  - EMQX 서버의 규칙 엔진 SQL에서 `split` 및 `nth` 내장 함수를 도입하여 단말이 보낸 CSV 데이터를 JSON 필드 객체 형태로 실시간 파싱하도록 구성.
+  - 규칙 엔진 내에 `CASE WHEN` 제어 흐름을 추가하여, 단말이 쏜 통신사 정수 코드(1, 2, 3)를 Supabase Webhook 호출 직전에 기존 문자열(`"SKT"`, `"KT"`, `"LGU+"`)로 복원하도록 설계함으로써 Supabase DB 스택의 하위 호환성을 원천 보장.
+  - **(수동 적용)**: EMQX SQL 파서가 `cast(col as type)` 형태가 아닌 `cast(col, type)` 형태의 콤마 구분자 인자 문법만 지원하여 발생하는 400 문법 오류를 해결하고, 올바른 SQL을 추출하여 사용자가 직접 EMQX 대시보드에서 수동 설정하도록 안내 완료.
+
+## 📅 2026-06-23 (추가): [단말 펌웨어] 초과 MQTTS 페이로드 시리얼 출력 디버그 추가
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: MQTTS Payload, Serial Debugging, tasks_modem.cpp
+* **작업 및 해결 내역**:
+  - 부팅 자가 진단 로그 MQTTS 발행 시 페이로드가 80바이트 제한을 초과해 전송이 누락되는 현상에 대해, 초과 발생 원인을 직관적으로 디버깅할 수 있도록 80바이트 초과 예외 발생 시 전송하려던 원본 페이로드 전체를 PC 시리얼 모니터에 즉각 출력(`printf`)하는 구문을 `tasks_modem.cpp` 내 `modem_MqttPublish`에 추가.
+
+## 📅 2026-06-23 (추가): [단말 펌웨어] SSL Root CA 인증서 교체 및 200바이트 분할 페이싱 적용 (+CME ERROR: 931 완벽 조치)
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: ISRG Root X2 PEM, AT+KCERTSTORE, Format Validation, Pacing Tuning, CME ERROR 931
+* **작업 및 해결 내역**:
+  - 기존에 잘못 적용되어 있던 964바이트 크기의 교차서명(Cross-signed) 버전의 Root X2 대신, 공식 Let's Encrypt 서버에서 획득한 진짜 자체서명(Self-signed) 버전의 **`ISRG Root X2` 인증서(개행문자 포함 790바이트)**를 C++ 코드에 탑재.
+  - 이로 인해 모뎀이 개행문자가 포함되지 않은 비정상 포맷의 데이터를 받아 발생하던 `+CME ERROR: 931` 포맷 검증 실패 현상을 전면 해결.
+  - 200바이트 분할 전송 루틴에 맞춰 바이트 간 페이싱 딜레이를 `2000us` (2ms), 청크 간 대기 시간을 `500ms`로 유지하여 안정적인 NVRAM 저장 시퀀스 보장.
 
 ## 📅 2026-06-23 (추가): [단말 펌웨어] 진짜 SSL Root CA (ISRG Root X2) 분할 연속 주입 및 전체 검증 활성화 적용
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
@@ -138,6 +213,33 @@
   - 단말의 모든 MQTT 메시지 발행(Publish) 및 구독(Subscribe) 요청의 QoS 수준을 기존 2(Exactly Once)에서 1(At least Once)로 하향 조정.
   - `tasks_modem.cpp` 내의 `AT+KMQTTPUB` 파라미터를 `,1,`로 수정하고, QoS 1 발행 성공을 뜻하는 모뎀 URC 코드 `+KMQTT_IND: <session_id>,3`을 대기하도록 URC 대기 시퀀스 개정.
   - 구독 명령 `AT+KMQTTSUB` 또한 QoS 1(파라미터 `,1`)로 작동하도록 튜닝 완료 및 펌웨어 리빌드 검증 성공.
+
+## 📅 2026-06-23: [관제 웹 & 서버] Cloudflare Tunnel (zxcx.io) 연동 및 EMQX MQTT 브로커 최신 버전 구축
+* **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)
+* **개발 범주**: Cloudflare Tunnel (cloudflared), Flask HTTPS Bypass, EMQX MQTT Broker Install, ddclient Cloudflare DDNS Setup
+
+### 1. 작업 개요 (Goal & Requirements)
+* 기존 `segang.duckdns.org` 도메인 대신 개인 도메인 `zxcx.io`를 Cloudflare DNS에 연동하고, 결제 인증된 정식 Cloudflare Tunnel(`cloudflared`)을 서버에 인스톨하여 대시보드 웹을 포트 포워딩 없는 HTTPS 환경으로 가동.
+* 더 이상 무의미한 DuckDNS IP 자동 동기화 루프 및 구형 DDNS 설정을 정리.
+* DNS Only(grey cloud)로 설정된 `p.zxcx.io`에 대해 서버의 공인 IP 변동 시 자동으로 동기화되도록 `ddclient`와 Cloudflare API v4를 연동.
+* IoT 단말 통신 수신을 위해 최신 분산형 MQTT 메시지 브로커인 **EMQX 6.2.1**을 Docker 기반으로 신규 구축.
+
+### 2. 주요 작업 및 기술적 의사결정
+* **Flask 서버 HTTPS 해제 및 터널 매핑 (`main.py` 수정)**:
+  - Cloudflare Edge단에서 HTTPS(SSL) 암호화 통신을 일괄 제어하므로, 우분투 서버 측은 자체 SSL 바인딩을 해제하고 HTTP 일반 모드(`port=18180`)로 깔끔하게 동작하도록 전환하여 CPU 리소스를 경감.
+  - `main.py` 내의 `update_duckdns()` 및 `duckdns_loop()` 백그라운드 IP 동기화 스레드 동작을 비활성화 처리.
+* **cloudflared Connector 서비스 설치 및 기존 ddclient 제거**:
+  - 구버전 ddclient를 한 번 퍼지 처리하고, Cloudflare Zero Trust와 연동하는 `cloudflared` 바이너리를 설치하고 systemd 백그라운드 서비스(Active running)로 정상 안착시킴.
+* **ddclient 재설치 및 Cloudflare API v4 연동 (`p.zxcx.io` DDNS 구성)**:
+  - `apt-get`으로 `ddclient`를 재설치하고 `/etc/ddclient.conf` 파일에 Cloudflare API v4 연동 옵션 적용 (`protocol=cloudflare`, `login=token`, `password=cfut_...`, `zone=zxcx.io`, `p.zxcx.io`).
+  - `ddclient.conf` 파일 권한을 `600`으로 제한하여 보안 격리 후 백그라운드 데몬 서비스(`active (running)`) 활성화.
+  - `ddclient -force` 수동 실행을 통해 A 레코드 강제 업데이트 및 `SUCCESS: updating p.zxcx.io` 성공 동작 검증 완료.
+* **EMQX MQTT 브로커 최신 버전(6.2.1) Docker 구축**:
+  - 기존에 설치한 apt 기반의 EMQX 5.8.9를 정지 및 제거하고, Docker 기반으로 최신 EMQX 6.2.1 버전을 기동 완료.
+  - 우분투 서버 내의 `docker` 사용자 그룹 누락으로 인한 `docker.socket` 기동 장애(Control process exited, status=216/GROUP)를 `groupadd docker` 및 데몬 릴로드를 통해 해결.
+  - Docker 컨테이너를 `--restart always` 및 포트 1883(MQTT), 8083(WS), 8084(WSS), 8883(MQTTS), 18083(대시보드)으로 서비스가 안정 구동되도록 구축 완료.
+
+---
 
 ## 📅 2026-06-23: [단말 펌웨어 & 서버] MQTTS (TLS 8883) 통신 마이그레이션 및 Supabase 인증/규칙 연동
 * **연동 대화 ID**: `9dc91f96-ffb3-4b09-99d9-8e51ecea9d9e` (2부 / 현재 대화)

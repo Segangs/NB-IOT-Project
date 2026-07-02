@@ -151,6 +151,13 @@ def is_logged_in():
     return "user_id" in session or "supabase_token" in session
 
 @app.before_request
+def redirect_www():
+    host = request.headers.get("Host", "")
+    if host.startswith("www.zxcx.io"):
+        new_url = request.url.replace("www.zxcx.io", "zxcx.io", 1)
+        return redirect(new_url, code=301)
+
+@app.before_request
 def check_admin_inactivity():
     if request.endpoint in ('static', 'logout'):
         return
