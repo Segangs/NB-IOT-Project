@@ -13,6 +13,10 @@
   - `README.md` 및 `project_history.md` 신규 항목 작성 시 `했습니다`, `합니다`, `됩니다` 등 풀이형 종결 지양.
   - 항목 제목, bullet, 요약 문장은 `정리`, `반영`, `검증`, `동기화`, `기록` 등 명사형 종결 사용.
 
+- **PCB / 회로도 설계 자료 참조**:
+  - GPIO, 전원 Net, RJ45 센서 케이블링, I2S 마이크, LTC2954 전원관리, EasyEDA/PCB 관련 작업 전 `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` 우선 확인.
+  - 현재 PCB 설계 기준 핵심 후속 확인: R6 100kΩ → 1kΩ 변경, GP7 감지 전압 3.3V 이하 확인, C4 22µF 안전 종료 지연 의도 확인.
+
 - **사전 승인된 명령어 및 URL (반복 Allow 팝업 방지)**:
   - `python3`, `pip3`, `curl`, `nano`, `echo`, `touch`, `rm`, `mv`, `chmod`, `uname`, `ps`, `kill`, `sleep`, `zip`, `unzip`, `tar`, `brew`, `node`, `npm`, `npx`, `ping`, `nslookup`, `dig`, `ssh-keygen` 명령어는 별도의 허가 요청 없이 실행 가능합니다.
   - 웹 검색 및 기술 문서 URL 읽기(`read_url`)는 별도의 허가 요청 없이 수행 가능합니다.

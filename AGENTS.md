@@ -56,6 +56,32 @@ Important firmware constraints:
 - Use `is_modem_busy` around modem communication.
 - Known FreeRTOS task names include `vBootTask`, `vSensorTask`, `vLCDTask`, `vPeriodicModemTask`, and `vBuzzerTask`.
 
+## Hardware And PCB Context
+
+Hardware design files are under `DOCS/PCB/`. Read `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` before changing GPIO assignments, power behavior, sensor cabling, modem wiring, or PCB/manufacturing notes.
+
+Current PCB design summary:
+
+- EasyEDA schematic/PCB export date: `2026-07-02`, editor `6.5.57`.
+- Core modules: Raspberry Pi Pico 2 W, RM78-1 LTE-M, DS1129-04 dual RJ45, DS18B20, SPH0645LM4H, LCD1602 I2C, 8002A speaker amp, IP5306, MP1584EN, LTC2954CTS8-1, 4-pin electronic power switch module.
+- Power nets: `+5V_IP5306` is always-on IP5306 output for LTC2954 and switch input only; `+5V_SYS` is switched system power for Pico, RM78-1, LCD, sensors, and amplifier; `+3V3OUT` is Pico 3.3V for sensors/pull-ups.
+- Modem GPIO map: GP0 LTE TXD, GP1 LTE RXD, GP2 WAKEUP, GP3 RESET, GP4 PWRON, GP5 RM78-1 TXON input, GP28 TXON display LED.
+- Power-management GPIO map: GP14 LTC2954 INT, GP15 LTC2954 KILL.
+- LCD GPIO map: GP16 SDA and GP17 SCL through BSS138 level shifter to 5V LCD1602 I2C.
+- Sensor/audio GPIO map: GP18 I2S BCLK shared, GP19 I2S LRCLK shared, GP20 MIC1 DOUT, GP21 MIC2 DOUT, GP22 TEMP1 DATA, GP26 TEMP2 DATA.
+- LED/speaker GPIO map: GP6 speaker PWM through series resistor, GP8 status red, GP9 status green, GP10-GP13 RJ45 LEDs.
+- DS1129-04 RJ45 UTP pairing: BCLK with GND on pair 4-5; DOUT and TEMP DATA on pair 3-6; LRCLK on pair 7; pin 8/16 NC.
+- DS18B20 pull-ups: 5.1kΩ to `+3V3OUT`; I2S series damping: 47Ω on BCLK/LRCLK/DOUT lines.
+
+Known PCB review follow-ups:
+
+- Change speaker input resistor `R6` from 100kΩ to 1kΩ for `GP6 -> 8002A SIG`.
+- Confirm whether GP7 external-power sensing sees regulated 5V or raw DC jack voltage; keep Pico input below 3.3V.
+- Confirm LTC2954 `C4` PDT 22µF matches desired shutdown delay.
+- Keep I2S 47Ω resistors close to the driving side and preserve GND return around BCLK/LRCLK/DOUT.
+- Keep RM78-1 and 8002A `+5V_SYS` paths wide, with the 1000µF modem capacitor near RM78-1.
+- Treat `DOCS/PCB` as the source of truth for PCB/manufacturing context unless the user provides a newer EasyEDA export.
+
 ## Server Workflow
 
 Use the `run-server`, `mock-test`, and `emqx-setup` skills for server operation, simulated Pico testing, and EMQX setup work.

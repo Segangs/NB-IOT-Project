@@ -26,6 +26,19 @@
 
 ---
 
+## 📅 2026-07-02 (추가): [PCB 설계자료] EasyEDA 회로도·PCB 산출물 반입 및 작업 지침 반영
+* **연동 대화 ID**: Codex PCB 설계자료 숙지 세션
+* **개발 범주**: Hardware Design, EasyEDA, PCB, GPIO Map, Power Management
+* **작업 및 해결 내역**:
+  - `DOCS/PCB/` 내 회로도 PNG, PCB PNG, EasyEDA 회로도/PCB JSON, 포트폴리오 MD/HTML 전체 확인
+  - EasyEDA 회로도 `NB-IOT`, PCB export editor version `6.5.57`, PCB shape/layer/object 구조 확인
+  - Pico 2 W, RM78-1 LTE-M, DS1129-04 듀얼 RJ45, DS18B20, SPH0645LM4H, LCD1602 I2C, 8002A, IP5306, MP1584EN, LTC2954CTS8-1 통합 설계 숙지
+  - `+5V_IP5306` 상시 전원과 `+5V_SYS` 시스템 전원 분리 구조 숙지
+  - GP0~GP5 RM78-1 모뎀, GP14/GP15 LTC2954, GP16/GP17 LCD I2C, GP18~GP22·GP26 센서/I2S 배정 숙지
+  - RJ45 UTP Pair 기준 BCLK-GND Pair 배치, DS18B20 5.1kΩ Pull-up, I2S 47Ω 직렬 댐핑 구성 숙지
+  - 후속 확인 항목 기록: R6 100kΩ → 1kΩ 변경, GP7 감지 전압 확인, C4 22µF 종료 지연 의도 확인
+  - 향후 GPIO·전원·센서 케이블링·PCB 작업 기준을 `AGENTS.md`와 `.agents/AGENTS.md`에 반영
+
 ## 📅 2026-07-02 (추가): [Git 동기화] 미커밋 변경 정리 및 원격 동기화
 * **연동 대화 ID**: Codex 동기화 세션
 * **개발 범주**: Git Sync, Firmware Build, Cloudflare Redirect, Flash Logger, Documentation Policy

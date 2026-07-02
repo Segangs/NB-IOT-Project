@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico 2 W · RM78-1 LTE-M · DS1129-04 센서 허브 PCB 설계 문서</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --paper: #ffffff;
+      --ink: #1f2937;
+      --line: #d1d5db;
+      --accent: #2563eb;
+      --table-head: #eef2ff;
+      --code-bg: #111827;
+      --code-ink: #e5e7eb;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+      line-height: 1.72;
+      word-break: keep-all;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 48px 28px 80px;
+      background: var(--paper);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.04);
+    }
+    h1 {
+      font-size: 2rem;
+      line-height: 1.3;
+      margin: 0 0 28px;
+      padding-bottom: 18px;
+      border-bottom: 3px solid var(--accent);
+    }
+    h2 {
+      font-size: 1.45rem;
+      margin: 42px 0 16px;
+      padding-left: 12px;
+      border-left: 5px solid var(--accent);
+    }
+    h3 {
+      font-size: 1.15rem;
+      margin: 30px 0 12px;
+      color: #111827;
+    }
+    p { margin: 10px 0 14px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      font-size: 0.94rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: var(--table-head);
+      font-weight: 700;
+      text-align: left;
+    }
+    tr:nth-child(even) td { background: #fafafa; }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.92rem;
+    }
+    code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
+    li { margin: 6px 0 6px 22px; }
+    @media print {
+      body { background: #fff; }
+      main { box-shadow: none; padding: 24px; }
+      table { page-break-inside: avoid; }
+      h2, h3 { page-break-after: avoid; }
+    }
+  </style>
+</head>
+<body>
+<main>
+<h1>Pico 2 W · RM78-1 LTE-M · DS1129-04 센서 허브 PCB 설계 문서</h1>
+<h2>1. 문서 개요</h2>
+<p>본 문서는 Raspberry Pi Pico 2 W, RM78-1 LTE-M 모뎀, DS1129-04 듀얼 RJ45 커넥터, DS18B20 온도센서, SPH0645LM4H I2S MEMS 마이크, LCD1602 I2C 표시장치, 8002A 경보 스피커, IP5306 전원 모듈, LTC2954CTS8-1 전원버튼 컨트롤러, 전자식 전원 스위치 모듈을 통합하기 위한 회로 및 PCB 설계 과정 정리문서임.</p>
+<p>설계 목적은 3m UTP 케이블을 통해 외부 센서 보드의 온도 데이터와 공기 중 기계음을 안정적으로 수집하고, LTE-M 통신을 통해 원격 시스템과 연동하며, 배터리 기반 전원관리와 안전 종료 기능을 구현하는 것임. 단순 센서 연결 보드를 넘어서 전원 안정성, 신호 무결성, 커넥터 호환성, 추후 유지보수성, 포트폴리오 공개 가능성을 고려한 통합 제어 PCB 설계가 핵심 목표임.</p>
+<p>본 설계의 주요 특징은 일반 RJ45 8P8C 소켓을 이용한 센서 케이블링, 이더넷 MagJack 배제, I2S 클럭 공유 구조, DS18B20 1-Wire 풀업 구성, GPIO 기능군 분리, LTC2954 기반 안전 종료 전원관리, IP5306 기반 배터리 충전·부스트 전원 구성, 모뎀 송신 시 전원 흔들림 완화, 초보 납땜 가능성을 고려한 모듈형 부품 활용임.</p>
+<hr>
+<h2>2. 전체 시스템 구성</h2>
+<p>전체 시스템은 센서 입력부, MCU 제어부, LTE-M 통신부, 표시 및 경보부, 전원관리부, 외부 인터페이스부로 분리하여 설계함.</p>
+<table>
+<thead><tr><th>블록</th><th>주요 부품</th><th>기능</th></tr></thead>
+<tbody>
+<tr><td>MCU 제어부</td><td>Raspberry Pi Pico 2 W</td><td>센서 수집, I2S 마이크 처리, LTE 제어, LCD 제어, 전원 종료 제어 수행</td></tr>
+<tr><td>LTE-M 통신부</td><td>RM78-1 LTE-M 모듈</td><td>원격 서버 통신, 상태 전송, 데이터 업로드 수행</td></tr>
+<tr><td>센서 입력부</td><td>DS1129-04, DS18B20, SPH0645LM4H</td><td>온도 측정 및 공기 중 기계음 녹음 수행</td></tr>
+<tr><td>표시부</td><td>LCD1602 I2C</td><td>동작 상태, 온도, 네트워크 상태 표시 수행</td></tr>
+<tr><td>경보부</td><td>8002A 앰프 스피커</td><td>이상 상황 경보음 출력 수행</td></tr>
+<tr><td>전원부</td><td>IP5306, MP1584EN, 전자식 전원 스위치</td><td>배터리 충전, 5V 부스트, 시스템 전원 제어 수행</td></tr>
+<tr><td>전원버튼 제어부</td><td>LTC2954CTS8-1, 순간 푸시버튼</td><td>버튼식 ON/OFF, 안전 종료 인터럽트, 전원 차단 제어 수행</td></tr>
+<tr><td>외부 표시부</td><td>상태 LED, TX 상태 LED, TXON LED, RJ45 LED</td><td>시스템 상태 및 통신 상태 시각화 수행</td></tr>
+</tbody></table>
+<hr>
+<h2>3. 회로설계 과정</h2>
+<h3>3.1 RJ45 커넥터 선정 과정</h3>
+<p>초기에는 HR911105A RJ45 커넥터 사용 가능성을 검토함. HR911105A는 일반 RJ45 커넥터가 아니라 이더넷용 절연 트랜스와 초크가 내장된 MagJack 계열 부품임. 내부에 변압기가 포함되어 있으므로 DC 성분과 일반 GPIO High/Low 신호를 정상적으로 통과시키지 못하는 구조임. 따라서 Pico의 GPIO, 1-Wire, I2S, 전원선을 그대로 UTP 케이블로 전달하는 용도에는 부적합한 부품으로 판단함.</p>
+<p>해결책으로 변압기 없는 일반 RJ45 8P8C 소켓을 사용하기로 결정함. 최종 커넥터는 DS1129-04 듀얼 RJ45 포트로 선정함. 이 부품은 2개 RJ45 포트를 하나의 패키지에 포함하며, 각 포트에 LED 2개를 포함하는 구조임. 센서 2세트를 독립적으로 연결할 수 있고, PCB 면적을 줄이며, 케이스 외부 포트 구성도 단순하게 만들 수 있는 장점이 있음.</p>
+<h3>3.2 DS1129-04 풋프린트 검토 과정</h3>
+<p>DS1129-04와 유사한 중국산 RJ45 부품은 EasyEDA에서 정확한 제조사 모델명으로 검색되지 않는 문제가 있었음. 판매 페이지에 표시된 긴 Part Number는 실제 CAD 라이브러리 검색용 부품명이 아니라 주문 코드 또는 옵션 코드에 가까운 형식이었음. 따라서 데이터시트 이미지와 PCB Layout 치수를 기준으로 풋프린트를 검토함.</p>
+<p>최종적으로 확인된 핀 구조는 오른쪽 포트가 1~8번, 왼쪽 포트가 9~16번, 오른쪽 포트 LED가 17~20번, 왼쪽 포트 LED가 21~24번, 실드 고정핀이 25~26번인 구조임. 풋프린트 화면에서 오른쪽 포트의 핀 배열은 윗줄 8, 6, 4, 2와 아랫줄 7, 5, 3, 1로 나타나는 지그재그 구조임. EasyEDA에서는 물리적 위치가 아니라 심볼 핀 번호와 Net Label 기준으로 연결하는 것이 중요함.</p>
+<h3>3.3 센서 신호 배선 설계 과정</h3>
+<p>센서 구성은 각 RJ45 포트마다 DS18B20 온도센서 1개와 SPH0645LM4H I2S MEMS 마이크 1개를 연결하는 방식으로 설계함. DS18B20은 VDD, GND, DATA 3가닥을 사용하고, SPH0645LM4H는 VDD, GND, BCLK, LRCLK, DOUT, SEL 중 SEL을 센서보드에서 GND에 고정하여 5가닥만 RJ45로 전달하는 구조로 결정함.</p>
+<p>SPH0645LM4H의 SEL은 채널 선택 핀으로, 단일 마이크 운용 시 센서 보드에서 GND에 묶어 Left 채널로 고정하는 방식이 가장 단순함. SEL을 RJ45 Pin8로 전달하는 방법도 검토했으나, 실제 운용에서는 채널 변경 필요성이 낮고 배선 복잡도가 증가하므로 Pin8은 NC로 남기는 방식으로 결정함.</p>
+<h3>3.4 UTP Pair 고려 과정</h3>
+<p>CAT5e/CAT6 UTP 케이블은 핀 번호가 순서대로 꼬이는 것이 아니라 1-2, 3-6, 4-5, 7-8이 각각 꼬임쌍을 구성함. 초기 배선안은 단순히 1번부터 8번까지 전원, 접지, 온도, 마이크 신호를 순서대로 배치하는 구조였으나, 이 경우 I2S BCLK와 저속 데이터가 같은 Pair에 배치될 수 있어 신호 무결성 측면에서 불리함.</p>
+<p>최종 배선은 BCLK를 GND와 같은 Pair인 4-5에 배치하고, DOUT과 TEMP DATA를 3-6 Pair에 배치하며, LRCLK를 7번에 배치하는 방식으로 결정함. BCLK는 가장 빠른 클럭 신호이므로 반드시 GND와 인접 또는 같은 꼬임쌍에 배치하는 것이 중요함. DOUT과 TEMP DATA가 같은 Pair를 사용하는 것은 완벽한 구성은 아니지만, BCLK에 비해 상대적으로 간섭 위험이 낮고 8가닥 제한 내에서 가장 현실적인 타협안임.</p>
+<hr>
+<h2>4. 최종 DS1129-04 핀 매칭표</h2>
+<p>기준은 오른쪽 포트를 Port 1, 왼쪽 포트를 Port 2로 정의한 구조임.</p>
+<h3>4.1 RJ45 센서 신호 핀</h3>
+<table>
+<thead><tr><th>DS1129-04 핀</th><th>포트</th><th>UTP Pair</th><th>신호</th><th>Pico GPIO / 연결</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Port 1</td><td>1-2</td><td>+3.3V</td><td>Pico 3V3OUT</td></tr>
+<tr><td>2</td><td>Port 1</td><td>1-2</td><td>GND</td><td>GND</td></tr>
+<tr><td>3</td><td>Port 1</td><td>3-6</td><td>MIC1 DOUT</td><td>GP20</td></tr>
+<tr><td>4</td><td>Port 1</td><td>4-5</td><td>MIC BCLK</td><td>GP18 공유</td></tr>
+<tr><td>5</td><td>Port 1</td><td>4-5</td><td>GND</td><td>GND</td></tr>
+<tr><td>6</td><td>Port 1</td><td>3-6</td><td>TEMP1 DATA</td><td>GP22, 5.1kΩ Pull-up</td></tr>
+<tr><td>7</td><td>Port 1</td><td>7-8</td><td>MIC LRCLK</td><td>GP19 공유</td></tr>
+<tr><td>8</td><td>Port 1</td><td>7-8</td><td>NC</td><td>미사용</td></tr>
+<tr><td>9</td><td>Port 2</td><td>1-2</td><td>+3.3V</td><td>Pico 3V3OUT</td></tr>
+<tr><td>10</td><td>Port 2</td><td>1-2</td><td>GND</td><td>GND</td></tr>
+<tr><td>11</td><td>Port 2</td><td>3-6</td><td>MIC2 DOUT</td><td>GP21</td></tr>
+<tr><td>12</td><td>Port 2</td><td>4-5</td><td>MIC BCLK</td><td>GP18 공유</td></tr>
+<tr><td>13</td><td>Port 2</td><td>4-5</td><td>GND</td><td>GND</td></tr>
+<tr><td>14</td><td>Port 2</td><td>3-6</td><td>TEMP2 DATA</td><td>GP26, 5.1kΩ Pull-up</td></tr>
+<tr><td>15</td><td>Port 2</td><td>7-8</td><td>MIC LRCLK</td><td>GP19 공유</td></tr>
+<tr><td>16</td><td>Port 2</td><td>7-8</td><td>NC</td><td>미사용</td></tr>
+</tbody></table>
+<h3>4.2 RJ45 LED 및 Shield 핀</h3>
+<table>
+<thead><tr><th>DS1129-04 핀</th><th>기능</th><th>Pico GPIO / 연결</th></tr></thead>
+<tbody>
+<tr><td>17</td><td>Port 1 LED 1 Cathode</td><td>GND</td></tr>
+<tr><td>18</td><td>Port 1 LED 1 Anode</td><td>GP10 → 330Ω → Pin18</td></tr>
+<tr><td>19</td><td>Port 1 LED 2 Cathode</td><td>GND</td></tr>
+<tr><td>20</td><td>Port 1 LED 2 Anode</td><td>GP11 → 330Ω → Pin20</td></tr>
+<tr><td>21</td><td>Port 2 LED 1 Cathode</td><td>GND</td></tr>
+<tr><td>22</td><td>Port 2 LED 1 Anode</td><td>GP12 → 330Ω → Pin22</td></tr>
+<tr><td>23</td><td>Port 2 LED 2 Cathode</td><td>GND</td></tr>
+<tr><td>24</td><td>Port 2 LED 2 Anode</td><td>GP13 → 330Ω → Pin24</td></tr>
+<tr><td>25</td><td>Port 1 Shield</td><td>GND 또는 0Ω 경유 GND</td></tr>
+<tr><td>26</td><td>Port 2 Shield</td><td>GND 또는 0Ω 경유 GND</td></tr>
+</tbody></table>
+<hr>
+<h2>5. 최종 GPIO 배정표</h2>
+<p>최종 GPIO 배정은 LTE-M 모뎀 관련 핀을 GP0~GP5에 모으고, 센서·마이크·LCD·전원관리·LED·스피커 기능을 그 외 핀으로 분리한 구조임. 특히 GP5는 TXON LED가 아니라 RM78-1에서 Pico로 들어오는 TXON 입력 신호임. TXON 표시 LED는 별도 출력인 GP28로 제어하는 구조임.</p>
+<table>
+<thead><tr><th>GPIO</th><th>최종 용도</th><th>연결 대상 / 설명</th><th>비고</th></tr></thead>
+<tbody>
+<tr><td>GP0</td><td>LTE TXD</td><td>Pico TX → RM78-1 RXD</td><td>LTE UART 송신</td></tr>
+<tr><td>GP1</td><td>LTE RXD</td><td>RM78-1 TXD → Pico RX</td><td>LTE UART 수신</td></tr>
+<tr><td>GP2</td><td>LTE WAKEUP</td><td>Pico → RM78-1 WAKEUP</td><td>모뎀 Wake 제어</td></tr>
+<tr><td>GP3</td><td>LTE RESET</td><td>Pico → RM78-1 RESET</td><td>모뎀 Reset 제어</td></tr>
+<tr><td>GP4</td><td>LTE PWRON</td><td>Pico → RM78-1 PWRON</td><td>모뎀 전원 제어</td></tr>
+<tr><td>GP5</td><td>LTE TXON 입력</td><td>RM78-1 TXON → Pico 입력</td><td>LED 아님, 모뎀 상태 입력</td></tr>
+<tr><td>GP6</td><td>스피커 PWM</td><td>GP6 → 1kΩ → 8002A SIG</td><td>경보음 출력</td></tr>
+<tr><td>GP7</td><td>외부전원 감지</td><td>VIN/어댑터 입력 감지</td><td>저항분압 후 Pico 입력</td></tr>
+<tr><td>GP8</td><td>상태 LED 빨강</td><td>GP8 → 560Ω → RGB LED R</td><td>부팅 중 빨간색 점멸</td></tr>
+<tr><td>GP9</td><td>상태 LED 초록</td><td>GP9 → 560Ω → RGB LED G</td><td>부팅 완료 후 초록색 ON</td></tr>
+<tr><td>GP10</td><td>RJ45 LED 1</td><td>DS1129-04 Port 1 LED1</td><td>330Ω 또는 1kΩ 직렬</td></tr>
+<tr><td>GP11</td><td>RJ45 LED 2</td><td>DS1129-04 Port 1 LED2</td><td>330Ω 또는 1kΩ 직렬</td></tr>
+<tr><td>GP12</td><td>RJ45 LED 3</td><td>DS1129-04 Port 2 LED1</td><td>330Ω 또는 1kΩ 직렬</td></tr>
+<tr><td>GP13</td><td>RJ45 LED 4</td><td>DS1129-04 Port 2 LED2</td><td>330Ω 또는 1kΩ 직렬</td></tr>
+<tr><td>GP14</td><td>PWR_INT</td><td>LTC2954 INT# → Pico</td><td>OFF 요청 인터럽트 입력</td></tr>
+<tr><td>GP15</td><td>PWR_KILL</td><td>Pico → LTC2954 KILL#</td><td>안전 종료 완료 후 전원 차단 요청</td></tr>
+<tr><td>GP16</td><td>LCD SDA</td><td>Pico → 레벨시프터 LV쪽 → LCD SDA</td><td>I2C 데이터</td></tr>
+<tr><td>GP17</td><td>LCD SCL</td><td>Pico → 레벨시프터 LV쪽 → LCD SCL</td><td>I2C 클럭</td></tr>
+<tr><td>GP18</td><td>I2S BCLK</td><td>SPH0645 #1/#2 공통 BCLK</td><td>마이크 공통 클럭</td></tr>
+<tr><td>GP19</td><td>I2S LRCLK</td><td>SPH0645 #1/#2 공통 LRCLK</td><td>마이크 공통 워드셀렉트</td></tr>
+<tr><td>GP20</td><td>MIC1 DOUT</td><td>Port 1 SPH0645 DOUT</td><td>마이크 1 데이터</td></tr>
+<tr><td>GP21</td><td>MIC2 DOUT</td><td>Port 2 SPH0645 DOUT</td><td>마이크 2 데이터</td></tr>
+<tr><td>GP22</td><td>TEMP1 DATA</td><td>DS18B20 #1 DATA</td><td>5.1kΩ Pull-up</td></tr>
+<tr><td>GP23</td><td>미사용 권장</td><td>가능하면 비워둠</td><td>Pico W 계열 내장 기능 혼동 방지</td></tr>
+<tr><td>GP24</td><td>미사용 권장</td><td>가능하면 비워둠</td><td>Pico W 계열 내장 기능 혼동 방지</td></tr>
+<tr><td>GP25</td><td>미사용 권장</td><td>가능하면 비워둠</td><td>Pico W 계열 내장 기능 혼동 방지</td></tr>
+<tr><td>GP26</td><td>TEMP2 DATA</td><td>DS18B20 #2 DATA</td><td>5.1kΩ Pull-up</td></tr>
+<tr><td>GP27</td><td>예비</td><td>현재 미사용</td><td>확장용 예비</td></tr>
+<tr><td>GP28</td><td>TXON 표시 LED</td><td>TXON 상태 표시용 LED 제어</td><td>GP28 → 560Ω → 초록 LED</td></tr>
+</tbody></table>
+<h3>5.1 LED 관련 최종 배정</h3>
+<table>
+<thead><tr><th>기능</th><th>GPIO</th><th>배선</th></tr></thead>
+<tbody>
+<tr><td>상태 LED 빨강</td><td>GP8</td><td>GP8 → 560Ω → RGB LED R</td></tr>
+<tr><td>상태 LED 초록</td><td>GP9</td><td>GP9 → 560Ω → RGB LED G</td></tr>
+<tr><td>TXON 표시 LED</td><td>GP28</td><td>GP28 → 560Ω → 초록 LED</td></tr>
+<tr><td>RGB 공통핀</td><td>-</td><td>공통 캐소드 기준 GND</td></tr>
+</tbody></table>
+<p>GP27은 상태 LED가 아니라 예비 핀임. 상태 LED는 GP8과 GP9, TXON 표시 LED는 GP28로 확정한 구조임.</p>
+<hr>
+<h2>6. 전원관리 회로 설계</h2>
+<h3>6.1 전원관리 목표</h3>
+<p>전원관리 목표는 사용자가 푸시버튼을 누르면 시스템이 켜지고, 동작 중 다시 버튼을 누르면 Pico가 안전 종료 절차를 수행한 뒤 전체 시스템 전원을 차단하는 것임. 기존 라커스위치 방식은 ON/OFF 상태 유지형이라 LTC2954의 PB 입력과 궁합이 좋지 않고, 안전 종료 구현이 복잡해지는 문제가 있었음. 최종적으로 순간 푸시버튼과 LTC2954 전원버튼 컨트롤러를 사용하는 방식으로 결정함.</p>
+<h3>6.2 전원 Net 분리</h3>
+<p>전원은 항상 살아있는 전원과 시스템 동작 전원으로 분리함.</p>
+<table>
+<thead><tr><th>Net 이름</th><th>의미</th><th>연결 대상</th></tr></thead>
+<tbody>
+<tr><td>+5V_IP5306</td><td>IP5306에서 나오는 항상 살아있는 5V</td><td>LTC2954 VIN, 전자식 전원 스위치 IN</td></tr>
+<tr><td>+5V_SYS</td><td>전자식 전원 스위치 이후의 시스템 5V</td><td>Pico VSYS, RM78-1, LCD, 센서 전원, 8002A 앰프</td></tr>
+<tr><td>+3V3OUT</td><td>Pico에서 생성되는 3.3V</td><td>DS18B20, SPH0645, 풀업 저항</td></tr>
+<tr><td>GND</td><td>공통 접지</td><td>모든 모듈 공통</td></tr>
+</tbody></table>
+<p>핵심 원칙은 꺼져야 하는 모든 부품을 +5V_SYS 뒤쪽에 배치하는 것임. RM78-1 LTE 모뎀, LCD, 8002A 앰프, 센서 전원, Pico VSYS는 모두 +5V_SYS에 연결함. +5V_IP5306에는 LTC2954와 전자식 전원 스위치 입력만 연결함.</p>
+<h3>6.3 LTC2954CTS8-1 연결 방식</h3>
+<table>
+<thead><tr><th>LTC2954 핀명</th><th>연결</th><th>의도</th></tr></thead>
+<tbody>
+<tr><td>VIN</td><td>+5V_IP5306</td><td>전원 OFF 상태에서도 버튼 감지를 위한 상시 전원 공급</td></tr>
+<tr><td>GND</td><td>GND</td><td>기준 접지</td></tr>
+<tr><td>PB</td><td>CN2 푸시버튼 → GND</td><td>사용자의 전원 ON/OFF 요청 입력</td></tr>
+<tr><td>EN</td><td>전자식 전원 스위치 SW, R13 100kΩ Pull-down</td><td>시스템 5V ON/OFF 제어 및 EN 부동 방지</td></tr>
+<tr><td>INT</td><td>Pico GP14, R14 10kΩ Pull-up → +3V3OUT</td><td>OFF 요청을 MCU에 전달</td></tr>
+<tr><td>KILL</td><td>Pico GP15, R15 10kΩ Pull-up → +3V3OUT</td><td>안전 종료 완료 후 EN 차단 허가</td></tr>
+<tr><td>ONT</td><td>C6 1µF → GND</td><td>ON 버튼 인식 시간 설정</td></tr>
+<tr><td>PDT</td><td>C4 22µF → GND</td><td>OFF 대기 시간 설정, 안전 종료 시간 여유 확보</td></tr>
+</tbody></table>
+<h3>6.4 전자식 전원 스위치 모듈 연결 방식</h3>
+<p>사용 부품은 IN, SW, OUT, GND 네 단자를 가진 3V~25V 2A 전자식 전원 스위치 모듈 B버전, 즉 NO 스루홀 버전으로 결정함. 이 모듈은 SW가 High일 때 IN과 OUT을 연결하고, SW가 Low일 때 차단하는 단순 로드스위치 역할을 수행함.</p>
+<table>
+<thead><tr><th>모듈 단자</th><th>연결 Net</th><th>설명</th></tr></thead>
+<tbody>
+<tr><td>IN</td><td>+5V_IP5306</td><td>IP5306의 5V 입력</td></tr>
+<tr><td>SW</td><td>PWR_EN</td><td>LTC2954 EN 출력</td></tr>
+<tr><td>OUT</td><td>+5V_SYS</td><td>시스템 전원 출력</td></tr>
+<tr><td>GND</td><td>GND</td><td>공통 접지</td></tr>
+</tbody></table>
+<h3>6.5 푸시버튼 동작 과정</h3>
+<table>
+<thead><tr><th>단계</th><th>동작</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>IP5306이 +5V_IP5306을 생성함</td></tr>
+<tr><td>2</td><td>LTC2954가 VIN에서 대기함</td></tr>
+<tr><td>3</td><td>사용자가 푸시버튼을 누름</td></tr>
+<tr><td>4</td><td>PB 핀이 GND로 떨어짐</td></tr>
+<tr><td>5</td><td>LTC2954가 버튼 이벤트를 감지함</td></tr>
+<tr><td>6</td><td>LTC2954 EN이 활성화됨</td></tr>
+<tr><td>7</td><td>전자식 전원 스위치 SW가 High가 됨</td></tr>
+<tr><td>8</td><td>전자식 전원 스위치의 IN과 OUT이 연결됨</td></tr>
+<tr><td>9</td><td>+5V_SYS가 살아남</td></tr>
+<tr><td>10</td><td>Pico, LTE, LCD, 센서, 앰프가 부팅함</td></tr>
+</tbody></table>
+<h3>6.6 안전 종료 동작 과정</h3>
+<table>
+<thead><tr><th>단계</th><th>동작</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>사용자가 동작 중 푸시버튼을 다시 누름</td></tr>
+<tr><td>2</td><td>LTC2954가 OFF 요청으로 판단함</td></tr>
+<tr><td>3</td><td>LTC2954 INT가 Pico GP14로 전달됨</td></tr>
+<tr><td>4</td><td>Pico가 센서 기록, LTE 통신, 로그 저장, LCD 표시 종료를 수행함</td></tr>
+<tr><td>5</td><td>Pico가 GP15를 통해 LTC2954 KILL 신호를 출력함</td></tr>
+<tr><td>6</td><td>LTC2954가 EN을 비활성화함</td></tr>
+<tr><td>7</td><td>전자식 전원 스위치가 +5V_SYS를 차단함</td></tr>
+<tr><td>8</td><td>Pico, LTE, LCD, 센서, 앰프 전원이 차단됨</td></tr>
+<tr><td>9</td><td>LTC2954와 IP5306만 대기 상태로 유지됨</td></tr>
+</tbody></table>
+<hr>
+<h2>7. 부품 목록 및 기능</h2>
+<table>
+<thead><tr><th>부품</th><th>수량</th><th>기능</th><th>비고</th></tr></thead>
+<tbody>
+<tr><td>Raspberry Pi Pico 2 W</td><td>1</td><td>메인 MCU</td><td>센서 수집, 통신 제어, 전원 종료 제어</td></tr>
+<tr><td>RM78-1 LTE-M 모듈</td><td>1</td><td>LTE-M 통신</td><td>UART 및 제어핀 연결</td></tr>
+<tr><td>DS1129-04 듀얼 RJ45</td><td>1</td><td>센서 포트 2개 제공</td><td>LED 내장형</td></tr>
+<tr><td>DS18B20</td><td>2</td><td>온도센서</td><td>각 포트 1개</td></tr>
+<tr><td>SPH0645LM4H</td><td>2</td><td>I2S MEMS 마이크</td><td>공기 중 기계음 녹음</td></tr>
+<tr><td>LCD1602 I2C</td><td>1</td><td>상태 표시</td><td>GP16/GP17 사용</td></tr>
+<tr><td>8002A 앰프 스피커</td><td>1</td><td>경보음 출력</td><td>GP6 PWM</td></tr>
+<tr><td>IP5306 모듈</td><td>1</td><td>배터리 충전 및 5V 부스트</td><td>+5V_IP5306 생성</td></tr>
+<tr><td>MP1584EN 모듈</td><td>1</td><td>DC 입력 전압 변환</td><td>충전 입력 또는 5V 전원 보조</td></tr>
+<tr><td>LTC2954CTS8-1</td><td>1</td><td>전원버튼 컨트롤러</td><td>PB/EN/INT/KILL 구성</td></tr>
+<tr><td>전자식 전원 스위치 B버전</td><td>1</td><td>시스템 5V 스위칭</td><td>IN/SW/OUT/GND</td></tr>
+<tr><td>순간 푸시버튼</td><td>1</td><td>전원 버튼</td><td>LTC2954 PB 연결</td></tr>
+<tr><td>5.1kΩ 저항</td><td>2</td><td>DS18B20 DATA Pull-up</td><td>4.7kΩ 대체 가능</td></tr>
+<tr><td>330Ω 저항</td><td>4</td><td>RJ45 LED 4개</td><td>각 RJ45 LED 직렬</td></tr>
+<tr><td>560Ω 저항</td><td>3</td><td>상태 LED 빨강/초록, TXON 표시 LED</td><td>GP8, GP9, GP28 LED 직렬, 현재 회로도 기준</td></tr>
+<tr><td>1kΩ 저항</td><td>1</td><td>8002A 입력 보호</td><td>GP6 → 8002A SIG 직렬 권장, 현재 회로도 R6=100kΩ은 수정 필요</td></tr>
+<tr><td>47Ω 저항</td><td>6</td><td>I2S 신호 직렬 댐핑</td><td>BCLK, LRCLK, DOUT 라인 반사·링잉 완화</td></tr>
+<tr><td>10kΩ 저항</td><td>2</td><td>LTC2954 INT/KILL Pull-up</td><td>R14, R15</td></tr>
+<tr><td>100kΩ 저항</td><td>3</td><td>외부전원 감지 분압 및 PWR_EN Pull-down</td><td>R4/R5, R13</td></tr>
+<tr><td>0.1µF 세라믹 캐패시터</td><td>복수</td><td>디커플링</td><td>104 표기 부품</td></tr>
+<tr><td>1µF 캐패시터</td><td>1</td><td>LTC2954 ONT 타이밍</td><td>C6</td></tr>
+<tr><td>22µF 캐패시터</td><td>1</td><td>LTC2954 PDT 타이밍</td><td>C4, 안전 종료 시간 여유 확보</td></tr>
+<tr><td>10µF 캐패시터</td><td>복수</td><td>전원 안정화</td><td>+5V_SYS, RJ45 전원 근처</td></tr>
+<tr><td>470µF~1000µF 캐패시터</td><td>1 이상</td><td>LTE 순간 전류 보강</td><td>모뎀 전원 근처</td></tr>
+<tr><td>핀헤더</td><td>복수</td><td>모듈 연결</td><td>교체 및 테스트 용이</td></tr>
+<tr><td>SOT/TSOT-23-8 풋프린트 또는 변환기판</td><td>1 이상</td><td>LTC2954 실장</td><td>납땜 실패 대비</td></tr>
+</tbody></table>
+<hr>
+<h2>8. 각 부품별 기능과 연결 의도</h2>
+<h3>8.1 Raspberry Pi Pico 2 W</h3>
+<p>Pico 2 W는 전체 시스템의 중앙 제어기로 사용함. LTE 모뎀 제어, I2S 마이크 데이터 수집, DS18B20 온도값 읽기, LCD 표시, LED 상태 표시, 경보음 PWM 출력, 안전 종료 로직을 모두 담당함. GP0~GP4는 LTE 모뎀 주변 기능으로 묶어 배치하고, 센서 신호는 GP18~GP22 및 GP26으로 이동하여 노이즈원과 물리적으로 분리함.</p>
+<h3>8.2 RM78-1 LTE-M 모듈</h3>
+<p>RM78-1은 LTE-M 통신을 담당하는 모듈임. UART TX/RX는 GP0/GP1에 배정하고, WAKEUP, RESET, PWRON 등 제어선은 GP2/GP3 계열에 배정함. TXON 신호는 RM78-1에서 Pico GP5로 입력받고, TXON 표시 LED는 Pico GP28로 별도 제어함. 모뎀은 송신 시 순간 전류가 커질 수 있으므로 +5V_SYS 근처에 470µF~1000µF 캐패시터를 병렬로 배치함.</p>
+<h3>8.3 DS1129-04 듀얼 RJ45</h3>
+<p>DS1129-04는 외부 센서 케이블 연결용 포트임. 각 포트는 DS18B20 1개와 SPH0645LM4H 1개를 연결하는 센서 허브 인터페이스로 사용함. RJ45 내부 LED 4개는 모두 사용하여 포트별 상태 표시 기능을 제공함. 실드 핀은 GND에 연결하거나 0Ω 저항을 통해 GND에 연결하여 EMI 및 접지 문제에 대응할 수 있도록 함.</p>
+<h3>8.4 DS18B20 온도센서</h3>
+<p>DS18B20은 1-Wire 디지털 온도센서임. 각 포트마다 DATA 1가닥을 Pico에 독립 연결함. DATA 라인은 5.1kΩ 저항으로 3.3V에 Pull-up함. 원래 4.7kΩ이 일반적이나 5.1kΩ도 3m UTP 조건에서 실사용 가능한 값으로 판단함.</p>
+<h3>8.5 SPH0645LM4H I2S 마이크</h3>
+<p>SPH0645LM4H는 I2S 출력 MEMS 마이크임. BCLK와 LRCLK는 두 마이크가 공유하고, DOUT만 마이크별로 분리함. 이를 통해 GPIO 사용량을 줄이고 I2S 구조를 단순화함. 마이크 SEL 핀은 센서 보드에서 GND에 직접 연결하여 Left 채널로 고정함. BCLK는 UTP Pair 4-5에서 GND와 함께 전달하여 신호 무결성을 높임.</p>
+<h3>8.6 LCD1602 I2C</h3>
+<p>LCD1602는 I2C 인터페이스로 GP16 SDA, GP17 SCL에 연결함. LCD는 시스템 상태, 온도값, LTE 상태, 안전 종료 메시지를 표시하는 용도임. 전원은 +5V_SYS에서 공급하여 시스템 OFF 시 함께 꺼지도록 구성함.</p>
+<h3>8.7 8002A 앰프 스피커</h3>
+<p>8002A 앰프 스피커는 경보음 출력용으로 사용함. Pico GP6에서 PWM 신호를 출력하고, 1kΩ 직렬 저항을 거쳐 8002A IN에 입력하는 방식으로 구성함. 전원은 +5V_SYS에 연결하여 시스템 OFF 시 대기전류를 제거함. 마이크 입력부와 8002A 출력부는 PCB에서 가능한 멀리 배치하여 오디오 피드백과 노이즈 유입을 줄이는 것이 설계 의도임.</p>
+<h3>8.8 IP5306 전원 모듈</h3>
+<p>IP5306은 18650 리튬 배터리 충전, 보호, 5V 부스트 출력을 담당함. IP5306의 VOUT은 +5V_IP5306으로 명명하고 LTC2954와 전자식 전원 스위치 입력에만 연결함. 기존에는 IP5306 출력이 Pico와 모뎀에 직접 연결되는 구조였으나, 안전 종료 후 전원 차단 기능을 위해 전자식 전원 스위치 앞단 전원으로 역할을 제한함.</p>
+<h3>8.9 LTC2954CTS8-1</h3>
+<p>LTC2954CTS8-1은 푸시버튼 기반 전원관리 IC임. 사용자가 버튼을 누르면 EN을 통해 전자식 스위치를 켜고, 동작 중 버튼을 다시 누르면 INT로 Pico에 종료 요청을 전달함. Pico가 종료 작업을 마친 후 KILL 신호를 보내면 LTC2954가 EN을 끄고 시스템 전원을 차단함. 전원 케이블을 뺐다가 다시 꽂아도 기본적으로 시스템은 OFF 대기 상태가 되며, 사용자가 푸시버튼을 눌러야 켜지는 구조임.</p>
+<h3>8.10 전자식 전원 스위치 모듈</h3>
+<p>전자식 전원 스위치 모듈은 LTC2954 EN 신호에 따라 +5V_SYS를 공급하거나 차단하는 로드스위치 역할임. B버전 NO 스루홀 제품을 사용하며, 단자는 IN, SW, OUT, GND 네 개임. IN은 +5V_IP5306, OUT은 +5V_SYS, SW는 LTC2954 EN, GND는 공통 GND에 연결함. 모듈형 부품으로 사용하여 AO3401 MOSFET 단품 회로보다 납땜과 검증 난이도를 낮춤.</p>
+<hr>
+<h2>9. PCB 설계 과정</h2>
+<h3>9.1 PCB 크기 산정</h3>
+<p>초기 권장 PCB 크기는 100mm × 80mm임. 80mm × 60mm도 이론적으로 가능하지만, Pico 2 W, RM78-1, IP5306, MP1584EN, DS1129-04, 전원 스위치 모듈, 8002A, 대용량 캐패시터, 외부 커넥터, 나사홀을 모두 고려하면 초보 설계에서는 지나치게 빡빡함. 100mm × 80mm로 시작하여 배치 안정성을 확인한 뒤 필요하면 90mm × 70mm까지 줄이는 방식이 적합함.</p>
+<h3>9.2 배치 원칙</h3>
+<table>
+<thead><tr><th>PCB 영역</th><th>배치 권장</th></tr></thead>
+<tbody>
+<tr><td>왼쪽 가장자리</td><td>DS1129-04 RJ45 포트 배치</td></tr>
+<tr><td>오른쪽 중앙</td><td>Pico 2 W 배치</td></tr>
+<tr><td>오른쪽 하단</td><td>RM78-1 LTE 모뎀 배치</td></tr>
+<tr><td>상단 또는 좌상단</td><td>IP5306, MP1584EN, 전자식 전원 스위치 배치</td></tr>
+<tr><td>모뎀 근처</td><td>1000µF 캐패시터 배치</td></tr>
+<tr><td>RJ45 근처</td><td>10µF 및 0.1µF 디커플링 배치</td></tr>
+<tr><td>보드 외곽</td><td>LCD, 버튼, LED, 스피커 커넥터 배치</td></tr>
+<tr><td>모서리</td><td>M3 나사홀 4개 배치</td></tr>
+</tbody></table>
+<h3>9.3 신호 배선 원칙</h3>
+<p>I2S BCLK는 가장 민감한 고속 신호이므로 가능한 짧게 배선하고, GND와 가까이 유지함. 마이크 DOUT 라인과 LRCLK 라인은 LTE 모뎀 전원선과 8002A 스피커 출력선에서 떨어뜨려 배치함. DS18B20 DATA 라인은 저속 신호지만 3m UTP 외부 케이블을 사용하므로 Pull-up 저항을 MCU 보드 쪽에 배치함. 업로드된 회로도에서는 I2S 관련 라인에 47Ω 직렬저항이 추가되어 있으며, 이는 3m UTP 케이블에서 신호 반사와 링잉을 완화하기 위한 보강으로 반영함.</p>
+<h3>9.4 전원 배선 원칙</h3>
+<p>+5V_IP5306와 +5V_SYS를 명확히 분리함. +5V_IP5306는 항상 살아있는 전원으로 폭을 적절히 확보하되, 연결 대상은 LTC2954와 전자식 전원 스위치 IN에 제한함. +5V_SYS는 Pico, LTE, LCD, 센서, 앰프를 공급하므로 굵은 전원 패턴을 사용함. 모뎀과 앰프 전원 패턴은 가능하면 넓게 설계하고, GND 리턴 경로를 짧고 굵게 유지함.</p>
+<h3>9.5 모듈형 부품 풋프린트 처리</h3>
+<p>전자식 전원 스위치 모듈은 명확한 모델명이 없고 EasyEDA 라이브러리 검색이 어려움. 따라서 PCB에는 전자식 스위치 전용 심볼 대신 4핀 커넥터 또는 4개 패드로 처리함. 핀헤더 또는 와이어 연결 방식으로 IN, SW, OUT, GND를 연결하면 모듈 교체가 쉽고, 향후 다른 로드스위치 모듈로 변경할 때 PCB 수정 부담이 줄어듦.</p>
+<hr>
+<h2>10. PCB 제원</h2>
+<table>
+<thead><tr><th>항목</th><th>권장 제원</th></tr></thead>
+<tbody>
+<tr><td>PCB 크기</td><td>100mm × 80mm 권장, 배치 후 90mm × 70mm 축소 검토</td></tr>
+<tr><td>층수</td><td>2 Layer</td></tr>
+<tr><td>두께</td><td>1.6mm</td></tr>
+<tr><td>구리 두께</td><td>1oz 기본</td></tr>
+<tr><td>최소 전원선 폭</td><td>+5V_SYS는 가능한 넓게, 1mm 이상 권장</td></tr>
+<tr><td>신호선 폭</td><td>0.2~0.3mm 이상</td></tr>
+<tr><td>GND</td><td>Bottom Layer GND Plane 권장</td></tr>
+<tr><td>나사홀</td><td>M3 4개 권장</td></tr>
+<tr><td>커넥터 방향</td><td>RJ45는 외부 케이블 삽입 방향 고려</td></tr>
+<tr><td>전원 커넥터</td><td>배터리/충전/USB 접근성 고려</td></tr>
+<tr><td>실크 표기</td><td>모든 Net, 극성, 버튼, LED 기능명 표기 권장</td></tr>
+</tbody></table>
+<hr>
+<h2>11. 설계 중 문제점 및 해결 방법</h2>
+<table>
+<thead><tr><th>문제</th><th>원인</th><th>해결 방법</th></tr></thead>
+<tbody>
+<tr><td>HR911105A 사용 가능성 혼동</td><td>MagJack 내부 변압기 존재</td><td>일반 GPIO 전송 불가 판단, 일반 RJ45 8P8C로 변경</td></tr>
+<tr><td>EasyEDA에서 RJ45 모델명 검색 실패</td><td>판매자 주문코드와 실제 CAD 부품명 불일치</td><td>데이터시트와 풋프린트 핀 번호 기준으로 직접 매칭</td></tr>
+<tr><td>DS1129-04 핀 번호 혼동</td><td>지그재그 풋프린트 배열</td><td>물리 위치가 아니라 심볼 핀 번호 기준 배선</td></tr>
+<tr><td>UTP 신호 간섭 우려</td><td>I2S BCLK와 센서선 3m 전송</td><td>BCLK-GND Pair 배치, 클럭 저속 운용</td></tr>
+<tr><td>SPH0645 SEL 처리 혼동</td><td>RJ45로 뺄지 보드에서 고정할지 선택 필요</td><td>센서보드에서 GND에 직접 연결하여 Left 채널 고정</td></tr>
+<tr><td>DS18B20 Pull-up 값 문제</td><td>4.7kΩ 미보유</td><td>5.1kΩ 사용 가능 판단</td></tr>
+<tr><td>LTE 모뎀 전원 출렁임 우려</td><td>송신 시 순간 전류 증가</td><td>1000µF 캐패시터 및 0.1µF/10µF 병렬 디커플링 적용</td></tr>
+<tr><td>전원 버튼 방식 복잡화</td><td>라커스위치와 안전 종료 요구 충돌</td><td>푸시버튼 + LTC2954 방식으로 변경</td></tr>
+<tr><td>로드스위치 모듈 검색 어려움</td><td>TPS22918 모듈 수급 문제</td><td>2A 전자식 전원 스위치 B버전으로 대체</td></tr>
+<tr><td>AO3401 단품 사용 고민</td><td>MOSFET 주변회로 필요</td><td>모듈형 전자식 스위치 사용으로 부품 수 감소</td></tr>
+<tr><td>LTC2954 납땜 난이도</td><td>TSOT/SOT23-8 SMD 패키지</td><td>PCB 직접 실장 또는 변환기판 예비 확보</td></tr>
+<tr><td>전자식 스위치 모델명 부재</td><td>중국산 모듈명 불명확</td><td>IN/SW/OUT/GND 4핀 커넥터로 추상화</td></tr>
+<tr><td>전원 Net 혼동</td><td>IP5306 출력과 시스템 출력 구분 필요</td><td>+5V_IP5306, +5V_SYS Net으로 분리</td></tr>
+<tr><td>전원 복구 후 자동 ON 요구</td><td>정상 OFF와 정전 복구 구분 필요</td><td>1차 설계에서는 OFF 유지 우선, 자동 복구는 추후 검토</td></tr>
+</tbody></table>
+<hr>
+<h2>12. EasyEDA 회로도·PCB 검토 반영 사항</h2>
+<p>업로드된 EasyEDA 회로도와 PCB 배치 이미지를 기준으로 실제 설계에 반영된 항목과 추가 수정이 필요한 항목을 재검토함. 회로도 기준 주요 구성요소는 U5 전자식 전원 스위치 모듈, U6 LTC2954CTS8-1, U7 BSS138 레벨시프터, RJ1 DS1129-04 듀얼 RJ45, U2 RM78-1, U1 Pico 2 W, U4 IP5306, U3 MP1584EN 모듈임.</p>
+<h3>12.1 전원관리부 검토 결과</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 회로도 상태</th><th>판단 / 반영</th></tr></thead>
+<tbody>
+<tr><td>U5 전자식 전원 스위치</td><td>IN, SW, OUT, GND 4핀 모듈로 구성</td><td>모델명 없는 모듈을 4핀 전원 스위치로 추상화한 방식 적절함</td></tr>
+<tr><td>U5 IN</td><td>+5V_IP5306 연결</td><td>정상</td></tr>
+<tr><td>U5 OUT</td><td>+5V_SYS 연결</td><td>정상</td></tr>
+<tr><td>U5 SW</td><td>LTC2954 EN 계열 연결</td><td>정상</td></tr>
+<tr><td>R13</td><td>100kΩ Pull-down</td><td>전자식 스위치 SW가 부동 상태로 켜지는 것을 방지하는 보강으로 적절함</td></tr>
+<tr><td>U6 VIN</td><td>+5V_IP5306 연결</td><td>전원 OFF 상태에서도 LTC2954가 버튼을 감지해야 하므로 정상</td></tr>
+<tr><td>U6 PB</td><td>CN2 푸시버튼 커넥터 연결</td><td>정상</td></tr>
+<tr><td>U6 INT</td><td>GP14 및 R14 10kΩ Pull-up</td><td>OFF 요청 입력 구조로 적절함</td></tr>
+<tr><td>U6 KILL</td><td>GP15 및 R15 10kΩ Pull-up</td><td>안전 종료 완료 후 전원차단 구조로 적절함</td></tr>
+<tr><td>C6</td><td>1µF, ONT 타이밍용</td><td>정상</td></tr>
+<tr><td>C4</td><td>22µF, PDT 타이밍용</td><td>기존 문서의 1µF에서 실제 회로도 기준 22µF로 수정 반영함</td></tr>
+</tbody></table>
+<p>C4를 22µF로 사용하면 OFF 버튼 입력 후 시스템이 전원 차단되기 전까지 더 긴 대기시간을 확보할 수 있음. LTE 모뎀 종료, 로그 저장, LCD 메시지 표시 등 안전 종료 시간이 필요한 현재 시스템에는 오히려 유리한 구성임. 단, 실제 펌웨어 종료 시간이 짧다면 PDT 값은 1µF~10µF 범위로 줄여도 되는 선택사항임.</p>
+<h3>12.2 스피커 회로 수정 필요 사항</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 회로도 상태</th><th>판단 / 조치</th></tr></thead>
+<tbody>
+<tr><td>CN3 8002A SIG</td><td>GP6에서 R6을 거쳐 입력</td><td>구조는 정상</td></tr>
+<tr><td>R6 값</td><td>100kΩ으로 표기</td><td>경보 PWM 신호용으로 너무 큼</td></tr>
+<tr><td>권장 수정</td><td>R6 = 1kΩ</td><td>GP6 → 1kΩ → 8002A SIG로 수정 필요</td></tr>
+</tbody></table>
+<p>현재 회로도에서 R6이 100kΩ으로 표기되어 있음. 8002A 입력 보호용 직렬저항으로 100kΩ은 지나치게 큰 값이며 PWM 신호가 약해져 경보음 출력이 작아지거나 입력 응답이 둔해질 수 있음. 최종 설계에서는 R6을 1kΩ으로 변경하는 것이 적절함.</p>
+<h3>12.3 LCD I2C 레벨시프터 검토 결과</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 회로도 상태</th><th>판단</th></tr></thead>
+<tbody>
+<tr><td>U7 BSS138 LV</td><td>+3V3OUT 연결</td><td>정상</td></tr>
+<tr><td>U7 BSS138 HV</td><td>+5V_SYS 연결</td><td>정상</td></tr>
+<tr><td>GP16</td><td>LV측 SDA 연결</td><td>정상</td></tr>
+<tr><td>GP17</td><td>LV측 SCL 연결</td><td>정상</td></tr>
+<tr><td>CN4 LCD VCC</td><td>+5V_SYS 연결</td><td>시스템 OFF 시 LCD도 꺼지는 구조로 정상</td></tr>
+<tr><td>CN4 SDA/SCL</td><td>HV측 I2C 연결</td><td>5V LCD1602 I2C 모듈과 호환되는 구성임</td></tr>
+</tbody></table>
+<p>LCD1602 I2C 모듈이 5V 풀업을 갖는 경우 Pico의 3.3V GPIO에 직접 연결하면 위험할 수 있음. BSS138 레벨시프터를 사용하여 Pico 측은 3.3V, LCD 측은 5V로 분리한 현재 구조는 적절함.</p>
+<h3>12.4 RJ45 및 센서부 검토 결과</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 회로도 상태</th><th>판단</th></tr></thead>
+<tbody>
+<tr><td>RJ45 Port 1 전원</td><td>Pin1 +3V3OUT, Pin2/5 GND</td><td>정상</td></tr>
+<tr><td>RJ45 Port 2 전원</td><td>Pin9 +3V3OUT, Pin10/13 GND</td><td>정상</td></tr>
+<tr><td>TEMP1 DATA</td><td>GP22, R10 5.1kΩ Pull-up</td><td>정상</td></tr>
+<tr><td>TEMP2 DATA</td><td>GP26, R11 5.1kΩ Pull-up</td><td>정상</td></tr>
+<tr><td>I2S BCLK</td><td>GP18 공통, 47Ω 직렬저항 배치</td><td>정상</td></tr>
+<tr><td>I2S LRCLK</td><td>GP19 공통, 47Ω 직렬저항 배치</td><td>정상</td></tr>
+<tr><td>MIC1 DOUT</td><td>GP20, 47Ω 직렬저항 배치</td><td>정상</td></tr>
+<tr><td>MIC2 DOUT</td><td>GP21, 47Ω 직렬저항 배치</td><td>정상</td></tr>
+<tr><td>C3/C5</td><td>RJ45 센서 전원 근처 10µF/0.1µF</td><td>전원 안정화 보강으로 적절함</td></tr>
+</tbody></table>
+<p>I2S 신호 라인에 47Ω 직렬저항을 추가한 것은 기존 설계보다 더 나은 보강임. 3m UTP 케이블에서 BCLK, LRCLK, DOUT 신호의 링잉과 반사를 줄이는 데 도움이 되는 구성임. 저항은 가능하면 Pico 쪽 또는 신호를 구동하는 쪽에 가깝게 배치하는 것이 유리함.</p>
+<h3>12.5 LTE 모뎀 전원부 검토 결과</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 회로도 상태</th><th>판단</th></tr></thead>
+<tbody>
+<tr><td>RM78-1 전원</td><td>+5V_SYS 연결</td><td>정상</td></tr>
+<tr><td>C1</td><td>1000µF/12V</td><td>LTE 송신 순간 전류 보강용으로 적절함</td></tr>
+<tr><td>C2</td><td>0.1µF</td><td>고주파 디커플링용으로 적절함</td></tr>
+<tr><td>TXON</td><td>GP5 입력으로 연결</td><td>최종 GPIO 배정과 일치함</td></tr>
+<tr><td>TXON 표시 LED</td><td>GP28 별도 출력</td><td>최종 GPIO 배정과 일치함</td></tr>
+</tbody></table>
+<p>모뎀 전원이 +5V_IP5306이 아니라 +5V_SYS에 연결된 점은 중요함. 시스템 OFF 시 모뎀 전원도 함께 차단되어야 하므로 현재 방향이 적절함.</p>
+<h3>12.6 외부전원 감지 회로 검토 결과</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 회로도 상태</th><th>판단 / 주의</th></tr></thead>
+<tbody>
+<tr><td>GP7</td><td>외부전원 감지 입력</td><td>최종 GPIO 배정과 일치함</td></tr>
+<tr><td>R4/R5</td><td>100kΩ/100kΩ 분압 구조</td><td>5V 감지라면 적절함</td></tr>
+<tr><td>주의점</td><td>DC 잭 원전압이 5V보다 높을 경우</td><td>GP7 전압이 3.3V를 넘지 않도록 분압비 재검토 필요</td></tr>
+</tbody></table>
+<p>현재 R4/R5가 100kΩ/100kΩ이라면 입력 전압을 절반으로 낮추는 구조임. 감지 대상이 5V라면 GP7에는 약 2.5V가 들어오므로 안전함. 그러나 DC 잭 원전압이 9V 또는 12V까지 올라갈 수 있는 구조라면 GP7에 4.5V 또는 6V가 걸릴 수 있으므로 위험함. 외부전원 감지 지점이 MP1584 출력 또는 5V 라인인지, DC 잭 원전압인지 최종 확인 필요함.</p>
+<h3>12.7 LED 회로 검토 결과</h3>
+<table>
+<thead><tr><th>LED</th><th>GPIO</th><th>현재 저항</th><th>판단</th></tr></thead>
+<tbody>
+<tr><td>RJ45 Port 1 LED1</td><td>GP10</td><td>330Ω</td><td>정상</td></tr>
+<tr><td>RJ45 Port 1 LED2</td><td>GP11</td><td>330Ω</td><td>정상</td></tr>
+<tr><td>RJ45 Port 2 LED1</td><td>GP12</td><td>330Ω</td><td>정상</td></tr>
+<tr><td>RJ45 Port 2 LED2</td><td>GP13</td><td>330Ω</td><td>정상</td></tr>
+<tr><td>상태 LED 빨강</td><td>GP8</td><td>560Ω</td><td>정상</td></tr>
+<tr><td>상태 LED 초록</td><td>GP9</td><td>560Ω</td><td>정상</td></tr>
+<tr><td>TXON 표시 LED</td><td>GP28</td><td>560Ω</td><td>정상</td></tr>
+</tbody></table>
+<p>기존 문서에는 상태 LED와 TXON 표시 LED를 1kΩ으로 표기했으나, 실제 회로도는 560Ω으로 설계되어 있음. 560Ω도 Pico GPIO 표시 LED용으로 사용 가능한 값이며, 1kΩ보다 밝기가 높음. 전류를 더 줄이고 싶다면 1kΩ으로 변경 가능하지만, 현재 560Ω 설계도 사용 가능함.</p>
+<h3>12.8 PCB 배치 검토 결과</h3>
+<table>
+<thead><tr><th>항목</th><th>현재 PCB 상태</th><th>판단</th></tr></thead>
+<tbody>
+<tr><td>보드 외곽</td><td>약 100mm급 정사각형에 가까운 배치</td><td>초기 권장 크기와 유사하며 조립 여유 있음</td></tr>
+<tr><td>RJ45</td><td>하단 가장자리 배치</td><td>외부 케이블 삽입 방향 확보 가능</td></tr>
+<tr><td>RM78-1</td><td>상단 중앙 배치</td><td>안테나/모뎀 영역 분리 측면에서 양호함</td></tr>
+<tr><td>전원부</td><td>우측 영역 집중 배치</td><td>+5V_SYS 분기 관리에 유리함</td></tr>
+<tr><td>Pico</td><td>중앙 배치</td><td>각 기능 블록으로 배선 분배하기 쉬운 구조임</td></tr>
+<tr><td>1000µF 캐패시터</td><td>RM78-1 근처 배치</td><td>LTE 순간 전류 보강에 유리함</td></tr>
+<tr><td>GND Copper Area</td><td>전체 하단 영역 사용</td><td>접지 리턴 경로 확보에 유리함</td></tr>
+<tr><td>스크류홀</td><td>4개 모서리 배치</td><td>케이스 고정성 양호함</td></tr>
+</tbody></table>
+<p>PCB 배치상 모뎀 전원 라인과 센서/I2S 라인이 완전히 분리된 것은 아니므로, DRC 통과 후에도 가능하면 I2S BCLK 라인 주변에 GND 면이 끊기지 않도록 Copper Area 재계산을 확인하는 것이 좋음. 8002A 스피커 출력선과 SPH0645 마이크 라인은 실제 배선에서 최대한 떨어뜨리는 것이 바람직함.</p>
+<h3>12.9 최종 수정 필요 항목 요약</h3>
+<table>
+<thead><tr><th>우선순위</th><th>항목</th><th>조치</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>R6 100kΩ</td><td>8002A SIG 직렬저항을 1kΩ으로 변경</td></tr>
+<tr><td>2</td><td>GP7 외부전원 감지</td><td>감지 대상이 5V인지 DC 잭 원전압인지 확인</td></tr>
+<tr><td>3</td><td>C4 PDT 22µF</td><td>의도한 안전 종료 대기시간과 맞는지 확인</td></tr>
+<tr><td>4</td><td>I2S 47Ω 위치</td><td>가능하면 구동측에 가깝게 배치 유지</td></tr>
+<tr><td>5</td><td>+5V_SYS 전원폭</td><td>RM78-1, 8002A 경로는 굵게 유지</td></tr>
+<tr><td>6</td><td>LTC2954 납땜</td><td>TSOT-23-8 핀브리지 방지용 플럭스와 확대경 준비</td></tr>
+</tbody></table>
+<hr>
+<h2>13. 회로 설계 의도 요약</h2>
+<p>본 회로는 “센서 신호 안정성”, “LTE 통신 안정성”, “배터리 전원 안전성”, “초보 제작 가능성” 사이의 균형을 목표로 설계함. 고속 I2S 신호는 UTP Pair와 GND 리턴을 고려하여 배치하고, DS18B20은 독립 DATA와 Pull-up 저항으로 안정성을 확보함. LTE 모뎀은 전류 피크를 고려하여 대용량 캐패시터를 근접 배치함. 전원부는 IP5306의 상시 5V와 전자식 스위치 이후 시스템 5V를 분리하여 안전 종료 후 전원 차단이 가능하도록 구성함.</p>
+<p>LTC2954는 단순 버튼 입력을 전원관리 시퀀스로 변환하는 핵심 부품임. 이를 통해 사용자는 푸시버튼 하나로 ON/OFF를 조작하고, Pico는 OFF 요청을 받은 뒤 필요한 종료 절차를 수행할 수 있음. 라커스위치 방식보다 구현이 단순하고, 전원 버튼 컨트롤러의 원래 사용 목적에도 부합하는 구조임.</p>
+<p>최종 설계는 포트폴리오와 GitHub 공개를 고려하여 기능 블록, Net 이름, GPIO 배정, 부품 역할을 명확히 분리함. 향후 펌웨어 구현 시에도 GPIO 테이블과 Net 이름을 그대로 코드 상수명으로 매핑할 수 있는 구조임.</p>
+<hr>
+<h2>14. 향후 개선 가능성</h2>
+<table>
+<thead><tr><th>개선 항목</th><th>설명</th></tr></thead>
+<tbody>
+<tr><td>정전 후 자동 복구</td><td>정상 OFF와 비정상 종료 상태를 구분하는 상태 저장 로직 추가 가능</td></tr>
+<tr><td>전원 스위치 고전류화</td><td>LTE 피크 전류를 고려하여 3A 이상 로드스위치로 변경 가능</td></tr>
+<tr><td>센서보드 디커플링</td><td>SPH0645 근처에 0.1µF 풋프린트만 남겨 옵션 실장 가능</td></tr>
+<tr><td>RJ45 Shield 처리</td><td>0Ω, RC, 직접 GND 중 테스트 후 최종 선택 가능</td></tr>
+<tr><td>I2S 신호 검증</td><td>오실로스코프로 BCLK/LRCLK/DOUT 파형 확인 가능</td></tr>
+<tr><td>케이스 연동</td><td>120mm급 내부 공간 기준으로 RJ45, 버튼, LED, LCD 위치 최적화 가능</td></tr>
+<tr><td>펌웨어 안전 종료</td><td>INT 감지 후 LTE 종료, 로그 저장, LCD 메시지 표시, KILL 출력 시퀀스 구현 필요</td></tr>
+</tbody></table>
+<hr>
+<h2>15. 최종 결론</h2>
+<p>본 설계는 Pico 2 W 기반 LTE-M 센서 허브를 구현하기 위한 통합 회로 및 PCB 설계안임. HR911105A MagJack의 부적합성을 확인하고 일반 8P8C RJ45 기반 센서 인터페이스로 변경한 점, DS1129-04 듀얼 포트를 센서 2세트 입력으로 활용한 점, SPH0645 I2S 신호의 UTP Pair 배치를 재설계한 점, DS18B20 Pull-up과 3m 케이블 조건을 반영한 점, LTE 모뎀과 앰프 전원 노이즈를 고려한 점, LTC2954 기반 안전 종료 회로를 추가한 점이 핵심 성과임.</p>
+<p>최종 PCB는 +5V_IP5306와 +5V_SYS를 분리하고, 모든 실제 시스템 부하를 전자식 전원 스위치 뒤쪽에 배치하는 구조임. 푸시버튼 입력은 LTC2954가 처리하고, Pico는 INT와 KILL만 담당함. 이 구조를 통해 전원 ON, 안전 종료 요청, 종료 완료 후 전원 차단이라는 동작을 명확하게 구현할 수 있음.</p>
+<p>본 문서는 Codex 작업 지시, 포트폴리오 설명, GitHub README 또는 설계 기록 문서로 활용 가능한 수준의 회로 설계 이력 정리본임.</p>
+</main>
+</body>
+</html>
