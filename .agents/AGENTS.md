@@ -15,6 +15,8 @@
 
 - **PCB / 회로도 설계 자료 참조**:
   - GPIO, 전원 Net, RJ45 센서 케이블링, I2S 마이크, LTC2954 전원관리, EasyEDA/PCB 관련 작업 전 `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` 우선 확인.
+  - SPH0645LM4H 마이크는 단순 녹음용이 아니라 Edge AI/TinyML 기반 정상·이상·이상 예측 상태 판단용 장비 음향 데이터 수집 채널로 취급.
+  - 향후 펌웨어/서버 설계 시 원시 PCM 또는 FFT, RMS, 주파수 대역 에너지, MFCC 유사 특징량 등 음향 특징 데이터 흐름 고려.
   - 현재 PCB 설계 기준 핵심 후속 확인: R6 100kΩ → 1kΩ 변경, GP7 감지 전압 3.3V 이하 확인, C4 22µF 안전 종료 지연 의도 확인.
 
 - **사전 승인된 명령어 및 URL (반복 Allow 팝업 방지)**:

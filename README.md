@@ -26,6 +26,19 @@
 
 ---
 
+## 📅 2026-07-02: [PCB 설계자료] SPH0645LM4H Edge AI 음향 센서 의도 반영
+* **개발 범주**: Hardware Design, Edge AI, I2S Audio, PCB Documentation
+
+### 1. 작업 개요
+* `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` 및 HTML 문서의 SPH0645LM4H 마이크 설계 의도 재확인
+* SPH0645LM4H를 단순 기계음 녹음용이 아닌 Edge AI/TinyML 입력용 장비 음향 데이터 수집 채널로 재정의한 내용 반영
+
+### 2. 주요 숙지 사항
+* 정상 운전음, 비정상 운전음, 이상 동작 예측 신호 구분을 위한 장기 음향 패턴 수집 목적
+* Pico 측 원시 PCM 또는 FFT, RMS, 주파수 대역별 에너지, MFCC 유사 특징량 전처리 가능성
+* 3m UTP 케이블 조건을 고려한 8kHz~16kHz 기본 운용 및 필요 시 24kHz 수준 샘플링 방향
+* 온도 데이터와 음향 데이터를 함께 활용하는 복합 센싱 기반 상태 판단 구조
+
 ## 📅 2026-07-02: [PCB 설계자료] EasyEDA 회로도·PCB 산출물 반입 및 작업 지침 반영
 * **개발 범주**: Hardware Design, EasyEDA, PCB, GPIO Map, Power Management
 

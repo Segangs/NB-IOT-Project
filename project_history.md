@@ -26,6 +26,17 @@
 
 ---
 
+## 📅 2026-07-02 (추가): [PCB 설계자료] SPH0645LM4H Edge AI 음향 센서 의도 반영
+* **연동 대화 ID**: Codex PCB 마이크 설계 의도 재반영 세션
+* **개발 범주**: Hardware Design, Edge AI, I2S Audio, PCB Documentation
+* **작업 및 해결 내역**:
+  - `DOCS/PCB/pico2w_rm78_sensor_pcb_design_portfolio.md` 및 HTML 문서의 SPH0645LM4H 설계 의도 수정분 재확인
+  - 마이크 입력부를 사람 음성 녹음이나 단순 기계음 로그가 아닌 Edge AI/TinyML 기반 장비 음향 데이터 수집 채널로 재정의한 내용 숙지
+  - 팬, 모터, 컴프레서, 펌프, 릴레이, 밸브, 기어, 베어링 등의 정상/비정상 운전음 패턴 수집 목적 기록
+  - 정상 상태, 이상 상태, 이상 예측 상태 분류를 위한 원시 PCM, FFT, RMS, 주파수 대역 에너지, MFCC 유사 특징량 활용 가능성 기록
+  - 3m UTP 케이블 안정성을 고려한 8kHz~16kHz 기본 샘플링 및 필요 시 24kHz 수준 운용 방향 기록
+  - `AGENTS.md`와 `.agents/AGENTS.md`의 향후 마이크/펌웨어/센서 데이터 작업 기준 갱신
+
 ## 📅 2026-07-02 (추가): [PCB 설계자료] EasyEDA 회로도·PCB 산출물 반입 및 작업 지침 반영
 * **연동 대화 ID**: Codex PCB 설계자료 숙지 세션
 * **개발 범주**: Hardware Design, EasyEDA, PCB, GPIO Map, Power Management

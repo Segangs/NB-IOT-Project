@@ -69,6 +69,8 @@ Current PCB design summary:
 - Power-management GPIO map: GP14 LTC2954 INT, GP15 LTC2954 KILL.
 - LCD GPIO map: GP16 SDA and GP17 SCL through BSS138 level shifter to 5V LCD1602 I2C.
 - Sensor/audio GPIO map: GP18 I2S BCLK shared, GP19 I2S LRCLK shared, GP20 MIC1 DOUT, GP21 MIC2 DOUT, GP22 TEMP1 DATA, GP26 TEMP2 DATA.
+- SPH0645LM4H design intent: not voice recording or simple sound logging, but long-term machine acoustic pattern collection for Edge AI/TinyML inputs, including normal operation, abnormal operation, and predictive-abnormal state classification.
+- Audio data handling direction: collect raw PCM or derived features such as FFT, RMS, band energy, or MFCC-like features; keep 3m UTP stability in mind by preferring moderate sample rates such as 8-16 kHz, or 24 kHz only when needed.
 - LED/speaker GPIO map: GP6 speaker PWM through series resistor, GP8 status red, GP9 status green, GP10-GP13 RJ45 LEDs.
 - DS1129-04 RJ45 UTP pairing: BCLK with GND on pair 4-5; DOUT and TEMP DATA on pair 3-6; LRCLK on pair 7; pin 8/16 NC.
 - DS18B20 pull-ups: 5.1kΩ to `+3V3OUT`; I2S series damping: 47Ω on BCLK/LRCLK/DOUT lines.
