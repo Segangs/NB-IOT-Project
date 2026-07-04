@@ -1,4 +1,5 @@
 #include "flash_logger.hpp"
+#include "log.hpp"
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
@@ -27,19 +28,19 @@ static uint32_t epoch_to_mmddhhmmss(uint32_t epoch) {
     time_t rawtime = (time_t)epoch;
     struct tm *timeinfo = gmtime(&rawtime); // CCLK raw values parse straight to UTC tm
     if (timeinfo == nullptr) return 0;
-    
+
     uint32_t month = timeinfo->tm_mon + 1;
     uint32_t day = timeinfo->tm_mday;
     uint32_t hour = timeinfo->tm_hour;
     uint32_t min = timeinfo->tm_min;
     uint32_t sec = timeinfo->tm_sec;
-    
+
     return (month * 100000000) + (day * 1000000) + (hour * 10000) + (min * 100) + sec;
 }
 
 void flash_log_set_boot_epoch(uint32_t epoch_offset) {
     g_boot_epoch_offset = epoch_offset;
-    printf("[FlashLogger] Boot epoch offset initialized to: %u\n", g_boot_epoch_offset);
+    LOG("FLASH_TIME_OK\n");
 }
 
 // 💡 flash_safe_execute 콜백용 파라미터 구조체 및 RAM 실행 함수
@@ -76,7 +77,7 @@ void flash_log_init(void) {
         if (entries[i].timestamp == 0xFFFFFFFF) {
             g_write_offset = i * sizeof(FlashLogEntry);
             g_initialized = true;
-            printf("[FlashLogger] Initialized. Next write offset: 0x%08X (Index: %d)\n", g_write_offset, i);
+            LOG("FLASH_LOG_READY\n");
             return;
         }
     }
@@ -84,10 +85,10 @@ void flash_log_init(void) {
     // If no free slot found, wrap around to 0
     g_write_offset = 0;
     g_initialized = true;
-    printf("[FlashLogger] Initialized (Full). Next write offset wrapped to 0x00000000\n");
+    LOG("FLASH_LOG_WRAP\n");
 }
 
-void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t ntc_err, int16_t modem_err, int16_t sys_err) {
+void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t temp_err, int16_t modem_err, int16_t sys_err) {
     if (!g_initialized) {
         flash_log_init();
     }
@@ -108,7 +109,7 @@ void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t ntc_err, int1
     new_entry.temperature = temp;
     new_entry.vsys_voltage = vsys;
     new_entry.send_status = sent;
-    new_entry.ntc_status = ntc_err;
+    new_entry.temp_status = temp_err;
     new_entry.modem_status = modem_err;
     new_entry.system_error = sys_err;
     new_entry.boot_reason = (uint8_t)g_boot_reason_code;
@@ -127,7 +128,7 @@ void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t ntc_err, int1
     // 🚨 flash_safe_execute로 양쪽 코어를 안전하게 동기화한 뒤 플래시 I/O 수행
     bool need_erase = (g_write_offset % FLASH_SECTOR_SIZE) == 0;
     if (need_erase) {
-        printf("[FlashLogger] Erasing sector at offset: 0x%08X\n", g_write_offset);
+        LOG("FLASH_ERASE\n");
     }
 
     FlashOpParams wp;
@@ -148,8 +149,8 @@ void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t ntc_err, int1
 }
 
 void flash_log_dump_csv(void) {
-    printf("\n=== START OF FLASH LOG CSV ===\n");
-    printf("DateTime(MMDDHHMMSS),Temperature(C),VSYS(V),SentStatus,NtcStatus,ModemStatus,SystemError,BootReason\n");
+    LOG("\n=== START OF FLASH LOG CSV ===\n");
+    LOG("DateTime(MMDDHHMMSS),Temperature(C),VSYS(V),SentStatus,TempStatus,ModemStatus,SystemError,BootReason\n");
 
     const FlashLogEntry *entries = (const FlashLogEntry *)FLASH_TARGET_ADDR;
     uint32_t max_entries = FLASH_LOG_SIZE / sizeof(FlashLogEntry);
@@ -161,23 +162,23 @@ void flash_log_dump_csv(void) {
             break;
         }
 
-        printf("%u,%.2f,%.2f,%u,%u,%d,%d,%u\n", 
+        LOG("%u,%.2f,%.2f,%u,%u,%d,%d,%u\n",
                entries[i].timestamp,
                entries[i].temperature,
                entries[i].vsys_voltage,
                entries[i].send_status,
-               entries[i].ntc_status,
+               entries[i].temp_status,
                entries[i].modem_status,
                entries[i].system_error,
                entries[i].boot_reason);
         count++;
     }
 
-    printf("=== END OF FLASH LOG CSV (Total entries: %d) ===\n\n", count);
+    LOG("=== END OF FLASH LOG CSV (Total entries: %d) ===\n\n", count);
 }
 
 void flash_log_clear(void) {
-    printf("[FlashLogger] Clearing all logs...\n");
+    LOG("FLASH_CLEAR\n");
 
     FlashOpParams wp;
     wp.erase_offset = FLASH_LOG_OFFSET;
@@ -190,5 +191,5 @@ void flash_log_clear(void) {
     flash_safe_execute(flash_op_callback, &wp, UINT32_MAX);
 
     g_write_offset = 0;
-    printf("[FlashLogger] Logs cleared successfully.\n");
+    LOG("FLASH_CLEAR_OK\n");
 }

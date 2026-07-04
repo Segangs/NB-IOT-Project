@@ -82,8 +82,11 @@ add_executable(nb_iot_project
     src/tasks/tasks_sensor_reader.cpp
     src/tasks/tasks_lcd.cpp
     src/tasks/tasks_modem.cpp
+    src/tasks/tasks_mqtt.cpp
     src/tasks/tasks_periodic_modem.cpp
     src/lib/flash_logger.cpp
+    src/lib/log.cpp
+    src/lib/mqtt_payload.cpp
 )
 
 # 7. 라이브러리 연결

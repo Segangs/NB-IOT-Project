@@ -115,8 +115,6 @@ void vLcdTask(void *pvParameters)
     lcd_custom_init(lcd);
     
     uint32_t loop_counter = 0;
-    float displayed_temp = -999.0f;
-    uint32_t last_temp_update_ms = 0;
     
     while (true)
     {
@@ -125,22 +123,6 @@ void vLcdTask(void *pvParameters)
             // Pin 'Boot..' to top row, place detailed diagnostic text on bottom row, hide temp
             lcd_display_print(lcd, "Boot..", params->status_text);
         } else {
-            // 💡 온도는 일정 주기(단일 센서는 10초, 듀얼 센서는 4초)마다 갱신하여 표시 (Flicker 방지)
-            uint32_t now_ms = to_ms_since_boot(get_absolute_time());
-            static int active_channel = 0;
-            uint32_t update_interval = (g_sensor_count >= 2) ? 4000 : 10000;
-            
-            if (now_ms - last_temp_update_ms >= update_interval || last_temp_update_ms == 0) {
-                if (g_sensor_count >= 2) {
-                    active_channel = (active_channel == 0) ? 1 : 0;
-                    displayed_temp = (active_channel == 0) ? params->current_temperature : params->current_temperature_ch1;
-                } else {
-                    active_channel = 0;
-                    displayed_temp = params->current_temperature;
-                }
-                last_temp_update_ms = now_ms;
-            }
-            
             // Normal operational layout
             char temp_str[16];
             if (params->is_battery_mode) {
@@ -148,22 +130,24 @@ void vLcdTask(void *pvParameters)
             } else if (params->is_unauthenticated) {
                 // MQTT 인증 실패 시 온도를 표시하는 하단 줄에 "Unauth" 고정 출력
                 snprintf(temp_str, sizeof(temp_str), "Unauth");
-            } else if (displayed_temp <= -990.0f) {
-                int err_code = (int)(-displayed_temp - 990.0f);
-                const char* err_name = "Limit";
-                if (err_code == 1) err_name = "Cut";
-                else if (err_code == 2) err_name = "Short";
-                
-                if (g_sensor_count >= 2) {
-                    snprintf(temp_str, sizeof(temp_str), "C%d: %s", active_channel, err_name);
-                } else {
-                    snprintf(temp_str, sizeof(temp_str), "Err: %s", err_name);
-                }
             } else {
-                if (g_sensor_count >= 2) {
-                    snprintf(temp_str, sizeof(temp_str), "C%d: %.1f\xDF""C", active_channel, displayed_temp);
+                bool t1_ok = params->status_ch0 == 0 && params->current_temperature > -990.0f;
+                bool t2_ok = params->status_ch1 == 0 && params->current_temperature_ch1 > -990.0f;
+
+                if (t1_ok && t2_ok) {
+                    snprintf(temp_str, sizeof(temp_str), "%.1f %.1f\xDF""C",
+                             params->current_temperature, params->current_temperature_ch1);
+                } else if (t1_ok) {
+                    snprintf(temp_str, sizeof(temp_str), "%.1f\xDF""C", params->current_temperature);
+                } else if (t2_ok) {
+                    snprintf(temp_str, sizeof(temp_str), "T2: %.1f\xDF""C", params->current_temperature_ch1);
                 } else {
-                    snprintf(temp_str, sizeof(temp_str), "%.1f\xDF""C", displayed_temp);
+                    int err_code = params->status_ch0 != 0 ? params->status_ch0 : params->status_ch1;
+                    const char* err_name = "Limit";
+                    if (err_code == 1) err_name = "Cut";
+                    else if (err_code == 2) err_name = "CRC";
+                    else if (err_code == 5) err_name = "Low";
+                    snprintf(temp_str, sizeof(temp_str), "T1/T2: %s", err_name);
                 }
             }
             

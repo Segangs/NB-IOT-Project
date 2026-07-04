@@ -26,7 +26,159 @@
 
 ---
 
+## 📅 2026-07-04
+
+### [펌웨어/MQTT] KeepAlive 안정화 및 EMQX rule 분리
+* MQTT config payload 방어용 `src/lib/mqtt_payload.hpp/cpp` 추가
+* `undefined`, 빈 문자열, 공백, `null`, `[]`, 잘못된 JSON config payload 무시 처리
+* config 배열/객체 payload의 필드 누락 및 null 값 수신 시 기존 설정 유지
+* boot/periodic config 수신 처리를 `apply_mqtt_config_payload()`로 통합
+* telemetry payload `[userSensorId, temperature]` 생성 전 sensor id 및 온도값 검증
+* MQTT 상태 enum 및 `modem_MqttPoll()` 추가
+* `vPeriodicModemTask`를 유지형 MQTT 세션, 60초 config request, reconnect backoff 구조로 조정
+* boot task에서 `devices/<imei>/config/request` 별도 발행
+* `emqx_setup.sh`의 telemetry/boot config republish 제거 및 `devices/+/config/request` rule 분리
+* `emqx_setup.sh` 하드코딩 API 인증 헤더 제거 및 `.env`의 `EMQX_API_AUTH_HEADER` 사용
+* `tests/mqtt_payload_test.cpp` 추가
+* 호스트 단위 테스트, `emqx_setup.sh` 문법 검사, fresh CMake 펌웨어 빌드 및 UF2 생성 검증 완료
+
+### [펌웨어] DS18B20 온도 보정 오프셋 추가
+* `config.h`에 `TEMP1_CAL_OFFSET_C`, `TEMP2_CAL_OFFSET_C` 항목 추가
+* TMP1/TMP2 기본 보정값 `0.0f` 설정
+* DS18B20 정상 측정값에만 센서별 보정 오프셋 적용
+* CMake 구성, 펌웨어 빌드, UF2 생성 검증 완료
+
+## 📅 2026-07-03
+
+### [펌웨어] DS18B20 디지털 온도센서 전환
+* GP22 임시 DS18B20 실물 연결 기준 외부 온도센서 입력을 1-Wire 디지털 방식으로 전환
+* 기존 아날로그 서미스터 ADC 측정, 저항 계산, B-parameter 변환, 보정 오프셋 코드 제거
+* 온도센서 핀 정의를 `TEMP1_SENSOR_PIN=22`, `TEMP2_SENSOR_PIN=26`으로 정리
+* TMP1은 GP22, TMP2는 GP26 DS18B20 데이터 라인 기준으로 부팅 체크와 주기 샘플링 수행
+* DS18B20 reset, convert T, scratchpad read, CRC8 검증, 온도 범위 검증 루틴 추가
+* VSYS 전압 및 내부 칩 온도 진단용 ADC 경로는 유지
+* flash log CSV의 `NtcStatus` 명칭을 `TempStatus`로 정리
+* DS18B20 읽기를 부팅 필수 경로에서 제거하고 센서 태스크 전용 읽기 구조로 조정
+* 1-Wire 버스 접근 mutex 추가 및 부팅 초기 온도 상태 기본값을 미연결 상태로 초기화
+* 부팅 먹통 원인 격리를 위해 `ENABLE_DS18B20_READ=0` 임시 스위치 추가 및 DS18B20 GPIO 미접근 빌드 생성
+* DS18B20 GPIO 미접근 빌드의 정상 부팅 확인 결과를 기준으로 `ENABLE_DS18B20_READ=1`, `ENABLE_TEMP1_DS18B20=1`, `ENABLE_TEMP2_DS18B20=0` 구성 전환
+* GP22 TMP1만 부팅 완료 30초 후부터 지연 읽기 수행하도록 조정
+* 부팅 완료 직후 멈춤 증상 확인에 따라 DS18B20 1-Wire bit timing 루틴의 FreeRTOS critical section 제거
+* GP22 presence 미검출 원인 확인용 `DS18B20_DIAG` 로그 추가
+* reset 전 DATA idle 상태와 presence pulse 감지 여부를 5초 주기 진단 출력
+* DS18B20 배선 오류 수정 후 GP22 TMP1 정상 온도 수신 확인
+* LCD 하단 온도 표시를 `C1/C2` 순환 표시에서 TMP 연결 상태 기반 표시로 변경
+* GP22 단독 연결 시 `-15.0°C`, GP26 단독 연결 시 `T2: -15.0°C`, 양쪽 연결 시 `-15.0 -15.0°C` 형식 적용
+* 8002A 스피커 앰프 입력 핀을 GP6 PWM으로 변경
+* 부팅 후 MQTT 발신 불안정 현상은 후속 정리 과제로 기록
+* DS18B20 센서 샘플링 주기를 1초에서 10초로 변경
+* CRC/일시 통신 실패 3회까지 마지막 정상 온도값 유지로 LCD `CRC` 표시 흔들림 완화
+* `DIAG_CHECK`, `DS18B20_DIAG`, `DS18B20_READ_RESET_FAIL` 시리얼 로그 제거
+* CMake 구성, 펌웨어 빌드, UF2 생성 검증 완료
+
+### [DB/펌웨어/대시보드] 고정 USER_SENSOR 구조 전환
+* Supabase `SENSOR_CTGY`, `USER_SENSOR` 테이블 생성 및 device 1~5 기준 센서 20행 초기 적재
+* 기존 `sensor`, `usersettings` 테이블 제거 및 설정온도 저장 위치를 `USER_SENSOR`로 통합
+* `sensorvalue`, boot log RPC, telemetry RPC, config RPC를 고정 `userSensorId` 구조에 맞춰 재구성
+* EMQX telemetry/boot/config rule 및 HTTP action body를 IMEI + `userSensorId` 기반으로 갱신
+* 펌웨어 센서 ID를 TMP1=1, TMP2=2, MIC1=3, MIC2=4 고정 매핑으로 변경
+* 부팅 로그의 센서 회로 상태를 TMP1, TMP2, MIC1, MIC2로 분리 전송
+* MQTT config 수신 시 TMP1/TMP2 설정 상한값을 Pico 내부에 채널별 저장
+* 대시보드 `/device-status`, 온도 상태, 온도 이력, `/api/status`를 `USER_SENSOR` 기준으로 전환
+* 운영 서버 `/home/segang/project`에 대시보드 변경 반영 및 Flask 프로세스 재시작
+* Supabase RPC 검증, EMQX 운영 설정 검증, Python 문법 검사, CMake 펌웨어 빌드 및 UF2 생성 검증 완료
+
+### [펌웨어] HL7811 AT 명령 목차 확인 및 MQTT 코드 분리
+* `DOCS/RM78-1 데이터시트/HL78xx - AT Commands Interface Guide - Rev16.0.pdf` 17-26p 목차 확인
+* HL7811 관련 명령 범위 확인: V25ter/General, ME Control/Status, Packet Domain, Protocol Common/SSL, MQTT AT Commands
+* HTTP Client(`KHTTP*`) 및 raw TCP socket(`KTCP*`) 기반 펌웨어 코드 제거
+* 부팅 중 잔존 HTTP 세션 정리 루프 제거
+* `tasks_modem.cpp`를 모뎀 전원, UART, AT 응답, SIM/망 상태, 인증서, 시간 조회 중심으로 정리
+* MQTT 세션/발신/구독/종료 구현을 `src/tasks/tasks_mqtt.cpp`로 분리
+* MQTT 연결 상태 플래그를 `is_socket_open`에서 `is_mqtt_connected`로 정리
+* `CMakeLists.txt`에 `src/tasks/tasks_mqtt.cpp` 빌드 대상 추가
+* CMake 구성, 펌웨어 빌드, UF2 생성 검증 완료
+
+### [펌웨어] MQTT CONNECT FAIL 세션 초기화 보강
+* 부팅 로그 기준 `AT+KMQTTCFG` 직후 `+CME ERROR: 0` 및 `MQTT_CFG_FAIL` 발생 원인 추적
+* 잦은 재부팅 후 모뎀 내부 MQTT 세션 잔존 가능성 기준 `KMQTTCFG` 전 세션 초기화 절차 추가
+* `modem_MqttOpen()` 시작 시 `AT+KMQTTCLOSE=1..6`, `AT+KMQTTDEL=1..6` 순차 수행
+* 세션 초기화 후 `mqtt_session_id=0`, `is_mqtt_connected=false` 상태 재설정
+* `KMQTTCFG` 1차 실패 시 `MQTT_CFG_RETRY` 로그 후 세션 초기화 재수행 및 1회 재시도
+* `tasks_boot.cpp`의 중복 `MQTT_CONNECT`, `MQTT_CONNECT_OK` 로그 제거
+* CMake 구성, 펌웨어 빌드, UF2 생성 검증 완료
+
+### [펌웨어] RTOS 로그 출력 큐 및 단일 LogTask 전환
+* 펌웨어 프로젝트 소스의 직접 `printf` 호출을 `LOG()` 매크로 기반 호출로 전환
+* `src/lib/log.cpp/hpp` 추가 및 FreeRTOS 정적 큐 기반 로그 버퍼 구성
+* `LOG()` 호출부는 문자열 포맷 후 큐 적재만 수행하고 실제 USB stdio 출력은 `vLogTask`에서만 수행
+* `main.cpp`에 `vLogTask` 등록 및 우선순위 0 최저 우선순위 적용
+* LTE/모뎀 통신 태스크의 로그도 직접 출력 대신 큐 적재 방식으로 통일
+* SSL Root CA 인증서 주입 구간에서 로그 mute 처리 후 성공/실패 결과만 사후 출력
+* `CMakeLists.txt`에 `src/lib/log.cpp` 빌드 대상 추가
+* FreeRTOS heap `192KB`, minimal stack `384`, timer task stack `1536`으로 확장
+* LCD, Boot, Sensor, LED, Debug, PeriodicModem, Buzzer, Log task 스택 여유 확대
+* 부팅, 모뎀, 인증서, MQTT, 센서, 경보 로그를 `BOOT`, `MODEM_AT_OK`, `CERT_WRITE_OK`, `MQTT_CONNECT_OK` 등 상태 토큰 중심으로 축약
+* `dump_csv` 명령의 CSV 데이터 출력은 사용자 요청 데이터 출력으로 유지
+
+### [서버/DB] EMQX MQTT 인증 실패 추적 필드 확장
+* EMQX 로그 기준 `2026-07-03 05:03:30~05:03:31` 인증 실패의 외부 IP `44.220.185.63` 및 랜덤 clientid 확인
+* `authentication_logs`에 `clientid`, `peerhost`, `listener`, `username_raw`, `password_empty` 컬럼 추가
+* `auth_device()` RPC에 EMQX 접속 문맥 인자 확장 및 기존 2인자 호출 호환 유지
+* 빈 MQTT username 요청은 `MQTT username empty` 사유로 분리 기록
+* EMQX HTTP Authentication body에 `clientid`, `peerhost`, `listener`, `username_raw` 전달 설정 반영
+* EMQX HTTP Authentication 요청 헤더에 `x-emqx-auth-secret` 전용 식별 헤더 추가
+* 운영 서버 `/home/segang/project/.env`에 `EMQX_AUTH_SECRET` 생성 및 운영 EMQX 인증 리소스 반영
+* 운영 EMQX 인증 리소스의 헤더 키 및 body 템플릿 정상 유지 확인
+* MQTT 1883/8883 정상 인증 허용 및 빈 username 인증 거부 검증
+* Supabase `authentication_logs`에 검증 로그 ID 788~791 기록 확인
+* 운영 서버와 로컬 `emqx_setup.sh`의 인증 body를 Supabase RPC 인자 구조에 맞춰 갱신
+* 검증용 빈 username 접속 거부 및 정상 IMEI/IMSI 접속 허용 확인
+
+### [펌웨어] USB 디버그 명령 확장 및 전원 제어 준비
+* `vDebugTask` 재등록으로 USB 시리얼 로컬 명령 수신 경로 복구
+* `reboot` 명령 입력 시 `safe_reboot()`와 hardware watchdog 기반 Pico 재부팅 수행
+* `power off`, `poweroff`, `power_off` 명령 입력 시 GP15 LTC2954 KILL# 기반 전원 차단 요청 시퀀스 수행
+* LTC2954 미연결 테스트 환경을 고려한 KILL# 2초 LOW 요청 후 생존 시 HIGH 복귀 처리
+* PCB 문서 기준 RM78-1 PWRON 핀 GP4, LTC2954 INT GP14, KILL GP15 정의 분리
+* `dump_csv`, `clear_csv`, `reboot`, `power off` 로컬 명령은 모뎀 busy 상태와 무관하게 우선 처리
+
+### [펌웨어] GP28 TXON LED 엣지 기반 표시 보정
+* GP28 TXON 표시 LED가 모뎀 송수신 중 깜박이지 않는 실물 증상 확인
+* 50ms 폴링 방식이 짧은 TXON pulse를 놓칠 수 있는 구조 확인
+* GP5 TXON 입력을 내부 pull-up 및 양방향 엣지 인터럽트 기반으로 변경
+* RM78-1 매뉴얼 기준 TX_ON indicator feature 활성화를 위해 `AT+KHWIOCFG?` 조회 및 필요 시 `AT+KHWIOCFG=5,1` 설정 로직 추가
+* `AT+KHWIOCFG=5,1` 변경은 모뎀 재부팅 후 적용 가능하다는 매뉴얼 주의사항 로그 반영
+* GP28 LED를 평상시 ON, 펌웨어 송신 상태(`is_transmitting`) 동안 100ms 간격 fallback blink 방식으로 변경
+* GP5 TXON 입력 직접 미러링 제거 및 TXON edge/monitor 시리얼 진단 로그 제거
+* 부팅 중 GP8 빨강 상태 LED 점멸 간격을 500ms로 변경
+* `dump_csv`, `clear_csv` 로컬 디버그 명령은 모뎀 busy 상태와 무관하게 USB stdio 입력에서 처리되도록 수정
+* 일반 AT 바이패스 명령은 모뎀 busy 상태에서 전달 보류 및 안내 로그 출력
+
+### [운영 지침] 펌웨어 검증 범위 축소
+* 펌웨어 작업 후 Codex 검증 범위를 CMake 구성, 빌드, UF2 생성 확인까지로 제한
+* Pico 드라이브 복사, Pico 재부팅, 시리얼 로그 읽기 작업은 사용자 별도 요청 시에만 수행
+* UF2 반영 및 시리얼/실물 하드웨어 확인은 사용자 직접 수행 기준 반영
+
+### [운영 지침] 시리얼 모니터 공유 검증 원칙 추가
+* 펌웨어 실기기 테스트 중 시리얼 로그 확인 시 우측/가시 터미널 창에 시리얼 모니터를 출력하는 원칙 추가
+* 사용자도 동일한 시리얼 로그 흐름을 보며 부팅, 모뎀 AT, MQTTS 연결 상태를 함께 확인하는 검증 방식 반영
+* LCD, LED, 부저 등 시리얼 외 하드웨어 표시 항목은 기존처럼 사용자 실물 확인 요청 유지
+
 ## 📅 2026-07-02
+
+### [펌웨어] MQTT 브로커 환경값 누락 및 GP28 TXON LED 극성 보정
+* `.env`에 `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT` 누락으로 `config.h` fallback placeholder가 펌웨어에 컴파일된 원인 확인
+* 로컬 `.env`에 `MQTT_BROKER_HOST="p.zxcx.io"`, `MQTT_BROKER_PORT="8883"` 추가 및 신규 UF2 문자열 기준 `p.zxcx.io` 반영 확인
+* GP28 TXON LED가 모뎀 부팅 후 꺼진 채 유지되는 현상 기준 GP5 TXON 입력을 반전 표시에서 직접 미러링으로 변경
+* GP5 HIGH idle 상태에서는 GP28 LED ON, TXON LOW pulse 시 LED OFF blink 방향으로 보정
+
+### [펌웨어] GP7 BAT MODE 표시 임시 비활성화
+* GP7 전원 어댑터 감지 분압 회로 미연결 상태에서 내부 풀다운에 의해 `BAT MODE`가 표시되는 원인 확인
+* 실제 PCB 회로 연결 전까지 `tasks_led.cpp`의 배터리 모드 LCD 표시 플래그를 `false`로 고정
+* 회로 연결 후 `lcd_params.is_battery_mode = !adapter_present` 로직 재활성화 위치 주석 기록
+* 기존 `build/` 산출물 대신 수정 후 생성된 임시 검증 UF2 기준 재플래시 수행
+* LCD/LED 등 시리얼 로그로 확인되지 않는 하드웨어 표시 항목은 플래시 후 사용자 실물 확인 요청 원칙 추가
 
 ### [펌웨어] RTOS 태스크 파일 분리 및 main.cpp 정리
 * `main.cpp`에 몰려 있던 RTOS 태스크를 `src/tasks/` 아래 전용 `cpp/hpp` 파일로 분리

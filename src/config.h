@@ -19,10 +19,17 @@
 #define SCL_PIN           21
 
 // ====================================================================================
-// [3] Sensor (ADC) Configurations
+// [3] Sensor Configurations
 // ====================================================================================
-#define ADC_NTC_PIN       26      // NTC Thermistor ADC pin (GPIO 26 / ADC 0) 
-#define ADC_NTC_CHANNEL   0
+#define TEMP1_SENSOR_PIN  22      // DS18B20 DATA, RJ45 Port 1
+#define TEMP2_SENSOR_PIN  26      // DS18B20 DATA, RJ45 Port 2
+#define ENABLE_DS18B20_READ 1
+#define ENABLE_TEMP1_DS18B20 1
+#define ENABLE_TEMP2_DS18B20 1
+#define DS18B20_BOOT_DELAY_MS 30000
+#define DS18B20_SAMPLE_INTERVAL_MS 10000
+#define TEMP1_CAL_OFFSET_C 5.0f
+#define TEMP2_CAL_OFFSET_C 0.0f
 #define ADC_VSYS_CHANNEL  3       // VSYS measurement (usually ADC channel 3 on RP2040/RP2350)
 
 // ====================================================================================
@@ -63,6 +70,10 @@
 // ====================================================================================
 #define POWER_ADAPTER_DETECT_PIN         7
 #define POWER_ADAPTER_PRESENT_LEVEL      1
+#define POWER_INT_PIN                    14
+#define POWER_KILL_PIN                   4 // 15로 수정해야함
+#define POWER_KILL_INACTIVE_LEVEL        1
+#define POWER_KILL_ACTIVE_LEVEL          0
 
 // ====================================================================================
 // [7] Self-Diagnostic Thresholds
@@ -72,12 +83,9 @@
 #define CHIP_TEMP_MIN    -10.0f   // Minimum safe internal chip temperature (C)
 #define CHIP_TEMP_MAX     85.0f   // Maximum safe internal chip temperature (C)
 
-// NTC Sensor Diagnostic Thresholds
-#define NTC_TEMP_MIN     -50.0f
-#define NTC_TEMP_MAX     120.0f
-#define NTC_ADC_SHORT     150      // ADC value below this is considered a Short circuit (0V ~ 0.12V)
-#define NTC_ADC_OPEN      3900    // ADC value above this is considered an Open circuit (3.14V ~ 3.3V)
-#define NTC_TEMP_OFFSET   -3.8f     // NTC sensor software calibration offset (Celsius)
+// DS18B20 Sensor Diagnostic Thresholds
+#define DS18B20_TEMP_MIN -55.0f
+#define DS18B20_TEMP_MAX 125.0f
 
 // ====================================================================================
 // [8] LED Configurations
@@ -94,7 +102,7 @@
 // ====================================================================================
 // [9] Buzzer Configurations
 // ====================================================================================
-#define BUZZER_PIN                      16
+#define BUZZER_PIN                      6
 #define DEFAULT_TEMP_UPPER_LIMIT        -9.0f
 
 #endif // CONFIG_H

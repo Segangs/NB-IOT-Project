@@ -1,5 +1,6 @@
-#include "tasks_modem.hpp" 
+#include "tasks_modem.hpp"
 #include "../config.h"
+#include "../lib/log.hpp"
 #include "hardware/gpio.h"
 #include <stdio.h>
 #include <string.h>
@@ -46,11 +47,11 @@ void modem_sleep(uint32_t ms)
 nb_iot::nb_iot()
 {
     buffer_idx = 0;
-    is_socket_open = false;
+    is_mqtt_connected = false;
     last_csq = 99;
     last_cereg = -1;
-    http_session_id = 1;
     mqtt_session_id = 0;
+    mqtt_state = LTE_DETACHED;
     is_unauthenticated = false;
 
     memset(rx_buffer, 0, sizeof(rx_buffer));
@@ -100,7 +101,6 @@ void nb_iot::modem_SendCmd(const char *cmd)
     uart_puts(UART_ID, cmd);
     uart_puts(UART_ID, "\r");
 
-    printf("[AT Tx] %s\n", cmd);
 }
 
 void nb_iot::modem_PacedWrite(const char *data)
@@ -212,7 +212,7 @@ bool nb_iot::modem_SendCmdWaitOK(const char *cmd, uint32_t timeout_ms, uint32_t 
 
 void nb_iot::modem_hw_power_on()
 {
-    printf("[System] 모뎀 하드웨어 부팅 시퀀스 개시...\n");
+    LOG("MODEM_PWR_ON\n");
 
     // 1. 초기 상태: 확실히 HIGH(비활성)로 유지
     gpio_put(PWR_ON_PIN, 1);
@@ -224,11 +224,48 @@ void nb_iot::modem_hw_power_on()
 
     // 3. 다시 HIGH(비활성)로 복구하여 릴리즈
     gpio_put(PWR_ON_PIN, 1);
-    
-    printf("[System] 모뎀 OS 부팅 완료 대기 중 (30초)...\n");
+
+    LOG("BOOT 30s\n");
     modem_sleep(30000);
 
-    printf("[System] 모뎀 하드웨어 부팅 시퀀스 완료.\n");
+    LOG("MODEM_PWR_OK\n");
+}
+
+bool nb_iot::modem_configure_txon_indicator()
+{
+    LOG("TXON_CFG\n");
+    if (this->modem_SendCmdWaitResponse("AT+KHWIOCFG?", "+KHWIOCFG:", nullptr, 3000))
+    {
+        if (strstr(this->rx_buffer, "+KHWIOCFG: 5,1") != nullptr ||
+            strstr(this->rx_buffer, "+KHWIOCFG:5,1") != nullptr)
+        {
+            LOG("TXON_CFG_OK\n");
+            return true;
+        }
+
+        if (strstr(this->rx_buffer, "+KHWIOCFG: 5,0") != nullptr ||
+            strstr(this->rx_buffer, "+KHWIOCFG:5,0") != nullptr)
+        {
+            LOG("TXON_CFG_SET\n");
+        }
+        else
+        {
+            LOG("TXON_CFG_SET\n");
+        }
+    }
+    else
+    {
+        LOG("TXON_CFG_SET\n");
+    }
+
+    if (!this->modem_SendCmdWaitOK("AT+KHWIOCFG=5,1", 3000, 1000))
+    {
+        LOG("TXON_CFG_FAIL\n");
+        return false;
+    }
+
+    LOG("TXON_CFG_OK\n");
+    return true;
 }
 
 bool nb_iot::modem_init(int &at_status, int &cpin_status)
@@ -240,49 +277,49 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     // 115200bps 또는 9600bps 중 모뎀이 현재 어떤 속도로 설정되어 있든 감지해 115200bps로 통신을 동기화합니다.
     // ====================================================================================
     bool alive = false;
-    
+
     // 1. 115200bps 접속 시도 (이미 모뎀이 115200bps로 설정되어 있는 경우 대비)
-    printf("[System] 115200bps 속도로 모뎀 접속 테스트 시도...\n");
+    LOG("MODEM_SYNC\n");
     uart_set_baudrate(UART_ID, 115200);
     this->modem_ClearRxBuffer();
-    
+
     for (int i = 0; i < 2; i++)
     {
         if (check_at_alive())
         {
             alive = true;
-            printf("[System] 모뎀이 115200bps로 응답했습니다. 정상 동기화 완료.\n");
+            LOG("MODEM_AT_OK\n");
             break;
         }
         modem_sleep(1000);
     }
-    
+
     // 2. 115200bps 응답이 없는 경우 9600bps로 접속한 뒤 115200bps로 상향 재지정
     if (!alive)
     {
-        printf("[System] 9600bps 속도로 모뎀 접속 시도 및 115200bps 강제 상향 개시...\n");
+        LOG("MODEM_BAUD_FIX\n");
         uart_set_baudrate(UART_ID, 9600);
         this->modem_ClearRxBuffer();
-        
+
         for (int i = 0; i < 3; i++)
         {
             if (check_at_alive())
             {
                 alive = true;
-                printf("[System] 모뎀이 9600bps로 접속되었습니다. 115200bps로 속도를 전환합니다...\n");
-                
+                LOG("MODEM_BAUD_SET\n");
+
                 // 모뎀 통신 속도 115200bps 변경 명령 송출
                 this->modem_SendCmd("AT+IPR=115200");
                 modem_sleep(500);
-                
+
                 // 피코 UART도 115200bps로 상향 조정
                 uart_set_baudrate(UART_ID, 115200);
                 modem_sleep(500);
-                
+
                 // 115200bps 속도 전환 정상 완료 여부 검증
                 if (check_at_alive())
                 {
-                    printf("[System] 모뎀 115200bps 전환 검증 성공. 설정을 영구 저장(AT&W)합니다...\n");
+                    LOG("MODEM_BAUD_OK\n");
                     this->modem_SendCmd("AT&W"); // 비휘발성 저장
                     modem_sleep(500);
                 }
@@ -299,35 +336,23 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     at_status = alive ? 0 : 1;
     if (!alive)
     {
-        printf("[Error] 모뎀이 응답하지 않습니다 (Baudrate 동기화 실패).\n");
+        LOG("MODEM_AT_FAIL\n");
         cpin_status = 1;
         return false;
     }
 
     // 1-1. ATE0 (Echo Off) 설정 및 2초 대기 (가장 먼저 전송!)
-    printf("[System] ATE0 (Echo OFF) 전송 및 2초 대기...\n");
+    LOG("MODEM_ECHO_OFF\n");
     modem_SendCmdWaitOK("ATE0", 3000, 2000);
 
     // Step 2: Enable detailed error reporting (+CMEE=1) 및 2초 대기
     modem_SendCmdWaitOK("AT+CMEE=1", 3000, 2000);
 
-    // Step 2-1: 모뎀의 잔존 유령 HTTP 세션 일괄 강제 정리 (CME ERROR: 912 원천 차단)
-    printf("[System] 모뎀 잔존 유령 HTTP 세션 강제 소거 개시 (1~10번)...\n");
-    for (int sid = 1; sid <= 10; sid++)
-    {
-        char clean_cmd[64];
-        snprintf(clean_cmd, sizeof(clean_cmd), "AT+KHTTPCLOSE=%d", sid);
-        this->modem_SendCmdWaitResponse(clean_cmd, "OK", "910", 1000);
-        modem_sleep(100);
-
-        snprintf(clean_cmd, sizeof(clean_cmd), "AT+KHTTPDEL=%d", sid);
-        this->modem_SendCmdWaitResponse(clean_cmd, "OK", "910", 1000);
-        modem_sleep(100);
-    }
-    printf("[System] 모뎀 유령 HTTP 세션 소거 완료.\n");
+    // Step 2-0: Enable RM78 TX_ON indicator output so GP5 can receive TX_ON pulses.
+    modem_configure_txon_indicator();
 
     // Step 3: Turn on full modem capabilities and wait 30s as specified
-    printf("[System] 모뎀 풀 기능 가동 중 (AT+CFUN=1) 후 30초 대기...\n");
+    LOG("MODEM_CFUN\n");
     modem_SendCmdWaitOK("AT+CFUN=1", 5000, 30000);
 
     // Step 4: Validate SIM card status & wait 2s
@@ -344,8 +369,9 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
 
     // 💡 [트러블슈팅] HL7811 모뎀의 NVRAM 인증서 저장 한계(1024바이트) 극복 방안:
     // Let's Encrypt의 790바이트 ISRG Root X2(Root YE) 진짜 인증서를 압축하여 0번 슬롯에 저장하고,
-    // 실제 통신 시에는 KSSLCFG=0,3(Full Verification) 설정을 통해 서버와 MQTTS/HTTPS의 보안 검증을 수행합니다.
-    printf("[System] Let's Encrypt 진짜 SSL Root CA 인증서(790바이트) 주입 개시 (0번 슬롯)...\n");
+    // 실제 통신 시에는 KSSLCFG=0,3(Full Verification) 설정을 통해 MQTTS 보안 검증을 수행합니다.
+    LOG("CERT_WRITE_START\n");
+    app_log_set_enabled(false);
     this->modem_SendCmdWaitResponse("AT+KCERTDELETE=0,0", "OK", "ERROR", 3000);
     modem_sleep(1000);
 
@@ -353,12 +379,14 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     int cert_len = strlen(LE_ROOT_YE_CERT);
     snprintf(cert_cmd, sizeof(cert_cmd), "AT+KCERTSTORE=0,%d,0", cert_len);
 
-    if (this->modem_SendCmdWaitResponse(cert_cmd, "CONNECT", nullptr, 5000))
+    bool cert_prompt_ok = this->modem_SendCmdWaitResponse(cert_cmd, "CONNECT", nullptr, 5000);
+    bool store_ok = false;
+
+    if (cert_prompt_ok)
     {
         modem_sleep(200);
         this->modem_ClearRxBuffer();
 
-        printf("[System] 인증서 데이터 스트림 안전 전송 시작 (%d 바이트, 200바이트 분할 전송)...\n", cert_len);
         int chunk_size = 200;
         for (int i = 0; i < cert_len; i += chunk_size)
         {
@@ -369,14 +397,11 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
                 sleep_us(500); // 바이트 간 2ms 페이싱 딜레이로 오버런 완벽 차단
             }
             modem_sleep(500); // 청크 간 500ms 대기 시간을 두어 모뎀 처리 여유 제공
-            printf("[%d/%d 바이트 송신 완료]\n", (i + current_chunk), cert_len);
         }
-        printf("\n[System] 데이터 본문 전송 완료! 1.5초 대기 후 최종 OK 수집...\n");
         modem_sleep(1500);
 
         uint32_t elapsed = 0;
         const uint32_t step_ms = 100;
-        bool store_ok = false;
         while (elapsed < 5000)
         {
             modem_sleep(step_ms);
@@ -392,18 +417,20 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
                 break;
             }
         }
-        if (store_ok)
-        {
-            printf("\n[System] SSL Root CA 인증서 주입 및 저장 완료 (Index 0)!\n");
-        }
-        else
-        {
-            printf("\n[System] 에러: SSL Root CA 인증서 주입 실패.\n");
-        }
+    }
+
+    app_log_set_enabled(true);
+    if (cert_prompt_ok && store_ok)
+    {
+        LOG("CERT_WRITE_OK\n");
+    }
+    else if (cert_prompt_ok)
+    {
+        LOG("CERT_WRITE_FAIL\n");
     }
     else
     {
-        printf("[System] 에러: SSL Root CA 인증서 주입 프롬프트(CONNECT) 획득 실패.\n");
+        LOG("CERT_WRITE_FAIL\n");
     }
     modem_sleep(2000);
 
@@ -516,7 +543,7 @@ bool nb_iot::check_operator_name(char *oper_out, int max_len)
                             strncpy(oper_out, plmn, max_len - 1);
                         }
                         oper_out[max_len - 1] = '\0';
-                        
+
                         strncpy(carrier_name, oper_out, sizeof(carrier_name) - 1);
                         carrier_name[sizeof(carrier_name) - 1] = '\0';
                         return true;
@@ -594,503 +621,6 @@ bool nb_iot::retrieve_cimi(char *cimi_out)
     return false;
 }
 
-bool nb_iot::modem_SocketOpen(const char *ip, const char *port)
-{
-    printf("[Socket] TCP 소켓 연결 프로세스 개시 (%s:%s)...\n", ip, port);
-    this->modem_SendCmdWaitResponse("AT+KTCPCLOSE=1", "OK", "910", 5000);
-    modem_sleep(1000);
-    this->modem_SendCmdWaitResponse("AT+KTCPDEL=1", "OK", "910", 5000);
-    modem_sleep(1000);
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "AT+KCNXCFG=1,\"GPRS\",\"%s\"", APN_NAME);
-    if (!this->modem_SendCmdWaitOK(cmd, 5000))
-        return false;
-    modem_sleep(1000);
-
-    snprintf(cmd, sizeof(cmd), "AT+KTCPCFG=1,0,\"%s\",%s", ip, port);
-    if (!this->modem_SendCmdWaitOK(cmd, 5000))
-        return false;
-    modem_sleep(1000);
-
-    if (!this->modem_SendCmdWaitOK("AT+KTCPCNX=1", 10000))
-        return false;
-
-    uint32_t elapsed = 0;
-    const uint32_t step_ms = 100;
-    bool connection_established = false;
-    this->modem_ClearRxBuffer();
-
-    while (elapsed < 40000)
-    {
-        modem_sleep(step_ms);
-        elapsed += step_ms;
-        this->modem_ReadResponse(0);
-        if (strstr(this->rx_buffer, "+KTCP_IND: 1,1") != nullptr)
-        {
-            connection_established = true;
-            break;
-        }
-        if (strstr(this->rx_buffer, "+KTCP_IND: 1,3") != nullptr || strstr(this->rx_buffer, "+KTCP_IND: 1,0") != nullptr)
-        {
-            break;
-        }
-        if (this->buffer_idx > 800)
-            this->modem_ClearRxBuffer();
-    }
-
-    if (!connection_established)
-        return false;
-    modem_sleep(1000);
-    is_socket_open = true;
-    return true;
-}
-
-bool nb_iot::modem_SocketSend(const char *data)
-{
-    if (!is_socket_open)
-        return false;
-    modem_sleep(1000);
-
-    int data_len = strlen(data);
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "AT+KTCPSND=1,%d", data_len);
-    if (!this->modem_SendCmdWaitResponse(cmd, "CONNECT", nullptr, 10000))
-        return false;
-
-    modem_sleep(5000);
-    this->modem_PacedWrite(data);
-    modem_sleep(1000);
-    this->modem_PacedWrite("--EOF--Pattern--");
-
-    uint32_t elapsed = 0;
-    const uint32_t step_ms = 100;
-    bool send_ok = false;
-    while (elapsed < 10000)
-    {
-        modem_sleep(step_ms);
-        elapsed += step_ms;
-        this->modem_ReadResponse(0);
-        if (strstr(this->rx_buffer, "OK") != nullptr)
-        {
-            send_ok = true;
-            break;
-        }
-        if (strstr(this->rx_buffer, "ERROR") != nullptr)
-            break;
-    }
-    modem_sleep(1000);
-    return send_ok;
-}
-
-void nb_iot::modem_SocketClose()
-{
-    if (!is_socket_open)
-        return;
-    this->modem_SendCmdWaitResponse("AT+KTCPCLOSE=1", "OK", "910", 5000);
-    modem_sleep(1000);
-    this->modem_SendCmdWaitResponse("AT+KTCPDEL=1", "OK", "910", 5000);
-    modem_sleep(1000);
-    is_socket_open = false;
-}
-
-bool nb_iot::modem_HttpOpen(const char *host, const char *port)
-{
-    printf("[HTTPS] Supabase 직접 HTTPS 연동 시퀀스 개시 (%s:%s)...\n", host, port);
-    char cnx_cmd[256];
-    snprintf(cnx_cmd, sizeof(cnx_cmd), "AT+KCNXCFG=1,\"GPRS\",\"%s\"", APN_NAME);
-    
-    // GPRS 커넥션이 이미 활성화되어 있으면 ERROR가 발생하므로 실패를 리턴하지 않고 경고만 출력합니다.
-    if (!this->modem_SendCmdWaitOK(cnx_cmd, 5000))
-    {
-        printf("[HTTPS] 경고: GPRS APN 설정 실패 (이미 활성화되었을 가능성 있음)\n");
-    }
-    modem_sleep(1000);
-
-    if (!this->modem_SendCmdWaitOK("AT+KCNXPROFILE=1", 5000))
-    {
-        printf("[HTTPS] 경고: GPRS 프로필 활성화 실패 (이미 활성화되었을 가능성 있음)\n");
-    }
-    modem_sleep(1000);
-
-    this->modem_SendCmd("AT+KCNXUP=1");
-    uint32_t cnx_elapsed = 0;
-    bool bearer_ok = false;
-
-    while (cnx_elapsed < 20000)
-    {
-        modem_sleep(100);
-        cnx_elapsed += 100;
-        this->modem_ReadResponse(0);
-        
-        // 망 연결 성공 URC(+KCNX_IND: 1,1)가 확실히 수신될 때까지 안전하게 대기합니다.
-        if (strstr(this->rx_buffer, "+KCNX_IND: 1,1") != nullptr)
-        {
-            bearer_ok = true;
-            break;
-        }
-        if (this->buffer_idx > 800)
-            this->modem_ClearRxBuffer();
-    }
-    modem_sleep(2000);
-
-    if (this->http_session_id > 0)
-    {
-        char close_cmd[64];
-        snprintf(close_cmd, sizeof(close_cmd), "AT+KHTTPCLOSE=%d", this->http_session_id);
-        this->modem_SendCmdWaitResponse(close_cmd, "OK", "910", 5000);
-        modem_sleep(1000);
-
-        char del_cmd[64];
-        snprintf(del_cmd, sizeof(del_cmd), "AT+KHTTPDEL=%d", this->http_session_id);
-        this->modem_SendCmdWaitResponse(del_cmd, "OK", "910", 5000);
-        modem_sleep(1000);
-    }
-
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000);
-    modem_sleep(1000);
-    this->modem_SendCmdWaitOK("AT+KSSLCRYPTO=0,8,3,25392,12,4,1,0", 5000);
-    modem_sleep(1000);
-
-    char cmd[384];
-    snprintf(cmd, sizeof(cmd), "AT+KHTTPCFG=1,\"%s\",443,2,\"\",\"\",1,0,0", host);
-    if (!this->modem_SendCmdWaitOK(cmd, 5000))
-        return false;
-
-    char *p = strstr(this->rx_buffer, "+KHTTPCFG:");
-    if (p != nullptr)
-    {
-        int parsed_id = 0;
-        if (sscanf(p, "+KHTTPCFG: %d", &parsed_id) == 1)
-            this->http_session_id = parsed_id;
-    }
-    modem_sleep(1000);
-
-    uint32_t elapsed = 0;
-    const uint32_t step_ms = 100;
-    bool connected = false;
-    char expected_urc[32], failure_urc[32];
-    snprintf(expected_urc, sizeof(expected_urc), "+KHTTP_IND: %d,1", this->http_session_id);
-    snprintf(failure_urc, sizeof(failure_urc), "+KHTTP_IND: %d,0", this->http_session_id);
-
-    if (strstr(this->rx_buffer, expected_urc) != nullptr)
-    {
-        connected = true;
-    }
-    else
-    {
-        while (elapsed < 30000)
-        {
-            modem_sleep(step_ms);
-            elapsed += step_ms;
-            this->modem_ReadResponse(0);
-            if (strstr(this->rx_buffer, expected_urc) != nullptr)
-            {
-                connected = true;
-                break;
-            }
-            if (strstr(this->rx_buffer, failure_urc) != nullptr)
-                break;
-            if (this->buffer_idx > 800)
-                this->modem_ClearRxBuffer();
-        }
-    }
-
-    if (!connected)
-        return false;
-    modem_sleep(1000);
-    is_socket_open = true;
-    return true;
-}
-
-bool nb_iot::modem_HttpPost(const char *request_uri, const char *payload, char *response_buf, size_t response_buf_len)
-{
-    if (!is_socket_open) return false;
-
-    // 1. 보낼 JSON 본문의 길이를 바이트 단위로 정확히 계산
-    int payload_len = strlen(payload); 
-
-    printf("[HTTPS] Send Payload Body: %s (Length: %d)\n", payload, payload_len);
-    printf("[HTTPS] HTTP 헤더 주입 개시 (AT+KHTTPHEADER=%d)...\n", this->http_session_id);
-
-    char header_cmd[64];
-    snprintf(header_cmd, sizeof(header_cmd), "AT+KHTTPHEADER=%d", this->http_session_id);
-    if (!this->modem_SendCmdWaitResponse(header_cmd, "CONNECT", nullptr, 5000)) return false;
-    modem_sleep(200);
-
-    // 2. 헤더에 Content-Length 및 Prefer: return=representation 추가!!
-    char header_buf[512];
-    snprintf(header_buf, sizeof(header_buf),
-             "apikey: %s\r\n"
-             "Authorization: Bearer %s\r\n"
-             "Content-Type: application/json\r\n"
-             "Prefer: return=representation\r\n"
-             "Content-Length: %d\r\n\r\n",
-             SUPABASE_ANON_KEY, SUPABASE_ANON_KEY, payload_len);
-
-    printf("[HTTPS] 헤더 주입 송출:\n%s", header_buf);
-    this->modem_PacedWrite(header_buf);
-    modem_sleep(200);
-
-    // 3. 헤더 마감 패턴 송출
-    this->modem_PacedWrite("--EOF--Pattern--");
-    modem_sleep(500);
-
-
-    // 종료 패턴 역시 모뎀이 처리할 수 있도록 대기 추가
-    modem_sleep(1000);
-
-    uint32_t elapsed = 0;
-    const uint32_t step_ms = 100;
-    bool header_ok = false;
-    while (elapsed < 5000)
-    {
-        modem_sleep(step_ms);
-        elapsed += step_ms;
-        this->modem_ReadResponse(0);
-        if (strstr(this->rx_buffer, "OK") != nullptr)
-        {
-            header_ok = true;
-            break;
-        }
-    }
-
-    if (!header_ok)
-    {
-        printf("[HTTPS] 에러: HTTP 헤더 완료(OK) 수신 실패.\n");
-        return false;
-    }
-    modem_sleep(1000);
-
-    // // 디버그: 주입된 헤더 현황 확인
-    // printf("[HTTPS] 주입된 헤더 현황 조회 (AT+KHTTPHEADER?)... \n");
-    // this->modem_SendCmd("AT+KHTTPHEADER?");
-    // modem_sleep(1000);
-    // this->modem_ReadResponse(0);
-    // modem_sleep(1000);
-
-    // Step 2: HTTP POST 요청 개시 (포맷을 0으로 설정하여 무의미한 헤더 덤프를 차단하고 상태 라인만 간결히 수신)
-    printf("[HTTPS] HTTP POST 요청 개시 (Endpoint: %s, Session: %d)...\n", request_uri, this->http_session_id);
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "AT+KHTTPPOST=%d,,\"%s\",0", this->http_session_id, request_uri);
-
-    if (!this->modem_SendCmdWaitResponse(cmd, "CONNECT", nullptr, 10000))
-    {
-        printf("[HTTPS] 에러: HTTP POST 요청 프롬프트(CONNECT) 획득 실패.\n");
-        return false;
-    }
-
-    // modem_sleep(200);
-
-    // printf("[HTTPS] Payload 본문 송출\n");
-    // this->modem_PacedWrite(payload);
-    // modem_sleep(100);
-
-    // printf("[HTTPS] --EOF--Pattern-- 전송\n");
-    // this->modem_PacedWrite("--EOF--Pattern--");
-
-    // // ====================================================================================
-    // // [수정 포인트 3] 페이로드 송출 직후 수신 버퍼 조기 소거(Clear) 코드 제거 및 수신 조건 개선
-    // // 모뎀이 응답 URC(+KHTTP_IND)를 띄우기도 전에 버퍼를 지우던 치명적 버그 수정
-    // // ====================================================================================
-    // elapsed = 0;
-    // bool post_ok = false;
-    // bool response_status_2xx = false;
-
-    // 데이터 모드 진입 안착을 위한 200ms 정밀 대기
-    modem_sleep(200);
-    
-    // ====================================================================================
-    // [변경 부분] Payload 본문 송출 시 시리얼 모니터에 데이터 실시간 출력 시각화
-    // ====================================================================================
-    printf("[HTTPS] >>> Payload 본문 송출 시작 >>>\n");
-    
-    printf("%s\n", payload); // 시리얼 모니터에 MCU가 보낼 JSON 본문을 그대로 출력 
-    // 모뎀으로 실제 데이터 전송
-    //this->modem_PacedWrite(payload);
-    char total_packet[1024];
-// JSON 본문 바로 뒤에 공백/개행 없이 EOF 패턴을 붙여버림
-snprintf(total_packet, sizeof(total_packet), "%s--EOF--Pattern--", payload);
-
-// 모뎀으로 통째로 한 번에 전송
-this->modem_PacedWrite(total_packet);
-    //modem_sleep(100);
-    
-    // 본문 전송 완료 (EOF 패턴 전송)
-    
-    //this->modem_PacedWrite("--EOF--Pattern--");
-    printf("[HTTPS] [Tx Pattern] --EOF--Pattern--\n"); // 패턴 송출 현황 시각화
-    
-    // ====================================================================================
-    
-    // OK 및 HTTP 전송 완료 URC 대기 (이하 원본 로직 유지)
-    elapsed = 0;
-    bool post_ok = false;
-    bool response_status_2xx = false;
-
-
-
-
-
-
-
-
-    // ★ 기존 원본에 있던 이 위치의 this->modem_ClearRxBuffer() 제거 완료!
-    // (서버가 보낸 패킷이 읽히기도 전에 삭제되는 현상 방지)
-
-    char status_prefix[32];
-    snprintf(status_prefix, sizeof(status_prefix), "+KHTTP_IND: %d,3,", this->http_session_id);
-
-    uint32_t elapsed_ms = 0;
-    while (elapsed_ms < 15000)
-    {
-        modem_sleep(2); // 2ms polling sleep to prevent overflow
-        elapsed_ms += 2;
-        this->modem_ReadResponse(0);
-
-        // [Fast Pass] 서버의 2xx 응답 헤더(HTTP/1.1 200, 201, 204 등)가 감지되면 즉시 성공 처리 후 탈출합니다.
-        if (strstr(this->rx_buffer, "HTTP/1.1 204") != nullptr)
-        {
-            response_status_2xx = true;
-            post_ok = true; 
-            printf("\n[HTTPS] HTTP 204 No Content 감지 성공 (Fast Pass)!\n");
-            break;
-        }
-        else if (strstr(this->rx_buffer, "HTTP/1.1 2") != nullptr)
-        {
-            response_status_2xx = true;
-            post_ok = true; 
-            printf("\n[HTTPS] HTTP 2xx 응답 감지 성공 (Fast Pass)!\n");
-            break;
-        }
-
-        if (strstr(this->rx_buffer, "OK") != nullptr)
-        {
-            post_ok = true;
-        }
-
-        char *urc_p = strstr(this->rx_buffer, status_prefix);
-        if (urc_p != nullptr)
-        {
-            // status_prefix는 "+KHTTP_IND: <session_id>,3," 형태이므로, 
-            // 그 뒤에는 "data_len,status_code,..."가 연결됩니다. (예: "191,204,\"No Content\"")
-            char *data_len_start = urc_p + strlen(status_prefix);
-            char *comma = strchr(data_len_start, ',');
-            if (comma != nullptr)
-            {
-                // comma + 1 은 status_code의 시작점을 가리킵니다. (예: "204,\"No Content\"")
-                int status_code = atoi(comma + 1);
-                if (status_code >= 200 && status_code < 300)
-                {
-                    response_status_2xx = true;
-                    post_ok = true; // 서버의 HTTP 성공 응답은 최종 데이터 송신 처리가 완료됨을 뜻하므로 post_ok 도 강제 승인합니다.
-                    break;
-                }
-                else
-                {
-                    printf("\n[HTTPS] non-2xx URC (Status: %d). Waiting for dump...\n", status_code);
-                    for (int f = 0; f < 1000; f++) {
-                        modem_sleep(2);
-                        this->modem_ReadResponse(0);
-                    }
-                    break;
-                }
-            }
-        }
-
-        if (this->buffer_idx > 950)
-        {
-            // 버퍼를 완전히 비우면 유입 중인 URC 문자열 중간이 찢겨나갈 수 있으므로,
-            // 최근 150바이트만 남기고 앞으로 복사하여 URC 조각 유실을 방지합니다.
-            memmove(this->rx_buffer, this->rx_buffer + 800, this->buffer_idx - 800);
-            this->buffer_idx -= 800;
-            this->rx_buffer[this->buffer_idx] = '\0';
-        }
-    }
-
-    modem_sleep(1000);
-
-    // 💡 [구제책] URC가 시리얼 노이즈로 인해 깨진 경우라도, 
-    // Supabase의 정상 응답 데이터 형식(예: "sensorId" 또는 "cmd")이 버퍼에 이미 존재하고
-    // 최종적으로 모뎀으로부터 "OK"를 수신했다면 성공으로 간주하여 구제합니다.
-    if (!response_status_2xx && post_ok)
-    {
-        if (strstr(this->rx_buffer, "sensorId") != nullptr || strstr(this->rx_buffer, "cmd") != nullptr)
-        {
-            response_status_2xx = true;
-            printf("\n[HTTPS] 경고: URC 찌그러짐/누락이 발생했으나, 수신 버퍼 내 Supabase 데이터 및 OK 매칭으로 성공 구제 완료!\n");
-        }
-    }
-
-    if (post_ok && response_status_2xx)
-    {
-        printf("[HTTPS] Supabase 데이터 직접 적재 성공!\n");
-        
-        // Extract JSON response if buffer is provided
-        if (response_buf && response_buf_len > 0)
-        {
-            response_buf[0] = '\0';
-            const char *json_start = strchr(this->rx_buffer, '[');
-            while (json_start != nullptr)
-            {
-                const char *json_end = strchr(json_start, ']');
-                if (json_end != nullptr)
-                {
-                    size_t len = json_end - json_start + 1;
-                    if (len < response_buf_len)
-                    {
-                        // Copy to temporary buffer to check
-                        char temp[256];
-                        strncpy(temp, json_start, len);
-                        temp[len] = '\0';
-                        
-                        // JSON 형식이 수집되면 무조건 수집 (cmd 필터 완화)
-                        strcpy(response_buf, temp);
-                        printf("[HTTPS] Parsed response body: %s\n", response_buf);
-                        break;
-                    }
-                    json_start = strchr(json_end + 1, '[');
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-
-        this->modem_ClearRxBuffer(); // 프로세스 완료 후 버퍼 정리
-        return true;
-    }
-    else
-    {
-        printf("[HTTPS] 에러: 데이터 송출 완료 혹은 HTTP 2xx 응답 확인 실패.\n");
-        this->modem_ClearRxBuffer();
-        return false;
-    }
-}
-
-void nb_iot::modem_HttpClose()
-{
-    // 소켓이 비정상적으로 닫히거나 연결 도중 실패하여 is_socket_open이 false여도, 
-    // http_session_id가 존재한다면 모뎀의 세션 누수 방지를 위해 정리 절차를 강제 수행합니다.
-    if (!is_socket_open && this->http_session_id <= 0)
-        return;
-
-    printf("[HTTPS] HTTPS 세션 정리 개시...\n");
-    char close_cmd[64];
-    snprintf(close_cmd, sizeof(close_cmd), "AT+KHTTPCLOSE=%d", this->http_session_id);
-    this->modem_SendCmdWaitResponse(close_cmd, "OK", "910", 5000);
-    modem_sleep(1000);
-
-    char del_cmd[64];
-    snprintf(del_cmd, sizeof(del_cmd), "AT+KHTTPDEL=%d", this->http_session_id);
-    this->modem_SendCmdWaitResponse(del_cmd, "OK", "910", 5000);
-    modem_sleep(1000);
-
-    is_socket_open = false;
-    printf("[HTTPS] HTTPS 세션 정리 완료.\n");
-}
-
 uint32_t nb_iot::retrieve_network_time()
 {
     this->modem_ClearRxBuffer();
@@ -1098,15 +628,15 @@ uint32_t nb_iot::retrieve_network_time()
     if (!this->modem_SendCmdWaitResponse("AT+CCLK?", "+CCLK:", nullptr, 2000)) {
         return 0;
     }
-    
+
     // rx_buffer에서 "+CCLK:" 위치 찾기
     const char *pos = strstr(this->rx_buffer, "+CCLK:");
     if (!pos) return 0;
-    
+
     pos = strchr(pos, '"');
     if (!pos) return 0;
     pos++; // 따옴표 내부 시각 문자열 시작
-    
+
     int year, month, day, hour, minute, second;
     // yy/mm/dd,hh:mm:ss 파싱
     if (sscanf(pos, "%d/%d/%d,%d:%d:%d", &year, &month, &day, &hour, &minute, &second) == 6) {
@@ -1118,253 +648,11 @@ uint32_t nb_iot::retrieve_network_time()
         t.tm_min = minute;
         t.tm_sec = second;
         t.tm_isdst = -1;
-        
+
         time_t epoch = mktime(&t);
         if (epoch != -1) {
             return (uint32_t)epoch;
         }
     }
     return 0;
-}
-
-bool nb_iot::modem_MqttOpen(const char *host, const char *port, const char *client_id, const char *username, const char *password)
-{
-    printf("[MQTTS] MQTTS 연동 시퀀스 개시 (%s:%s)...\n", host, port);
-    this->is_unauthenticated = false;
-
-    char cnx_cmd[256];
-    snprintf(cnx_cmd, sizeof(cnx_cmd), "AT+KCNXCFG=1,\"GPRS\",\"%s\"", APN_NAME);
-    
-    if (!this->modem_SendCmdWaitOK(cnx_cmd, 5000))
-    {
-        printf("[MQTTS] 경고: GPRS APN 설정 실패 (이미 활성화되었을 가능성 있음)\n");
-    }
-    modem_sleep(1000);
-
-    if (!this->modem_SendCmdWaitOK("AT+KCNXPROFILE=1", 5000))
-    {
-        printf("[MQTTS] 경고: GPRS 프로필 활성화 실패 (이미 활성화되었을 가능성 있음)\n");
-    }
-    modem_sleep(1000);
-
-    this->modem_SendCmd("AT+KCNXUP=1");
-    uint32_t cnx_elapsed = 0;
-    bool bearer_ok = false;
-
-    while (cnx_elapsed < 20000)
-    {
-        modem_sleep(100);
-        cnx_elapsed += 100;
-        this->modem_ReadResponse(0);
-        
-        if (strstr(this->rx_buffer, "+KCNX_IND: 1,1") != nullptr)
-        {
-            bearer_ok = true;
-            break;
-        }
-        if (this->buffer_idx > 800)
-            this->modem_ClearRxBuffer();
-    }
-    modem_sleep(2000);
-
-    // SSL 및 TLS 세션 재개(Session Resumption) 설정
-    printf("[MQTTS] TLS 암호화 세션 재개 활성화 구성 중...\n");
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=0,3", 5000); // TLS 활성화
-    modem_sleep(1000);
-    this->modem_SendCmdWaitOK("AT+KSSLCFG=2,0", 5000); // Session Mode: 0 (Automatic session resumption)
-    modem_sleep(1000);
-    this->modem_SendCmdWaitOK("AT+KSSLCRYPTO=0,8,3,25392,12,4,1,0", 5000); // Cipher suites configuration
-    modem_sleep(1000);
-
-    // MQTT 세션 설정 (Clean session=1, ClientID, Username, Password, Cipher Index=0)
-    char cfg_cmd[512];
-    snprintf(cfg_cmd, sizeof(cfg_cmd), 
-        "AT+KMQTTCFG=1,1,\"%s\",%s,4,\"%s\",120,1,0,\"\",\"\",0,0,\"%s\",\"%s\",0",
-        host, port, client_id, username, password);
-
-    if (!this->modem_SendCmdWaitOK(cfg_cmd, 5000))
-    {
-        printf("[MQTTS] 에러: MQTT 설정(KMQTTCFG) 명령 전송 실패\n");
-        return false;
-    }
-
-    char *p = strstr(this->rx_buffer, "+KMQTTCFG:");
-    if (p != nullptr)
-    {
-        int parsed_id = 0;
-        if (sscanf(p, "+KMQTTCFG: %d", &parsed_id) == 1)
-            this->mqtt_session_id = parsed_id;
-    }
-    else
-    {
-        // 폴백으로 세션 ID 1 지정
-        this->mqtt_session_id = 1;
-    }
-    modem_sleep(1000);
-
-    // MQTT 브로커 연결 시도
-    char cnx_mqtt[64];
-    snprintf(cnx_mqtt, sizeof(cnx_mqtt), "AT+KMQTTCNX=%d", this->mqtt_session_id);
-    this->modem_SendCmd(cnx_mqtt);
-
-    uint32_t elapsed = 0;
-    const uint32_t step_ms = 100;
-    bool connected = false;
-    char expected_urc[32], failure_urc[32];
-    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,1", this->mqtt_session_id);
-    snprintf(failure_urc, sizeof(failure_urc), "+KMQTT_IND: %d,0", this->mqtt_session_id);
-
-    while (elapsed < 30000)
-    {
-        modem_sleep(step_ms);
-        elapsed += step_ms;
-        this->modem_ReadResponse(0);
-        
-        if (strstr(this->rx_buffer, expected_urc) != nullptr)
-        {
-            connected = true;
-            break;
-        }
-        if (strstr(this->rx_buffer, failure_urc) != nullptr)
-        {
-            printf("[MQTTS] 🚨 연결 실패 URC 감지! 인증이 거부되었거나 연결 끊김.\n");
-            this->is_unauthenticated = true;
-            break;
-        }
-        if (this->buffer_idx > 800)
-            this->modem_ClearRxBuffer();
-    }
-
-    if (!connected)
-    {
-        printf("[MQTTS] MQTTS 연결 실패 (타임아웃 또는 인증 거절)\n");
-        return false;
-    }
-
-    printf("[MQTTS] MQTTS 브로커 연결 성공! (Session ID: %d)\n", this->mqtt_session_id);
-    is_socket_open = true;
-    return true;
-}
-
-bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
-{
-    if (!is_socket_open || this->mqtt_session_id == 0) return false;
-
-    // 80바이트 페이로드 제한 방어
-    int payload_len = strlen(payload);
-    if (payload_len > 80)
-    {
-        printf("[MQTTS] ⚠️ 경고: 페이로드 크기(%d 바이트)가 모뎀의 80바이트 한도를 초과합니다!\n", payload_len);
-        printf("[MQTTS] 초과된 페이로드: %s\n", payload);
-        return false;
-    }
-
-    printf("[MQTTS] Publish 전송 토픽: %s | 페이로드: %s\n", topic, payload);
-
-    char pub_cmd[512];
-    // QoS 1로 전송 시도
-    snprintf(pub_cmd, sizeof(pub_cmd), "AT+KMQTTPUB=%d,\"%s\",1,0,\"%s\"", this->mqtt_session_id, topic, payload);
-    
-    if (!this->modem_SendCmdWaitOK(pub_cmd, 5000))
-    {
-        printf("[MQTTS] 에러: Publish 명령어 실행 실패\n");
-        return false;
-    }
-
-    // QoS 1/2 전송 성공 URC (+KMQTT_IND: <session_id>,4 또는 3) 대기
-    uint32_t elapsed = 0;
-    bool pub_success = false;
-    char expected_urc1[32], expected_urc2[32];
-    snprintf(expected_urc1, sizeof(expected_urc1), "+KMQTT_IND: %d,4", this->mqtt_session_id);
-    snprintf(expected_urc2, sizeof(expected_urc2), "+KMQTT_IND: %d,3", this->mqtt_session_id);
-
-    while (elapsed < 10000)
-    {
-        modem_sleep(100);
-        elapsed += 100;
-        this->modem_ReadResponse(0);
-        if (strstr(this->rx_buffer, expected_urc1) != nullptr || strstr(this->rx_buffer, expected_urc2) != nullptr)
-        {
-            pub_success = true;
-            break;
-        }
-        if (this->buffer_idx > 800)
-            this->modem_ClearRxBuffer();
-    }
-
-    if (!pub_success)
-    {
-        printf("[MQTTS] 에러: Publish URC 수신 실패 (QoS 1 핸드셰이크 누락)\n");
-        return false;
-    }
-
-    printf("[MQTTS] Publish 전송 성공 URC 확인 완료.\n");
-    return true;
-}
-
-bool nb_iot::modem_MqttSubscribe(const char *topic)
-{
-    if (!is_socket_open || this->mqtt_session_id == 0) return false;
-
-    printf("[MQTTS] Subscribe 신청 토픽: %s\n", topic);
-
-    char sub_cmd[256];
-    // QoS 1로 구독 신청
-    snprintf(sub_cmd, sizeof(sub_cmd), "AT+KMQTTSUB=%d,\"%s\",1", this->mqtt_session_id, topic);
-
-    if (!this->modem_SendCmdWaitOK(sub_cmd, 5000))
-    {
-        printf("[MQTTS] 에러: Subscribe 명령어 실행 실패\n");
-        return false;
-    }
-
-    // 구독 성공 URC (+KMQTT_IND: <session_id>,2) 대기
-    uint32_t elapsed = 0;
-    bool sub_success = false;
-    char expected_urc[32];
-    snprintf(expected_urc, sizeof(expected_urc), "+KMQTT_IND: %d,2", this->mqtt_session_id);
-
-    while (elapsed < 10000)
-    {
-        modem_sleep(100);
-        elapsed += 100;
-        this->modem_ReadResponse(0);
-        if (strstr(this->rx_buffer, expected_urc) != nullptr)
-        {
-            sub_success = true;
-            break;
-        }
-        if (this->buffer_idx > 800)
-            this->modem_ClearRxBuffer();
-    }
-
-    if (!sub_success)
-    {
-        printf("[MQTTS] 에러: Subscribe URC 수신 실패\n");
-        return false;
-    }
-
-    printf("[MQTTS] Subscribe 성공 URC 확인 완료.\n");
-    return true;
-}
-
-void nb_iot::modem_MqttClose()
-{
-    if (this->mqtt_session_id == 0) return;
-
-    printf("[MQTTS] MQTTS 세션 종료 시작 (Session ID: %d)...\n", this->mqtt_session_id);
-    
-    char close_cmd[64];
-    snprintf(close_cmd, sizeof(close_cmd), "AT+KMQTTCLOSE=%d", this->mqtt_session_id);
-    this->modem_SendCmdWaitResponse(close_cmd, "OK", "910", 5000);
-    modem_sleep(1000);
-
-    char del_cmd[64];
-    snprintf(del_cmd, sizeof(del_cmd), "AT+KMQTTDEL=%d", this->mqtt_session_id);
-    this->modem_SendCmdWaitResponse(del_cmd, "OK", "910", 5000);
-    modem_sleep(1000);
-
-    this->mqtt_session_id = 0;
-    is_socket_open = false;
-    printf("[MQTTS] MQTTS 세션 정상 종료 완료.\n");
 }

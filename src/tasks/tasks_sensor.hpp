@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-// Initialize ADC for sensor and diagnostic checks
+// Initialize temperature GPIOs and ADC-backed diagnostic checks
 void sensor_init();
 
 // Read VSYS voltage (in Volts) and check if it is stable
@@ -18,8 +18,8 @@ bool check_flash_integrity(uint32_t &calculated_checksum);
 // Perform a quick RAM pattern check on a temporary memory block (returns true if healthy)
 bool test_ram_integrity();
 
-// Read both NTC thermistors (GP26 / GP27) and diagnose their physical status:
+// Read both DS18B20 sensors and diagnose their physical status:
 // Returns status for each channel via reference parameters.
-void check_ntc_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, int &status_ch1);
+void check_temperature_status_dual(float &temp_ch0, int &status_ch0, float &temp_ch1, int &status_ch1);
 
 #endif // TASKS_SENSOR_HPP

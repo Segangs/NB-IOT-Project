@@ -3,17 +3,60 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "pico/stdlib.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "hardware/gpio.h"
 #include "hardware/watchdog.h"
 #include "../config.h"
+#include "../lib/log.hpp"
+#include "../lib/mqtt_payload.hpp"
 
 // Global boot reason codes (0: Normal, 1: Cmd Reboot, 2: Watchdog Timeout, 3: Power Cut/Brown-out)
 int g_boot_reason_code = 0;
 int g_boot_cmd_id = 0;
 
-SensorInfo g_sensors[2];
+SensorInfo g_sensors[4];
 int g_sensor_count = 0;
+
+void init_fixed_sensor_map()
+{
+    memset(g_sensors, 0, sizeof(g_sensors));
+    for (int i = 0; i < 4; i++)
+    {
+        g_sensors[i].user_sensor_id = i + 1;
+        g_sensors[i].sensor_ctgy_id = (i < 2) ? 1 : 2;
+        strncpy(g_sensors[i].sensor_ctgy_type, (i < 2) ? "TMP" : "MIC", sizeof(g_sensors[i].sensor_ctgy_type) - 1);
+        strncpy(g_sensors[i].sensor_ctgy_model, (i < 2) ? "DS18B20" : "SPH0645", sizeof(g_sensors[i].sensor_ctgy_model) - 1);
+        g_sensors[i].temp_upper_limit = DEFAULT_TEMP_UPPER_LIMIT;
+        g_sensors[i].temp_lower_limit = -999.0f;
+    }
+    g_sensor_count = 4;
+    g_temp_upper_limit = DEFAULT_TEMP_UPPER_LIMIT;
+    g_temp_upper_limit_ch0 = DEFAULT_TEMP_UPPER_LIMIT;
+    g_temp_upper_limit_ch1 = DEFAULT_TEMP_UPPER_LIMIT;
+    g_temp_lower_limit_ch0 = -999.0f;
+    g_temp_lower_limit_ch1 = -999.0f;
+}
+
+static bool copy_json_string_value(const char *start, const char *key, char *out, size_t out_len)
+{
+    char search_key[64];
+    snprintf(search_key, sizeof(search_key), "\"%s\":", key);
+    const char *ptr = strstr(start, search_key);
+    if (ptr == nullptr) return false;
+    ptr += strlen(search_key);
+    while (*ptr == ' ' || *ptr == '\t') ptr++;
+    if (*ptr != '"') return false;
+    ptr++;
+    const char *end = strchr(ptr, '"');
+    if (end == nullptr) return false;
+    size_t len = (size_t)(end - ptr);
+    if (len >= out_len) len = out_len - 1;
+    memcpy(out, ptr, len);
+    out[len] = '\0';
+    return true;
+}
 
 // Helper to parse sensor JSON list returned by Supabase
 int parse_sensors_json(const char *json, SensorInfo *sensors, int max_sensors) {
@@ -21,7 +64,7 @@ int parse_sensors_json(const char *json, SensorInfo *sensors, int max_sensors) {
     const char *ptr = json;
     
     while (count < max_sensors) {
-        ptr = strstr(ptr, "\"sensorId\"");
+        ptr = strstr(ptr, "\"userSensorId\"");
         if (!ptr) break;
         
         ptr = strchr(ptr, ':');
@@ -29,53 +72,17 @@ int parse_sensors_json(const char *json, SensorInfo *sensors, int max_sensors) {
         ptr++; // Skip ':'
         
         while (*ptr == ' ' || *ptr == '\t') ptr++;
-        sensors[count].sensor_id = atoi(ptr);
-        
-        ptr = strstr(ptr, "\"sensorType\"");
-        if (!ptr) break;
-        
-        ptr = strchr(ptr, ':');
-        if (!ptr) break;
-        ptr++;
-        while (*ptr == ' ' || *ptr == '\t') ptr++;
-        
-        if (*ptr == '"') {
-            ptr++;
-            const char *end = strchr(ptr, '"');
-            if (end) {
-                int len = end - ptr;
-                if (len > 31) len = 31;
-                strncpy(sensors[count].sensor_type, ptr, len);
-                sensors[count].sensor_type[len] = '\0';
-                ptr = end + 1;
-            }
-        } else if (strncmp(ptr, "null", 4) == 0) {
-            strcpy(sensors[count].sensor_type, "null");
-            ptr += 4;
-        }
-        
-        ptr = strstr(ptr, "\"sensorMemo\"");
-        if (!ptr) break;
-        
-        ptr = strchr(ptr, ':');
-        if (!ptr) break;
-        ptr++;
-        while (*ptr == ' ' || *ptr == '\t') ptr++;
-        
-        if (*ptr == '"') {
-            ptr++;
-            const char *end = strchr(ptr, '"');
-            if (end) {
-                int len = end - ptr;
-                if (len > 31) len = 31;
-                strncpy(sensors[count].sensor_memo, ptr, len);
-                sensors[count].sensor_memo[len] = '\0';
-                ptr = end + 1;
-            }
-        } else if (strncmp(ptr, "null", 4) == 0) {
-            strcpy(sensors[count].sensor_memo, "null");
-            ptr += 4;
-        }
+        sensors[count].user_sensor_id = atoi(ptr);
+
+        int ctgy = extract_json_int(ptr, "sensorCtgyId");
+        sensors[count].sensor_ctgy_id = ctgy;
+        copy_json_string_value(ptr, "sensorCtgyType", sensors[count].sensor_ctgy_type, sizeof(sensors[count].sensor_ctgy_type));
+        copy_json_string_value(ptr, "sensorCtgyModel", sensors[count].sensor_ctgy_model, sizeof(sensors[count].sensor_ctgy_model));
+
+        float upper = extract_json_float(ptr, "setTmpUpLimit");
+        float lower = extract_json_float(ptr, "setTmpLowLimit");
+        sensors[count].temp_upper_limit = (upper > -990.0f) ? upper : DEFAULT_TEMP_UPPER_LIMIT;
+        sensors[count].temp_lower_limit = lower;
         
         count++;
     }
@@ -84,6 +91,10 @@ int parse_sensors_json(const char *json, SensorInfo *sensors, int max_sensors) {
 
 // Buzzer Global Control Settings (Default threshold: -10.0C)
 volatile float g_temp_upper_limit = DEFAULT_TEMP_UPPER_LIMIT;
+volatile float g_temp_upper_limit_ch0 = DEFAULT_TEMP_UPPER_LIMIT;
+volatile float g_temp_upper_limit_ch1 = DEFAULT_TEMP_UPPER_LIMIT;
+volatile float g_temp_lower_limit_ch0 = -999.0f;
+volatile float g_temp_lower_limit_ch1 = -999.0f;
 volatile bool g_buzzer_trigger = false;
 volatile bool g_buzzer_active = false;
 volatile uint32_t g_temp_ch0_sample_seq = 0;
@@ -135,9 +146,75 @@ float extract_json_float(const char *json, const char *key) {
     return -999.0f;
 }
 
+bool apply_mqtt_config_payload(const char *payload, bool allow_commands)
+{
+    char config[512];
+    if (!mqtt_config_payload_extract_object(payload, config, sizeof(config))) {
+        LOG("CONFIG_IGNORE\n");
+        return false;
+    }
+
+    int parsed_count = parse_sensors_json(config, g_sensors, 4);
+    if (parsed_count > 0) {
+        g_sensor_count = parsed_count;
+        for (int i = 0; i < g_sensor_count; i++) {
+            if (g_sensors[i].user_sensor_id == 1) {
+                g_temp_upper_limit_ch0 = g_sensors[i].temp_upper_limit;
+                if (g_sensors[i].temp_lower_limit > -990.0f) {
+                    g_temp_lower_limit_ch0 = g_sensors[i].temp_lower_limit;
+                }
+            } else if (g_sensors[i].user_sensor_id == 2) {
+                g_temp_upper_limit_ch1 = g_sensors[i].temp_upper_limit;
+                if (g_sensors[i].temp_lower_limit > -990.0f) {
+                    g_temp_lower_limit_ch1 = g_sensors[i].temp_lower_limit;
+                }
+            }
+        }
+        g_temp_upper_limit = g_temp_upper_limit_ch0;
+        LOG("CONFIG_LIMIT_OK %.1f,%.1f\n", g_temp_upper_limit_ch0, g_temp_upper_limit_ch1);
+    }
+
+    int cmd = extract_json_int(config, "cmd");
+    int cmd_id = extract_json_int(config, "cmdId");
+    if (allow_commands && cmd == 10) {
+        LOG("CMD_REBOOT\n");
+        safe_reboot(100, cmd_id > 0 ? cmd_id : 0);
+    }
+
+    int user_sensor_id = extract_json_int(config, "userSensorId");
+    float upper = extract_json_float(config, "setTmpUpLimit");
+    if (upper <= -990.0f) {
+        upper = extract_json_float(config, "tempUpperLimitValue");
+    }
+    if (upper > -990.0f) {
+        if (user_sensor_id == 2) {
+            g_temp_upper_limit_ch1 = upper;
+        } else {
+            g_temp_upper_limit_ch0 = upper;
+            g_temp_upper_limit = upper;
+        }
+        LOG("LIMIT_UPDATE %d,%.1f\n", user_sensor_id, upper);
+    }
+
+    float lower = extract_json_float(config, "setTmpLowLimit");
+    if (lower <= -990.0f) {
+        lower = extract_json_float(config, "tempLowerLimitValue");
+    }
+    if (lower > -990.0f) {
+        if (user_sensor_id == 2) {
+            g_temp_lower_limit_ch1 = lower;
+        } else {
+            g_temp_lower_limit_ch0 = lower;
+        }
+        LOG("LOW_LIMIT_UPDATE %d,%.1f\n", user_sensor_id, lower);
+    }
+
+    return true;
+}
+
 // Safe reboot using Pico SDK Hardware Watchdog
 void safe_reboot(int delay_ms, int cmd_id) {
-    printf("[System] 🚨 Reboot command received! Halting FreeRTOS and resetting system via hardware watchdog...\n");
+    LOG("REBOOT\n");
     // FreeRTOS 스케줄러 및 인터럽트 차단하여 타 테스크와 꼬임 완벽 방지
     taskENTER_CRITICAL();
     
@@ -154,9 +231,27 @@ void safe_reboot(int delay_ms, int cmd_id) {
     }
 }
 
+// Safe power-off request using LTC2954 KILL# on GP15.
+void safe_power_off()
+{
+    LOG("POWER_OFF_REQ\n");
+    sleep_ms(100);
+
+    gpio_init(POWER_KILL_PIN);
+    gpio_set_dir(POWER_KILL_PIN, GPIO_OUT);
+    gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL);
+    sleep_ms(10);
+
+    gpio_put(POWER_KILL_PIN, POWER_KILL_ACTIVE_LEVEL);
+    sleep_ms(2000);
+
+    // If power is still alive, LTC2954 is not connected yet. Restore inactive state for continued testing.
+    gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL);
+    LOG("POWER_OFF_NO_CUT\n");
+}
+
 // ====================================================================================
 // Global Shared State
 // ====================================================================================
 LcdTaskParams lcd_params;
 nb_iot modem;
-

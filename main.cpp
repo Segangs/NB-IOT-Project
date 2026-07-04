@@ -16,6 +16,7 @@
 #include "src/tasks/tasks_sensor.hpp"
 #include "src/tasks/tasks_sensor_reader.hpp"
 #include "src/lib/flash_logger.hpp"
+#include "src/lib/log.hpp"
 
 // FreeRTOS standard headers
 #include "FreeRTOS.h" 
@@ -44,7 +45,7 @@ void detect_boot_reason() {
         // Clear the POWMAN reset register (Write-1-to-Clear) to avoid stale values next boot
         powman_hw->chip_reset = reset_reason;
         
-        // printf("[System] POWMAN chip_reset raw register: 0x%08X\n", reset_reason);
+        // LOG("RESET_RAW 0x%08X\n", reset_reason);
         
         // If brown-out (HAD_BOR) or glitch (HAD_GLITCH_DETECT) bits are set, classify as Power Cut/Glitch (3)
         if (reset_reason & (POWMAN_CHIP_RESET_HAD_BOR_BITS | POWMAN_CHIP_RESET_HAD_GLITCH_DETECT_BITS)) {
@@ -54,7 +55,7 @@ void detect_boot_reason() {
         }
         g_boot_cmd_id = 0;
     }
-    // printf("[System] Boot reason detected: %d (cmdId: %d)\n", g_boot_reason_code, g_boot_cmd_id);
+    // LOG("BOOT_REASON %d,%d\n", g_boot_reason_code, g_boot_cmd_id);
 }
 
 TaskHandle_t xBootTaskHandle = NULL;
@@ -66,6 +67,8 @@ int main()
 {
     // Detect boot reason immediately before registers are modified
     detect_boot_reason();
+
+    app_log_init();
     
     // Initialize Flash log storage
     flash_log_init();
@@ -75,15 +78,16 @@ int main()
     
 
 
-    // printf("\n==================================================\n");
-    // printf("❄️ Pico 2 W 부팅 자가 진단 및 데이터 수집 클라이언트\n");
-    // printf("==================================================\n");
+    // LOG("BOOT_BANNER\n");
     
     // 2. Configure shared state initial parameters immediately
     // Set 'is_searching_network' and 'is_booting' to true to start boot screen instantly!
     lcd_params.is_booting = true; // ACTIVATE BOOT SCREEN MODE
     strcpy(lcd_params.status_text, "Booting...");
-    lcd_params.current_temperature = 25.0f; 
+    lcd_params.current_temperature = -991.0f;
+    lcd_params.current_temperature_ch1 = -991.0f;
+    lcd_params.status_ch0 = 1;
+    lcd_params.status_ch1 = 1;
     lcd_params.current_csq = 99;
     lcd_params.is_searching_network = true; // RUN SEARCH SEQUENCE INSTANTLY
     lcd_params.is_transmitting = false;
@@ -94,7 +98,7 @@ int main()
     static LCD_I2C lcd(LCD_ADDR, 16, 2, I2C_PORT, SDA_PIN, SCL_PIN);
     lcd_params.lcd = &lcd;
     
-    // 4. Initialize MCU ADCs
+    // 4. Initialize temperature GPIOs and MCU diagnostic ADCs
     sensor_init();
     
     // 5. Register FreeRTOS Tasks
@@ -102,7 +106,7 @@ int main()
     xTaskCreate(
         vLcdTask,
         "LcdTask",
-        512,
+        768,
         &lcd_params,
         2,
         NULL
@@ -112,7 +116,7 @@ int main()
     xTaskCreate(
         vBootTask,
         "BootTask",
-        2048,
+        3072,
         NULL,
         1,
         &xBootTaskHandle
@@ -121,7 +125,7 @@ int main()
     xTaskCreate(
         vSensorTask,
         "SensorTask",
-        1024,
+        1536,
         NULL,
         1,
         NULL
@@ -131,30 +135,27 @@ int main()
     xTaskCreate(
         vStatusLedTask,
         "StatusLedTask",
-        512,
+        768,
         NULL,
         1,
         NULL
     );
 
     // 7. Register resource-locked Interactive AT Command Bypass thread (Priority 1)
-    // 💡 [노이즈 가드] PC 터미널 입력 등에 따른 모뎀 무한 ERROR 유입 차단을 위해 비활성화합니다.
-    /*
     xTaskCreate(
         vDebugTask,
         "DebugTask",
-        1024,
+        1536,
         NULL,
         1,
         NULL
     );
-    */
 
     // 8. Register periodic modem communication controller task (Priority 1)
     xTaskCreate(
         vPeriodicModemTask,
         "PeriodicModemTask",
-        2048,
+        3072,
         NULL,
         1,
         NULL
@@ -164,13 +165,23 @@ int main()
     xTaskCreate(
         vBuzzerTask,
         "BuzzerTask",
-        1024,
+        1536,
         NULL,
         1,
         NULL
     );
 
-    // 10. Ignite FreeRTOS Scheduler instantly!
+    // 10. Register single low-priority USB log output task.
+    xTaskCreate(
+        vLogTask,
+        "LogTask",
+        1536,
+        NULL,
+        0,
+        NULL
+    );
+
+    // 11. Ignite FreeRTOS Scheduler instantly!
     vTaskStartScheduler();
 
     // Loop fallback
@@ -185,13 +196,13 @@ extern "C" {
 
 void vApplicationMallocFailedHook(void)
 {
-    printf("[Fatal] FreeRTOS Malloc Failed!\n");
+    LOG("FATAL_MALLOC\n");
     while (true) {}
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
-    printf("[Fatal] FreeRTOS Stack Overflow in task: %s\n", pcTaskName);
+    LOG("FATAL_STACK %s\n", pcTaskName);
     while (true) {}
 }
 

@@ -26,6 +26,279 @@
 
 ---
 
+## 📅 2026-07-04
+
+### [펌웨어/MQTT] KeepAlive 안정화 및 EMQX rule 분리
+* **연동 대화 ID**: Codex MQTT KeepAlive 및 EMQX rule 분리 세션
+* **개발 범주**: Firmware, MQTT, EMQX, Config Payload, KeepAlive
+* **작업 및 해결 내역**:
+  - `src/lib/mqtt_payload.hpp/cpp` 추가로 MQTT config payload 방어 및 telemetry payload 검증 로직 분리
+  - `undefined`, 빈 문자열, 공백, `null`, `[]`, 잘못된 JSON payload 무시 처리
+  - config 배열/객체 payload에서 필드 누락 및 null 값 수신 시 기존 설정 유지
+  - `apply_mqtt_config_payload()` 공통 함수 추가로 boot/periodic config 수신 처리 통합
+  - telemetry payload `[userSensorId, temperature]` 생성 전 sensor id 및 온도값 검증 추가
+  - MQTT 상태 enum 추가: `LTE_DETACHED`, `LTE_ATTACHED`, `TLS_SOCKET_OPENING`, `TLS_SOCKET_OPEN`, `MQTT_CONNECTING`, `MQTT_CONNECTED`, `MQTT_SUBSCRIBED_CONFIG`, `MQTT_READY`, `MQTT_DISCONNECTED`, `MQTT_RECONNECT_WAIT`
+  - `modem_MqttPoll()` 추가로 MQTT URC 수집, 연결 abort/generic error 감지, READY 상태 갱신 처리
+  - `vPeriodicModemTask`를 매 발신 세션 open/close 구조에서 유지형 MQTT 세션 구조로 조정
+  - 60초 주기 `devices/<imei>/config/request` 발행으로 config 조회 요청 및 KeepAlive traffic 보강
+  - reconnect 실패 횟수별 3초, 5초, 10초, 최대 60초 backoff 적용
+  - boot task에서 boot publish와 별도로 `devices/<imei>/config/request` 발행
+  - `Segang/project/emqx_setup.sh`의 `telemetry_rule` config republish action 제거
+  - `devices/+/config/request` 전용 `config_request_rule` 추가 및 boot rule의 config republish 제거
+  - `emqx_setup.sh` 하드코딩 API 인증 헤더 제거 및 `.env`의 `EMQX_API_AUTH_HEADER` 사용으로 변경
+  - `tests/mqtt_payload_test.cpp` 추가 및 config/telemetry payload 단위 검증
+  - `g++` 호스트 단위 테스트, `bash -n Segang/project/emqx_setup.sh`, fresh CMake 펌웨어 빌드 검증 완료
+* **미해결 및 후속 확인**:
+  - 실제 Pico UF2 플래시 후 10분 이상 EMQX `keepalive_timeout` 미발생 확인 필요
+  - 운영 EMQX rule 반영 후 config request 응답/재발행 정책의 서버 측 보강 필요
+
+### [펌웨어] DS18B20 온도 보정 오프셋 추가
+* **연동 대화 ID**: Codex DS18B20 온도 보정 설정 추가 세션
+* **개발 범주**: Firmware, Sensor Calibration, DS18B20, Config
+* **작업 및 해결 내역**:
+  - DS18B20 디지털 온도센서도 기준 온도계 대비 보정이 필요할 수 있는 상황 반영
+  - `src/config.h`에 TMP1/TMP2 개별 보정값 `TEMP1_CAL_OFFSET_C`, `TEMP2_CAL_OFFSET_C` 추가
+  - 기본 보정값은 두 채널 모두 `0.0f`로 설정
+  - `src/tasks/tasks_sensor.cpp`에서 DS18B20 읽기 성공 및 status 0일 때만 보정 오프셋 적용
+  - 센서 오류값, CRC 실패값, 미연결 상태에는 보정 오프셋 미적용
+  - `/Users/segang/Documents/NB-IOT` 원본 루트에 동일 파일 동기화
+  - fresh CMake 구성, firmware build, `/private/tmp/nb-iot-temp-offset-build/nb_iot_project.uf2` 생성 검증 완료
+* **미해결 및 후속 확인**:
+  - 기준 온도계 비교 후 `TEMP1_CAL_OFFSET_C`, `TEMP2_CAL_OFFSET_C` 실제 보정값 산정 필요
+
+## 📅 2026-07-03: [펌웨어] DS18B20 디지털 온도센서 전환
+* **연동 대화 ID**: Codex 아날로그 서미스터 제거 및 GP22 DS18B20 전환 세션
+* **개발 범주**: Firmware, Sensor, GPIO, DS18B20, FreeRTOS
+* **작업 및 해결 내역**:
+  - GP22에 DS18B20 디지털 온도센서를 임시 연결한 실물 변경 사항 반영
+  - 외부 온도센서 측정 경로에서 아날로그 서미스터 ADC 코드 제거
+  - 기존 GP26/GP27 ADC 스캔, 전압 변환, 저항 계산, B-parameter 온도 계산, `NTC_TEMP_OFFSET` 보정 코드 제거
+  - `config.h` 외부 온도 핀 정의를 `TEMP1_SENSOR_PIN=22`, `TEMP2_SENSOR_PIN=26`으로 재정의
+  - TMP1은 GP22, TMP2는 GP26 DS18B20 1-Wire 버스 기준으로 부팅 체크 및 주기 샘플링 수행
+  - DS18B20 reset/presence detect, `Convert T`, scratchpad read, CRC8 검증, DS18B20 온도 범위 검증 루틴 추가
+  - 1-Wire 타이밍 슬롯은 짧은 FreeRTOS critical section으로 보호하고 750ms 변환 대기는 task delay로 처리
+  - DS18B20 미연결 또는 데이터 라인 open 상태는 status 1, CRC 오류는 status 2, 온도 범위 초과는 status 3으로 분리
+  - 부팅 먹통 증상 대응을 위해 DS18B20 직접 읽기를 부팅 필수 경로에서 제거하고 센서 태스크 전용 읽기 구조로 조정
+  - BootTask와 SensorTask의 1-Wire 동시 접근 가능성 제거를 위해 `one_wire_mutex` 추가
+  - 부팅 초기 `current_temperature`, `current_temperature_ch1`, `status_ch0`, `status_ch1` 기본값을 미연결 상태로 초기화
+  - 부팅 먹통 지속 증상 대응을 위해 `ENABLE_DS18B20_READ=0` 임시 격리 스위치 추가
+  - `ENABLE_DS18B20_READ=0` 상태에서는 GP22/GP26 DS18B20 GPIO 초기화 및 1-Wire read/write 미수행
+  - DS18B20 GPIO 미접근 격리 UF2가 센서 분리/연결 상태 모두에서 정상 부팅되는 사용자 확인 수신
+  - 격리 결과를 기준으로 배선 쇼트 가능성을 낮추고 DS18B20 읽기 루틴의 부팅 초기 간섭 가능성으로 원인 범위 축소
+  - `ENABLE_DS18B20_READ=1`, `ENABLE_TEMP1_DS18B20=1`, `ENABLE_TEMP2_DS18B20=0`, `DS18B20_BOOT_DELAY_MS=30000` 구성 적용
+  - SensorTask에서 `lcd_params.is_booting=false` 및 부팅 후 30초 경과 조건을 만족할 때만 GP22 TMP1 읽기 수행
+  - GP26 TMP2는 실제 두 번째 DS18B20 연결 전까지 GPIO 초기화 및 읽기 비활성 유지
+  - 부팅 완료 직후 `BOOT_DONE`, `PERIODIC_READY` 이후 멈춤 증상 기준 SensorTask의 DS18B20 읽기 시작 지점으로 원인 범위 추가 축소
+  - 1-Wire `ow_reset`, `ow_write_bit`, `ow_read_bit` 내부 FreeRTOS `taskENTER_CRITICAL/taskEXIT_CRITICAL` 제거
+  - GP22 단일 센서 지연 읽기 조건은 유지한 상태에서 critical section 제거 효과를 확인하는 테스트 빌드 생성
+  - GP22 TMP1이 `status 1`로 표시되는 presence pulse 미검출 상태 확인
+  - `ow_reset`에서 reset 전 DATA idle high 여부와 presence pulse 여부를 분리 측정하도록 진단값 추가
+  - 5초 주기 `DS18B20_DIAG GP22 idle=<0|1> presence=<0|1> status=<code>` 로그 추가
+  - status 1은 idle high 상태에서 presence 없음, status 5는 DATA 라인 stuck-low 또는 GND 단락 의심으로 분리
+  - 사용자 배선 오류 수정 후 GP22 TMP1 온도값 정상 수신 확인: `SENSOR_SAMPLE 30.7,0 ...`
+  - LCD 하단 온도 표시에서 기존 `C1/C2` 순환 표시 제거
+  - GP22 TMP1 단독 정상 시 `-15.0°C`, GP26 TMP2 단독 정상 시 `T2: -15.0°C`, TMP1/TMP2 동시 정상 시 `-15.0 -15.0°C` 형식 적용
+  - GP26 TMP2도 코드상 DS18B20 읽기 활성화하여 향후 두 번째 센서 연결 시 자동 표시 가능하도록 조정
+  - 8002A 스피커 앰프 입력 결선 기준 `BUZZER_PIN`을 GP16에서 GP6으로 변경
+  - 부팅 후 MQTT 발신 실패 및 `KMQTTCNX` 타임아웃성 실패는 후속 리팩터링/디버깅 과제로 분리
+  - DS18B20 샘플링 주기를 1초에서 10초로 변경하여 1-Wire 버스 부하 및 CRC 흔들림 완화
+  - CRC/일시 통신 실패 발생 시 최대 3회까지 마지막 정상 온도값과 status 0 유지
+  - 연속 실패가 3회를 초과할 때만 LCD 및 상태값에 실제 오류 반영
+  - 요청에 따라 `DIAG_CHECK`, `DS18B20_DIAG`, `DS18B20_READ_RESET_FAIL` 시리얼 로그 제거
+  - VSYS 전압 및 RP2350 내부 칩 온도 진단에 필요한 ADC 초기화와 `hardware_adc` 링크는 유지
+  - `tasks_boot.cpp`, `tasks_sensor_reader.cpp`, `tasks_periodic_modem.cpp`의 NTC 변수명 및 호출부를 일반 온도센서 기준으로 정리
+  - flash log 구조의 `ntc_status` 명칭을 `temp_status`로 변경하고 CSV 헤더를 `TempStatus`로 정리
+  - 코드 검색 기준 `src/`, `main.cpp`, `CMakeLists.txt` 내 `NTC`, `thermistor`, `ADC_NTC` 잔여 참조 없음 확인
+  - fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-build/nb_iot_project.uf2` 생성 검증 완료
+  - 부팅 복구용 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-bootfix-build/nb_iot_project.uf2` 생성 검증 완료
+  - DS18B20 GPIO 비활성 격리용 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-disabled-build/nb_iot_project.uf2` 생성 검증 완료
+  - GP22 단일 센서 지연 읽기용 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-delayed-gp22-build/nb_iot_project.uf2` 생성 검증 완료
+  - GP22 단일 센서 지연 읽기 및 critical section 제거용 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-nocritical-build/nb_iot_project.uf2` 생성 검증 완료
+  - GP22 presence 진단 로그 포함 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-diag-build/nb_iot_project.uf2` 생성 검증 완료
+  - LCD 온도 표시 및 GP6 스피커 반영 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-lcd-gp6-build/nb_iot_project.uf2` 생성 검증 완료
+  - DS18B20 10초 샘플링 및 CRC 안정화 fresh CMake 구성, firmware build, `/private/tmp/nb-iot-ds18b20-stable-build/nb_iot_project.uf2` 생성 검증 완료
+* **미해결 및 후속 확인**:
+  - 사용자 UF2 플래시 후 GP22 DS18B20 실제 온도값, TMP1 상태 0, 대시보드 TMP1 표시 확인 필요
+  - GP26 TMP2는 센서 미연결 상태에서 status 1 표시 예상
+
+## 📅 2026-07-03: [DB/펌웨어/대시보드] 고정 USER_SENSOR 구조 전환
+* **연동 대화 ID**: Codex 고정 센서 ID 및 USER_SENSOR 통합 전환 세션
+* **개발 범주**: Supabase, EMQX, Firmware, Dashboard, Sensor Mapping
+* **작업 및 해결 내역**:
+  - Supabase `SENSOR_CTGY` 테이블 생성 및 `TMP/DS18B20`, `MIC/SPH0645` 센서 분류 2행 적재
+  - 기존 `sensor`, `usersettings` 구조 제거 및 `USER_SENSOR` 테이블로 기기별 센서/설정온도 통합
+  - device 1~5 대상 `userSensorId` 1~4 생성, 총 20개 고정 센서 행 초기 적재
+  - `userSensorId` 1/2는 온도센서, 3/4는 마이크 센서로 고정 매핑
+  - `setTmpUpLimit=-10`, `setTmpLowLimit=NULL` 기준 초기 설정값 반영
+  - `sensorvalue.sensorId`를 `USER_SENSOR.Id` 참조 구조로 전환
+  - `get_device_sensors(p_imei)` RPC를 IMEI 기준 `USER_SENSOR` 설정 조회 구조로 재작성
+  - `t(p_imei, p_user_sensor_id, p_value)` RPC를 IMEI + 고정 `userSensorId` 기반 telemetry 적재 구조로 재작성
+  - `insert_device_boot_log`, `b` RPC를 `tmp1_status`, `tmp2_status`, `mic1_status`, `mic2_status` 분리 저장 구조로 재작성
+  - `assign_device_command()` trigger function의 옛 `sensor` 테이블 참조를 `USER_SENSOR` 참조로 교체
+  - EMQX `telemetry_rule` SQL 및 `supabase_telemetry` action body를 `[userSensorId, value]` payload 처리 구조로 변경
+  - EMQX `boot_rule` SQL 및 `supabase_boot` action body를 TMP1/TMP2/MIC1/MIC2 상태 포함 구조로 변경
+  - 운영 EMQX 설정 및 로컬 `Segang/project/emqx_setup.sh` 동기화
+  - 펌웨어 `SensorInfo` 구조를 `user_sensor_id`, `sensor_ctgy_id`, `sensor_ctgy_type`, `sensor_ctgy_model`, 채널별 설정온도 중심으로 변경
+  - `init_fixed_sensor_map()` 추가 및 TMP1=1, TMP2=2, MIC1=3, MIC2=4 고정 매핑 초기화
+  - 부팅 센서 체크 로그를 `SENSOR_CHECK T1/T2/M1/M2` 형식으로 변경
+  - 부팅 MQTT payload를 TMP1/TMP2/MIC1/MIC2 상태 포함 14개 필드 배열로 변경
+  - MQTT config 수신 시 TMP1/TMP2 `setTmpUpLimit`, `setTmpLowLimit` 값을 Pico 내부 채널별 캐시에 저장
+  - 주기 telemetry 발신 payload를 `[userSensorId, temperature]` 형식으로 변경
+  - 부저 상한온도 비교 기준을 TMP1/TMP2 채널별 `g_temp_upper_limit_ch0/ch1`로 분리
+  - Flask 대시보드 조회 로직을 `sensor`, `usersettings` 참조에서 `USER_SENSOR`, `SENSOR_CTGY` 참조로 전환
+  - `/device-status`의 `온도 센서 회로` 단일 항목을 TMP1, TMP2, MIC1, MIC2 상태 표시로 분리
+  - 온도 상태, 온도 이력, 전국 온도 API, `/api/status` 집계 로직을 고정 USER_SENSOR 모델에 맞춰 조정
+  - 운영 서버 `/home/segang/project`에 `app.py`, `dashboard.html`, `device_status.html`, `device_temp_history.html`, `temp_status.html` 반영
+  - 운영 서버 반영 전 백업 생성: `/home/segang/project/deploy_backup_20260703_083842`
+  - 운영 Flask 프로세스 재시작 및 `/device-status`, `/api/status` 응답 확인
+  - Python 문법 검사, `emqx_setup.sh` bash 문법 검사, 구식 테이블 참조 제거 확인
+  - fresh CMake 구성, firmware build, `/private/tmp/nb-iot-fixed-sensors-build/nb_iot_project.uf2` 생성 검증 완료
+* **미해결 및 후속 확인**:
+  - UF2 플래시 후 사용자 실기기 기준 부팅 로그 payload, TMP1/TMP2 설정온도 수신, 대시보드 TMP/MIC 상태 표시 확인 필요
+  - 실제 DS18B20 및 SPH0645 물리 드라이버/신호 품질은 PCB 결선 및 실측 기반 후속 검증 필요
+
+## 📅 2026-07-03: [펌웨어] HL7811 AT 명령 목차 확인 및 MQTT 코드 분리
+* **연동 대화 ID**: Codex HL7811 AT 명령 숙지 및 modem/MQTT 리팩터링 세션
+* **개발 범주**: Firmware, HL7811 AT Commands, MQTTS, Refactor, FreeRTOS
+* **작업 및 해결 내역**:
+  - `DOCS/RM78-1 데이터시트/HL78xx - AT Commands Interface Guide - Rev16.0.pdf` 17-26p 목차 확인
+  - 현재 펌웨어와 직접 관련된 명령 그룹을 V25ter/General, Mobile Equipment Control/Status, Network Service, Packet Domain, Protocol Common/SSL, MQTT AT Commands로 정리
+  - HTTP Client Specific Commands(`+KHTTPCFG`, `+KHTTPCNX`, `+KHTTPHEADER`, `+KHTTPPOST`, `+KHTTP_IND`, `+KHTTPCLOSE`, `+KHTTPDEL`) 미사용 방침 반영
+  - raw TCP Specific Commands(`+KTCPCFG`, `+KTCPCNX`, `+KTCPSND`, `+KTCPCLOSE`, `+KTCPDEL`, `+KTCP_IND`) 기반 펌웨어 경로 제거
+  - `tasks_modem.cpp`의 `modem_SocketOpen`, `modem_SocketSend`, `modem_SocketClose`, `modem_HttpOpen`, `modem_HttpPost`, `modem_HttpClose` 구현 제거
+  - `tasks_modem.hpp`의 Socket/Direct HTTPS 공개 API 및 `http_session_id` 상태 제거
+  - 부팅 초기화 중 `AT+KHTTPCLOSE`, `AT+KHTTPDEL` 기반 잔존 HTTP 세션 청소 루프 제거
+  - `tasks_modem.cpp`를 모뎀 전원 제어, UART 송수신, 기본 AT 응답, SIM/IMEI/CIMI/망 상태, TXON 설정, 인증서 저장, 네트워크 시간 조회 중심으로 축소
+  - MQTT 세션 열기, publish, subscribe, close 구현을 신규 `src/tasks/tasks_mqtt.cpp`로 분리
+  - MQTT 연결 상태 플래그를 `is_socket_open`에서 `is_mqtt_connected`로 명칭 정리
+  - `CMakeLists.txt`에 `src/tasks/tasks_mqtt.cpp` 빌드 대상 추가
+  - 코드 경로 기준 `KHTTP`, `KTCP`, `modem_Http`, `modem_Socket`, `http_session_id`, `is_socket_open` 잔여 참조 없음 확인
+  - `/Users/segang/Documents/NB-IOT` 원본 루트에 동일 파일 동기화 및 임시 빌드 디렉터리 `/private/tmp/nb-iot-mqtt-refactor-build` 사용
+  - fresh CMake 구성, firmware build, `/private/tmp/nb-iot-mqtt-refactor-build/nb_iot_project.uf2` 생성 검증 완료
+
+## 📅 2026-07-03: [펌웨어] MQTT CONNECT FAIL 세션 초기화 보강
+* **연동 대화 ID**: Codex MQTT CONNECT FAIL 및 CME ERROR 0 대응 세션
+* **개발 범주**: Firmware, HL7811 MQTT, Session Cleanup, Boot Reliability
+* **작업 및 해결 내역**:
+  - 사용자 시리얼 로그 기준 `AT+KMQTTCFG` 직후 `+CME ERROR: 0`, `MQTT_CFG_FAIL`, `MQTT_CONNECT_FAIL` 발생 확인
+  - 잦은 Pico 재부팅 후 HL7811 내부 MQTT 세션 슬롯이 잔존하여 신규 `KMQTTCFG` 생성이 실패할 가능성 확인
+  - `modem_MqttOpen()` 시작 시 `MQTT_SESSION_RESET` 절차 추가
+  - MQTT 세션 슬롯 1~6 대상 `AT+KMQTTCLOSE=<sid>`, `AT+KMQTTDEL=<sid>` 순차 수행 추가
+  - 세션 정리 중 미존재 세션의 `ERROR` 응답은 정상 정리 흐름으로 허용
+  - 세션 초기화 완료 후 `mqtt_session_id=0`, `is_mqtt_connected=false` 상태 재설정
+  - `KMQTTCFG` 1차 실패 시 `MQTT_CFG_RETRY` 로그 후 세션 초기화 재수행 및 1회 재시도 추가
+  - `tasks_boot.cpp`의 중복 `MQTT_CONNECT`, `MQTT_CONNECT_OK` 로그 제거로 시리얼 원인 추적성 개선
+  - `/Users/segang/Documents/NB-IOT` 원본 루트에 동일 파일 동기화
+  - fresh CMake 구성, firmware build, `/private/tmp/nb-iot-mqtt-session-reset-build/nb_iot_project.uf2` 생성 검증 완료
+
+## 📅 2026-07-03: [펌웨어] RTOS 로그 출력 큐 및 단일 LogTask 전환
+* **연동 대화 ID**: Codex firmware printf 제거 및 LogTask 전환 세션
+* **개발 범주**: Firmware, FreeRTOS, Logging, USB stdio, Modem Stability
+* **작업 및 해결 내역**:
+  - USB 연결 상태와 출력 속도 편차가 부팅/통신 흐름에 영향을 줄 수 있는 기존 직접 `printf` 호출 구조 확인
+  - 프로젝트 펌웨어 소스의 직접 `printf` 호출을 `LOG()` 매크로 호출로 전환
+  - `src/lib/log.cpp`, `src/lib/log.hpp` 신규 추가 및 FreeRTOS 정적 큐 기반 로그 버퍼 구성
+  - `LOG()` 호출부는 메시지 포맷 후 큐 적재만 수행하고 실제 `printf` 출력은 `vLogTask` 단일 지점에서만 수행
+  - `main.cpp`에 `vLogTask` 등록 및 FreeRTOS 우선순위 0 최저 우선순위 적용
+  - LTE/모뎀 통신 중 로그도 직접 USB 출력이 아닌 큐 적재 방식으로 통일
+  - SSL Root CA 인증서 주입 구간에서 `app_log_set_enabled(false)`로 로그 비활성화 후 성공/실패 결과만 사후 출력
+  - `CMakeLists.txt`에 `src/lib/log.cpp` 빌드 대상 추가
+  - FreeRTOS heap `192KB`, minimal stack `384`, timer task stack `1536`으로 확장
+  - LCD, Boot, Sensor, LED, Debug, PeriodicModem, Buzzer, Log task 스택 여유 확대
+  - 부팅, 모뎀, 인증서, MQTT, 센서, 경보 로그를 `BOOT`, `MODEM_AT_OK`, `CERT_WRITE_OK`, `MQTT_CONNECT_OK` 등 상태 토큰 중심으로 축약
+  - `dump_csv` 명령의 CSV 데이터 출력은 사용자 요청 데이터 출력으로 유지
+  - `git diff --check`, fresh CMake 구성, firmware build 및 UF2 생성 검증 완료
+
+## 📅 2026-07-03: [서버/DB] EMQX MQTT 인증 실패 추적 필드 확장
+* **연동 대화 ID**: Codex EMQX 인증 실패 원인 추적 및 로깅 확장 세션
+* **개발 범주**: EMQX, Supabase RPC, Authentication Logs, MQTT Security
+* **작업 및 해결 내역**:
+  - Supabase `authentication_logs` ID 747~749의 `device_id=""`, `deny`, `Device not found or USIM not linked` 상태 확인
+  - EMQX 로그 기준 동일 시각 `2026-07-03 05:03:30~05:03:31 KST`의 인증 실패 peer IP `44.220.185.63` 및 랜덤 clientid 확인
+  - 해당 실패는 Pico IMEI 기반 접속이 아닌 외부 Amazon IP 기반 MQTT 접속 시도라는 원인 판정
+  - `authentication_logs`에 `clientid`, `peerhost`, `listener`, `username_raw`, `password_empty` 컬럼 추가
+  - `auth_device()` RPC를 EMQX 접속 문맥 인자 확장형으로 교체하고 기존 `username/password` 2인자 호출 호환 유지
+  - MQTT username 공백 요청은 `MQTT username empty` 사유로 별도 기록되도록 분기 추가
+  - EMQX 운영 HTTP Authentication body에 `clientid`, `peerhost`, `listener`, `username_raw` 전달 설정 반영
+  - EMQX HTTP Authentication 요청 헤더에 `x-emqx-auth-secret` 전용 식별 헤더 추가
+  - 운영 서버 `/home/segang/project/.env`에 `EMQX_AUTH_SECRET` 생성 및 운영 EMQX 인증 리소스 반영
+  - EMQX 인증 리소스 갱신 중 body 템플릿이 빈 값으로 치환된 상태를 발견하고 `${username}`, `${password}`, `${clientid}`, `${peerhost}`, `${listener}` 원형 템플릿으로 복구
+  - 운영 EMQX 인증 리소스 조회로 `apikey`, `authorization`, `content-type`, `x-emqx-auth-secret` 헤더 키 반영 확인
+  - MQTT 1883 정상 IMEI/IMSI 인증 `allow`, 빈 username 인증 `deny` 검증
+  - MQTT 8883 TLS 정상 IMEI/IMSI 인증 `allow`, 빈 username 인증 `deny` 검증
+  - Supabase `authentication_logs` ID 788~791 기준 `clientid`, `peerhost`, `listener`, `username_raw`, `password_empty`, `status`, `reason` 적재 확인
+  - 서버 `/home/segang/project/emqx_setup.sh`, `/home/segang/emqx_setup.sh`, 로컬 `Segang/project/emqx_setup.sh`의 인증 body 갱신
+  - `mosquitto_pub` 기반 빈 username 접속 거부 및 정상 IMEI/IMSI 접속 허용 검증
+  - 검증용 인증 로그 제거 및 운영 로그 오염 방지
+
+## 📅 2026-07-03: [펌웨어] USB 디버그 명령 확장 및 전원 제어 준비
+* **연동 대화 ID**: Codex USB 시리얼 디버그 명령 확장 세션
+* **개발 범주**: Firmware, Debug Console, Watchdog, Power Management, GPIO
+* **작업 및 해결 내역**:
+  - `main.cpp`에서 주석 처리되어 있던 `vDebugTask` 재등록으로 USB 시리얼 로컬 명령 수신 경로 복구
+  - `tasks_debug.cpp`에 `reboot` 명령 추가 및 `safe_reboot()`를 통한 hardware watchdog 기반 Pico 재부팅 연결
+  - `tasks_debug.cpp`에 `power off`, `poweroff`, `power_off` 명령 추가 및 `safe_power_off()` 연결
+  - `safe_power_off()`에서 GP15 LTC2954 KILL# 신호를 LOW로 2초 요청한 뒤 전원이 살아 있으면 HIGH로 복귀하는 미연결 테스트 안전 처리 추가
+  - PCB 문서 기준 RM78-1 PWRON을 GP4로 보정하고 LTC2954 INT GP14, KILL GP15 define 분리
+  - `dump_csv`, `clear_csv`, `reboot`, `power off` 로컬 명령은 모뎀 busy 상태와 무관하게 우선 처리되도록 명령 분기 유지
+  - 일반 AT 바이패스 명령은 모뎀 busy 상태에서 전달 보류하여 UART race condition 방지
+
+## 📅 2026-07-03: [펌웨어] GP28 TXON LED 엣지 기반 표시 보정
+* **연동 대화 ID**: Codex GP28 TXON LED 실물 표시 디버깅 세션
+* **개발 범주**: Firmware, GPIO Interrupt, LED, Modem TXON
+* **작업 및 해결 내역**:
+  - MQTTS 연결은 정상이나 GP28 TXON 표시 LED가 송수신 중에도 깜박이지 않는 실물 증상 확인
+  - 기존 50ms 폴링 방식이 RM78-1 TXON의 짧은 pulse를 놓칠 수 있는 구조 확인
+  - GP5 TXON 입력을 내부 pull-up 및 상승/하강 엣지 인터럽트 감지 방식으로 변경
+  - RM78-1 매뉴얼 기준 TX_ON indicator feature 활성화를 위해 `AT+KHWIOCFG?` 조회 및 필요 시 `AT+KHWIOCFG=5,1` 설정 로직 추가
+  - `AT+KHWIOCFG=5,1` 변경은 모뎀 재부팅 후 적용 가능하다는 매뉴얼 주의사항 로그 반영
+  - GP28 LED를 평상시 ON, 펌웨어 송신 상태(`is_transmitting`) 동안 100ms 간격 fallback blink 방식으로 변경
+  - GP5 TXON 입력 직접 미러링 제거 및 TXON edge/monitor 시리얼 진단 로그 제거
+  - 부팅 중 GP8 빨강 상태 LED 점멸 간격을 500ms로 변경
+  - `dump_csv`, `clear_csv` 로컬 디버그 명령은 모뎀 busy 상태와 무관하게 USB stdio 입력에서 처리되도록 수정
+  - 일반 AT 바이패스 명령은 모뎀 busy 상태에서 전달 보류 및 안내 로그 출력
+
+## 📅 2026-07-03: [운영 지침] 펌웨어 검증 범위 축소
+* **연동 대화 ID**: Codex 펌웨어 검증 범위 조정 세션
+* **개발 범주**: Firmware Verification, UF2 Build, Agent Instructions
+* **작업 및 해결 내역**:
+  - 펌웨어 작업 후 Codex 검증 범위를 CMake 구성, 빌드, UF2 생성 확인까지로 제한
+  - Pico 드라이브 복사, Pico 재부팅, 시리얼 로그 읽기 작업은 사용자 별도 요청 시에만 수행하도록 지침 변경
+  - `AGENTS.md`, `.agents/AGENTS.md`, `.agents/skills/build-firmware/SKILL.md`에 UF2 생성까지만 수행하는 검증 기준 기록
+  - UF2 반영 및 시리얼/실물 하드웨어 확인은 사용자 직접 수행 기준 반영
+
+## 📅 2026-07-03: [운영 지침] 시리얼 모니터 공유 검증 원칙 추가
+* **연동 대화 ID**: Codex 시리얼 모니터 공유 검증 지침 반영 세션
+* **개발 범주**: Firmware Verification, Serial Monitor, Agent Instructions
+* **작업 및 해결 내역**:
+  - 펌웨어 실기기 테스트 중 시리얼 로그 확인 시 우측/가시 터미널 창에 시리얼 모니터를 출력하는 원칙 추가
+  - 사용자도 동일한 시리얼 로그 흐름을 보며 부팅, 모뎀 AT, MQTTS 연결 상태를 함께 확인하는 검증 방식 반영
+  - `AGENTS.md`, `.agents/AGENTS.md`, `.agents/skills/build-firmware/SKILL.md`에 시리얼 모니터 공유 확인 원칙 기록
+  - LCD, LED, 부저 등 시리얼 로그 외 하드웨어 표시 항목은 사용자 실물 확인 요청 유지
+
+## 📅 2026-07-02 (추가): [펌웨어] MQTT 브로커 환경값 누락 및 GP28 TXON LED 극성 보정
+* **연동 대화 ID**: Codex MQTT placeholder 및 TXON LED 디버깅 세션
+* **개발 범주**: Firmware, CMake Env, MQTTS, GPIO, LED
+* **작업 및 해결 내역**:
+  - 시리얼 로그의 `AT+KMQTTCFG` 명령에 `YOUR_MQTT_BROKER_HOST_PLACEHOLDER`가 포함되어 MQTTS 연결 실패하는 현상 확인
+  - 루트 `.env`에 `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`가 누락되어 `src/config.h` fallback 값이 컴파일되는 원인 확인
+  - 로컬 `.env`에 `MQTT_BROKER_HOST="p.zxcx.io"`, `MQTT_BROKER_PORT="8883"` 추가
+  - 신규 검증 빌드 산출물 문자열 검사로 `p.zxcx.io` 포함 및 MQTT placeholder 미포함 확인
+  - GP28 TXON LED가 모뎀 부팅 후 꺼진 채 유지되는 실제 증상 기준 GP5 TXON 입력 극성 재판단
+  - GP5 HIGH idle 상태를 GP28 LED ON으로 직접 미러링하고, LOW pulse 시 LED OFF blink가 되도록 `tasks_led.cpp` 보정
+
+## 📅 2026-07-02 (추가): [펌웨어] GP7 BAT MODE 표시 임시 비활성화
+* **연동 대화 ID**: Codex GP7 BAT MODE 표시 원인 확인 세션
+* **개발 범주**: Firmware, GPIO, LCD, PCB Bring-up
+* **작업 및 해결 내역**:
+  - 현재 코드 기준 GP7 HIGH는 외부 어댑터 있음, GP7 LOW는 외부 어댑터 없음으로 해석되는 구조 확인
+  - GP7 미연결 상태에서 내부 `gpio_pull_down`에 의해 LOW로 고정되어 `BAT MODE`가 표시되는 원인 확인
+  - 실제 PCB 전원 감지 분압 회로 연결 전까지 `tasks_led.cpp`에서 `lcd_params.is_battery_mode`를 `false`로 고정
+  - 회로 연결 후 `lcd_params.is_battery_mode = !adapter_present` 로직 재활성화 위치 주석 기록
+  - 최초 플래시 시 수정 전 `build/nb_iot_project.uf2`가 사용된 산출물 경로 불일치 원인 확인
+  - 수정 후 생성된 `/private/tmp/nb-iot-gp7-verify/nb_iot_project.uf2` 기준 Pico 재플래시 수행
+  - LCD/LED 등 시리얼 로그로 확인되지 않는 하드웨어 표시 항목은 플래시 후 사용자 실물 확인을 요청하는 검증 원칙 반영
+
 ## 📅 2026-07-02 (추가): [펌웨어] RTOS 태스크 파일 분리 및 main.cpp 정리
 * **연동 대화 ID**: Codex RTOS 태스크 분리 리팩터링 세션
 * **개발 범주**: Firmware Refactor, FreeRTOS, Task Structure, Build System

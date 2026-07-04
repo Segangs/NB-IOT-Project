@@ -39,7 +39,7 @@ void vStatusLedTask(void *pvParameters)
 
     gpio_init(MODEM_TXON_INPUT_PIN);
     gpio_set_dir(MODEM_TXON_INPUT_PIN, GPIO_IN);
-    gpio_pull_down(MODEM_TXON_INPUT_PIN);
+    gpio_pull_up(MODEM_TXON_INPUT_PIN);
 
     gpio_init(POWER_ADAPTER_DETECT_PIN);
     gpio_set_dir(POWER_ADAPTER_DETECT_PIN, GPIO_IN);
@@ -47,18 +47,22 @@ void vStatusLedTask(void *pvParameters)
 
     bool red_on = false;
     TickType_t last_red_toggle = xTaskGetTickCount();
-    const TickType_t red_blink_interval = pdMS_TO_TICKS(1000);
+    const TickType_t red_blink_interval = pdMS_TO_TICKS(500);
     const TickType_t sensor_blink_time = pdMS_TO_TICKS(120);
     uint32_t last_ch0_seq = g_temp_ch0_sample_seq;
     uint32_t last_ch1_seq = g_temp_ch1_sample_seq;
     TickType_t ch0_blink_until = 0;
     TickType_t ch1_blink_until = 0;
+    const TickType_t txon_sw_blink_interval = pdMS_TO_TICKS(100);
 
     while (true)
     {
         TickType_t now = xTaskGetTickCount();
         bool adapter_present = gpio_get(POWER_ADAPTER_DETECT_PIN) == POWER_ADAPTER_PRESENT_LEVEL;
-        lcd_params.is_battery_mode = !adapter_present;
+        (void)adapter_present;
+        // GP7 external-power detect is disabled until the PCB divider circuit is connected.
+        // Re-enable with: lcd_params.is_battery_mode = !adapter_present;
+        lcd_params.is_battery_mode = false;
 
         if (lcd_params.is_booting)
         {
@@ -77,10 +81,10 @@ void vStatusLedTask(void *pvParameters)
             gpio_put(STATUS_LED_GREEN_PIN, 1);
         }
 
-        // RM78-1 TXON is sampled on GP5 and mirrored inversely on GP28.
-        // The LED is normally on, then dips low in step with TXON activity.
-        bool txon_active = gpio_get(MODEM_TXON_INPUT_PIN) != 0;
-        gpio_put(TXON_LED_PIN, txon_active ? 0 : 1);
+        // Keep GP28 on normally and blink it during firmware-known TX windows.
+        bool txon_sw_blink_on = !lcd_params.is_transmitting ||
+                                ((now / txon_sw_blink_interval) % 2 != 0);
+        gpio_put(TXON_LED_PIN, txon_sw_blink_on ? 1 : 0);
 
         bool port1_temp_ok = (g_temp_ch0_sample_seq > 0) && (lcd_params.status_ch0 == 0);
         bool port2_temp_ok = (g_temp_ch1_sample_seq > 0) && (g_sensor_count >= 2) && (lcd_params.status_ch1 == 0);
@@ -104,5 +108,3 @@ void vStatusLedTask(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
-
-

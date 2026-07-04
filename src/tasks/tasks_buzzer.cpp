@@ -7,10 +7,11 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "../config.h"
+#include "../lib/log.hpp"
 #include "app_context.hpp"
 
 // ====================================================================================
-// Buzzer Control Helpers (Passive Buzzer on GP16 using PWM)
+// Buzzer Control Helpers (8002A speaker amplifier input on GP6 using PWM)
 // ====================================================================================
 void buzzer_stop(uint pin)
 {
@@ -61,7 +62,7 @@ struct Note {
 // ====================================================================================
 void vBuzzerTask(void *pvParameters)
 {
-    // Initialize GP16 as simple GPIO to start in off state
+    // Initialize speaker PWM pin as simple GPIO to start in off state
     gpio_init(BUZZER_PIN);
     gpio_set_dir(BUZZER_PIN, GPIO_OUT);
     gpio_put(BUZZER_PIN, 0);
@@ -76,7 +77,7 @@ void vBuzzerTask(void *pvParameters)
     };
     const int num_notes = sizeof(ding_dong) / sizeof(ding_dong[0]);
 
-    printf("[BuzzerTask] Passive Buzzer 'Ding-Dong' 5-repetition test task started.\n");
+    LOG("BUZZER_READY\n");
 
     while (true)
     {
@@ -87,7 +88,7 @@ void vBuzzerTask(void *pvParameters)
             continue;
         }
 
-        printf("[BuzzerTask] Temp upper limit exceeded! Playing 'Ding-Dong' (Mi-Do) 5 times...\n");
+        LOG("BUZZER_ON\n");
         g_buzzer_active = true;
 
         for (int repeat = 0; repeat < 5; repeat++)
@@ -105,12 +106,10 @@ void vBuzzerTask(void *pvParameters)
         }
 
         g_buzzer_active = false;
-        printf("[BuzzerTask] Done playing 5 times. Entering 1-minute silent interval...\n");
+        LOG("BUZZER_COOLDOWN\n");
         buzzer_stop(BUZZER_PIN);
 
         // Sleep for 1 minute (60 seconds = 60,000 ms) before checking trigger status again
         vTaskDelay(pdMS_TO_TICKS(60000));
     }
 }
-
-
