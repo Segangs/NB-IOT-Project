@@ -8,19 +8,27 @@
 #define BAUD_RATE         115200
 #define UART_TX_PIN       0
 #define UART_RX_PIN       1
-#define PWR_ON_PIN        15
+#define MODEM_WAKEUP_PIN  2
+#define MODEM_RESET_PIN   3
+#define PWR_ON_PIN        4
 
 // ====================================================================================
 // [2] I2C & LCD Configurations
 // ====================================================================================
 #define I2C_PORT          i2c0
 #define LCD_ADDR          0x27
-#define SDA_PIN           20
-#define SCL_PIN           21
+#define LCD_ADDR_ALT      0x3F
+#define SDA_PIN           16      // LCD SDA through BSS138 level shifter
+#define SCL_PIN           17      // LCD SCL through BSS138 level shifter
+#define LCD_POWER_STABILIZE_DELAY_MS 5000
 
 // ====================================================================================
 // [3] Sensor Configurations
 // ====================================================================================
+#define MIC_I2S_BCLK_PIN  18      // Shared I2S BCLK, RJ45 ports 1 and 2
+#define MIC_I2S_LRCLK_PIN 19      // Shared I2S LRCLK, RJ45 ports 1 and 2
+#define MIC1_DOUT_PIN     20      // SPH0645LM4H DOUT, RJ45 Port 1
+#define MIC2_DOUT_PIN     21      // SPH0645LM4H DOUT, RJ45 Port 2
 #define TEMP1_SENSOR_PIN  22      // DS18B20 DATA, RJ45 Port 1
 #define TEMP2_SENSOR_PIN  26      // DS18B20 DATA, RJ45 Port 2
 #define ENABLE_DS18B20_READ 1
@@ -59,6 +67,18 @@
 #define MQTT_BROKER_PORT  "8883"
 #endif
 
+#ifndef MQTT_DEVICE_ID
+#define MQTT_DEVICE_ID     ""
+#endif
+
+#ifndef MQTT_USERNAME
+#define MQTT_USERNAME      ""
+#endif
+
+#ifndef MQTT_PASSWORD
+#define MQTT_PASSWORD      ""
+#endif
+
 // ====================================================================================
 // [5] Timing & Frequencies (Units: minutes)
 // ====================================================================================
@@ -71,9 +91,12 @@
 #define POWER_ADAPTER_DETECT_PIN         7
 #define POWER_ADAPTER_PRESENT_LEVEL      1
 #define POWER_INT_PIN                    14
-#define POWER_KILL_PIN                   4 // 15로 수정해야함
+#define POWER_KILL_PIN                   15
 #define POWER_KILL_INACTIVE_LEVEL        1
 #define POWER_KILL_ACTIVE_LEVEL          0
+#define POWER_INT_DEBOUNCE_MS 500
+#define SHUTDOWN_HARD_DEADLINE_MS 90000
+#define MODEM_POWEROFF_FINALIZE_RESERVE_MS 1000
 
 // ====================================================================================
 // [7] Self-Diagnostic Thresholds

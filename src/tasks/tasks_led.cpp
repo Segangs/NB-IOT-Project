@@ -3,7 +3,11 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "hardware/gpio.h"
+#include "pico/stdlib.h"
+#include "../boot_v2/runtime_owner_producer_facade.hpp"
+#include "../boot_v2/runtime_owner_rtos.hpp"
 #include "../config.h"
+#include "../lib/log.hpp"
 #include "app_context.hpp"
 
 // ====================================================================================
@@ -45,6 +49,10 @@ void vStatusLedTask(void *pvParameters)
     gpio_set_dir(POWER_ADAPTER_DETECT_PIN, GPIO_IN);
     gpio_pull_down(POWER_ADAPTER_DETECT_PIN);
 
+    gpio_init(POWER_INT_PIN);
+    gpio_set_dir(POWER_INT_PIN, GPIO_IN);
+    gpio_pull_up(POWER_INT_PIN);
+
     bool red_on = false;
     TickType_t last_red_toggle = xTaskGetTickCount();
     const TickType_t red_blink_interval = pdMS_TO_TICKS(500);
@@ -54,6 +62,11 @@ void vStatusLedTask(void *pvParameters)
     TickType_t ch0_blink_until = 0;
     TickType_t ch1_blink_until = 0;
     const TickType_t txon_sw_blink_interval = pdMS_TO_TICKS(100);
+    bool power_int_low_tracking = false;
+    bool power_shutdown_latched = false;
+    TickType_t power_int_low_since = 0;
+    uint32_t power_producer_sequence = 0;
+    uint32_t power_incident_correlation_id = 0;
 
     while (true)
     {
@@ -63,6 +76,41 @@ void vStatusLedTask(void *pvParameters)
         // GP7 external-power detect is disabled until the PCB divider circuit is connected.
         // Re-enable with: lcd_params.is_battery_mode = !adapter_present;
         lcd_params.is_battery_mode = false;
+
+        if (!power_shutdown_latched) {
+            const bool power_int_low = gpio_get(POWER_INT_PIN) == 0;
+            if (!power_int_low) {
+                power_int_low_tracking = false;
+                power_producer_sequence = 0;
+                power_incident_correlation_id = 0;
+            } else if (!power_int_low_tracking) {
+                power_int_low_tracking = true;
+                power_int_low_since = now;
+            } else if (
+                now - power_int_low_since >=
+                    pdMS_TO_TICKS(POWER_INT_DEBOUNCE_MS) &&
+                boot_v2::runtime_owner_redacted_status().runtime_ready != 0) {
+                if (power_producer_sequence == 0) {
+                    power_producer_sequence = 1;
+                    power_incident_correlation_id =
+                        to_ms_since_boot(get_absolute_time());
+                    if (power_incident_correlation_id == 0) {
+                        power_incident_correlation_id = 1;
+                    }
+                }
+                const boot_v2::RuntimeOwnerIngressResult result =
+                    boot_v2::runtime_owner_power_button_request_shutdown(
+                        power_producer_sequence,
+                        power_incident_correlation_id);
+                if (result ==
+                    boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery) {
+                    power_shutdown_latched = true;
+                    LOG("POWER_BUTTON_SHUTDOWN_ACCEPTED %lu\n",
+                        static_cast<unsigned long>(
+                            power_incident_correlation_id));
+                }
+            }
+        }
 
         if (lcd_params.is_booting)
         {

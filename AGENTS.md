@@ -46,6 +46,7 @@ make -j$(sysctl -n hw.ncpu)
 Important firmware constraints:
 
 - Board: `pico2_w`, RP2350, C11/C++17.
+- When the user explicitly asks to flash and verify a Pico, run an auto-reconnecting `/dev/cu.usbmodem*` raw 115200 reader in a user-visible background terminal before the verification reboot. Prefer the Codex right-side background terminal; if the app does not expose it, automatically open a dedicated macOS Terminal window. Do not reuse the Codex lower integrated `NB-IOT` terminal for serial monitoring.
 - `uart0` on GP0/GP1 is modem-only. Keep `pico_enable_stdio_uart(... 0)`.
 - Debug through USB stdio only.
 - HL7811 AT terminator is `\r` only, not `\r\n`.

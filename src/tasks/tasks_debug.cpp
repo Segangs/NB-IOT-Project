@@ -1,115 +1,93 @@
 #include "tasks_debug.hpp"
 
-#include <ctype.h>
-#include <stdio.h>
-#include <string.h>
+#include <atomic>
+#include <cctype>
+#include <cstdio>
+#include <cstring>
+
 #include "pico/stdlib.h"
 #include "FreeRTOS.h"
 #include "task.h"
+
 #include "../lib/flash_logger.hpp"
 #include "../lib/log.hpp"
-#include "app_context.hpp"
 
-static void debug_trim_command(char *cmd)
+namespace {
+
+std::atomic<bool> manual_at_mode{false};
+
+void trim_command(char *command) noexcept
 {
-    size_t len = strlen(cmd);
-    while (len > 0 && (cmd[len - 1] == ' ' || cmd[len - 1] == '\t' ||
-                       cmd[len - 1] == '\r' || cmd[len - 1] == '\n'))
-    {
-        cmd[--len] = '\0';
+    std::size_t length = std::strlen(command);
+    while (length > 0 &&
+           (command[length - 1] == ' ' || command[length - 1] == '\t' ||
+            command[length - 1] == '\r' || command[length - 1] == '\n')) {
+        command[--length] = '\0';
     }
 }
 
-static bool debug_command_equals(const char *cmd, const char *expected)
+bool command_equals(const char *left, const char *right) noexcept
 {
-    while (*cmd != '\0' && *expected != '\0')
-    {
-        if (tolower((unsigned char)*cmd) != tolower((unsigned char)*expected))
-        {
+    while (*left != '\0' && *right != '\0') {
+        if (std::tolower(static_cast<unsigned char>(*left)) !=
+            std::tolower(static_cast<unsigned char>(*right))) {
             return false;
         }
-        cmd++;
-        expected++;
+        ++left;
+        ++right;
     }
-    return *cmd == '\0' && *expected == '\0';
+    return *left == '\0' && *right == '\0';
 }
 
-// ====================================================================================
-// Core 0 Task: Resource-Locked Interactive AT Command Bypass (Core 0)
-// ====================================================================================
-void vDebugTask(void *pvParameters)
+} // namespace
+
+void manual_at_mode_enable() noexcept
+{
+    manual_at_mode.store(true, std::memory_order_release);
+}
+
+bool manual_at_mode_enabled() noexcept
+{
+    return manual_at_mode.load(std::memory_order_acquire);
+}
+
+void vDebugTask(void *)
 {
     LOG("DEBUG_READY\n");
-    
-    char cmd_buf[64];
-    int cmd_idx = 0;
-    memset(cmd_buf, 0, sizeof(cmd_buf));
-    
-    while (true)
-    {
-        // 시리얼 입력 비동기 1문자 획득
-        int ch = getchar_timeout_us(0);
-        if (ch != PICO_ERROR_TIMEOUT) {
-            char c = (char)ch;
-            
-            // 화면 에코백 (사용자 편의성 제공)
-            putchar(c);
-            
-            if (c == '\r' || c == '\n') {
-                if (cmd_idx > 0) {
-                    cmd_buf[cmd_idx] = '\0';
-                    debug_trim_command(cmd_buf);
-                    
-                    // 디버그 쉘 명령어 분기
-                    if (cmd_buf[0] == '\0') {
-                        // Ignore whitespace-only input.
-                    } else if (debug_command_equals(cmd_buf, "dump_csv")) {
+    char command[64]{};
+    std::size_t length = 0;
+
+    for (;;) {
+        if (manual_at_mode_enabled()) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        const int input = getchar_timeout_us(0);
+        if (input != PICO_ERROR_TIMEOUT) {
+            const char character = static_cast<char>(input);
+            putchar(character);
+            if (character == '\r' || character == '\n') {
+                if (length != 0) {
+                    command[length] = '\0';
+                    trim_command(command);
+                    if (command_equals(command, "dump_csv")) {
                         flash_log_dump_csv();
-                    } else if (debug_command_equals(cmd_buf, "clear_csv")) {
+                    } else if (command_equals(command, "clear_csv")) {
                         flash_log_clear();
-                    } else if (debug_command_equals(cmd_buf, "reboot")) {
-                        safe_reboot(100);
-                    } else if (debug_command_equals(cmd_buf, "power off") ||
-                               debug_command_equals(cmd_buf, "poweroff") ||
-                               debug_command_equals(cmd_buf, "power_off")) {
-                        safe_power_off();
-                    } else {
-                        bool modem_busy = lcd_params.is_booting ||
-                                          lcd_params.is_transmitting ||
-                                          modem.is_connected() ||
-                                          lcd_params.is_modem_busy;
-                        if (modem_busy) {
-                            LOG("AT_BUSY\n");
-                        } else {
-                            // 일반 AT 명령어일 경우 모뎀 UART에 전달
-                            strcat(cmd_buf, "\r\n");
-                            modem.modem_PacedWrite(cmd_buf);
-                        }
+                    } else if (command[0] != '\0') {
+                        LOG("DEBUG_DISABLED\n");
                     }
-                    cmd_idx = 0;
-                    memset(cmd_buf, 0, sizeof(cmd_buf));
                 }
-            } else if (c == '\b' || ch == 127) { // 백스페이스
-                if (cmd_idx > 0) {
-                    cmd_idx--;
-                    cmd_buf[cmd_idx] = '\0';
+                length = 0;
+                std::memset(command, 0, sizeof(command));
+            } else if (character == '\b' || input == 127) {
+                if (length != 0) {
+                    command[--length] = '\0';
                 }
-            } else {
-                if (cmd_idx < (int)sizeof(cmd_buf) - 2) {
-                    cmd_buf[cmd_idx++] = c;
-                }
+            } else if (length < sizeof(command) - 1) {
+                command[length++] = character;
             }
         }
-        
-        bool modem_busy = lcd_params.is_booting ||
-                          lcd_params.is_transmitting ||
-                          modem.is_connected() ||
-                          lcd_params.is_modem_busy;
-        if (!modem_busy) {
-            // 모뎀의 실시간 출력 결과 파이프
-            modem.modem_ReadResponse(0);
-        }
-        
-        vTaskDelay(pdMS_TO_TICKS(10)); // Hyper-responsive 10ms polling interval
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

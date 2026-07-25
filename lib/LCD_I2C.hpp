@@ -114,7 +114,7 @@ class LCD_I2C final
      *
      * @param val Value to be sent
      */
-    inline void Send_Nibble(byte val) const noexcept;
+    inline void Send_Nibble(byte val, byte mode) const noexcept;
 
     /**
      * Send a byte of data as two nibbles using the function
@@ -283,4 +283,3 @@ class LCD_I2C final
      */
     void CreateCustomChar(byte location, array char_map) const noexcept;
 };
-

@@ -1,0 +1,213 @@
+{
+  "contract_id": "nb_iot.g2.mqtt_compact_json",
+  "schema_version": 1,
+  "encoding": "compact_json",
+  "wire_character_set": "ascii",
+  "max_payload_bytes": 80,
+  "numeric_csv_allowed": false,
+  "dual_decoder_allowed": false,
+  "raw_binary_allowed": false,
+  "supersedes": {
+    "contract_id": "nb_iot.g1.mqtt_db",
+    "scope": "wire_encoding_and_payload_shapes_only",
+    "reason": "2026-07-25_user_decision_keep_current_compact_json"
+  },
+  "topics": {
+    "boot": "devices/{imei}/boot",
+    "telemetry": "devices/{imei}/telemetry",
+    "config_request": "devices/{imei}/config/request",
+    "config_response": "devices/{imei}/config",
+    "command_request": "devices/{imei}/cmd/request",
+    "command_response": "devices/{imei}/cmd/response",
+    "command_ack": "devices/{imei}/cmd/ack",
+    "command_ack_receipt": "devices/{imei}/cmd/ack/receipt"
+  },
+  "retained": {
+    "boot": false,
+    "telemetry": false,
+    "config_request": false,
+    "config_response": false,
+    "command_request": false,
+    "command_response": false,
+    "command_ack": false,
+    "command_ack_receipt": false
+  },
+  "existing_payloads": {
+    "telemetry": {
+      "fields": [
+        "sensor_id",
+        "value_celsius"
+      ],
+      "max_golden_values": [
+        4294967295,
+        -55.5
+      ],
+      "max_golden_payload": "[4294967295,-55.5]"
+    },
+    "boot": {
+      "fields": [
+        "voltage",
+        "pico_temperature",
+        "flash_integrity",
+        "reserved_zero",
+        "at_status",
+        "cpin_status",
+        "csq",
+        "carrier_code",
+        "temp1_status",
+        "temp2_status",
+        "mic1_status",
+        "mic2_status",
+        "boot_reason",
+        "last_cmd_id"
+      ],
+      "max_golden_values": [
+        6,
+        125,
+        3,
+        0,
+        3,
+        3,
+        99,
+        3,
+        5,
+        5,
+        3,
+        3,
+        7,
+        4294967295
+      ],
+      "max_golden_payload": "[6,125,3,0,3,3,99,3,5,5,3,3,7,4294967295]"
+    },
+    "config_request": {
+      "fixed_payload": "{}"
+    },
+    "config_response": {
+      "fields": [
+        "temp1_upper_celsius",
+        "temp2_upper_celsius"
+      ],
+      "max_golden_values": [
+        125,
+        -55
+      ],
+      "max_golden_payload": "[125,-55]"
+    }
+  },
+  "command_payloads": {
+    "command_request": {
+      "fields": [
+        "request_id",
+        "last_cmd_id"
+      ],
+      "max_golden_values": [
+        4294967295,
+        4294967295
+      ],
+      "max_golden_payload": "[4294967295,4294967295]"
+    },
+    "command_response": {
+      "fields": [
+        "request_id",
+        "cmd_id",
+        "opcode",
+        "job_id",
+        "ttl_seconds"
+      ],
+      "max_golden_values": [
+        4294967295,
+        4294967295,
+        4,
+        4294967295,
+        86400
+      ],
+      "max_golden_payload": "[4294967295,4294967295,4,4294967295,86400]"
+    },
+    "command_ack": {
+      "fields": [
+        "cmd_id",
+        "phase",
+        "result",
+        "error",
+        "unix_seconds",
+        "clock_valid"
+      ],
+      "max_golden_values": [
+        4294967295,
+        2,
+        4,
+        5,
+        4294967295,
+        1
+      ],
+      "max_golden_payload": "[4294967295,2,4,5,4294967295,1]"
+    },
+    "command_ack_receipt": {
+      "fields": [
+        "cmd_id",
+        "phase",
+        "result",
+        "receipt",
+        "error"
+      ],
+      "max_golden_values": [
+        4294967295,
+        2,
+        4,
+        3,
+        4
+      ],
+      "max_golden_payload": "[4294967295,2,4,3,4]"
+    }
+  },
+  "command_enums": {
+    "opcode": {
+      "none": 0,
+      "reboot": 1,
+      "power_off": 2,
+      "request_status": 3,
+      "fota_prepare": 4
+    },
+    "phase": {
+      "accepted": 1,
+      "final": 2
+    },
+    "result": {
+      "none": 0,
+      "accepted": 1,
+      "executed": 2,
+      "failed": 3,
+      "expired": 4
+    },
+    "error": {
+      "none": 0,
+      "invalid_opcode": 1,
+      "duplicate": 2,
+      "execution": 3,
+      "journal": 4,
+      "expired": 5
+    },
+    "receipt": {
+      "ingested": 1,
+      "rejected": 2,
+      "mismatch": 3
+    }
+  },
+  "claim_count_per_request": 1,
+  "dedupe_key": "cmd_id",
+  "database_state_flow": [
+    "queued",
+    "delivered",
+    "accepted",
+    "executed_or_failed_or_expired"
+  ],
+  "safety": {
+    "imei_from_authenticated_context": true,
+    "config_command_separate": true,
+    "accepted_before_destructive_execute": true,
+    "single_dispatch_latch": true,
+    "final_receipt_before_journal_clear": true,
+    "stale_sensor_telemetry_forbidden": true,
+    "invalid_numeric_sentinel_forbidden": true
+  }
+}

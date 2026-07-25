@@ -26,6 +26,186 @@
 
 ---
 
+## 📅 2026-07-25
+
+* Command RAM journal의 retry·expected effect·remaining TTL·monotonic/Unix/boot checkpoint 필드 보강
+* `alignas(32)` 64바이트 little-endian `CommandJournalRecordV1`과 CRC32 ISO-HDLC encode/decode 구현
+* A/B slot의 blank·valid·corrupt 분리, sequence wrap·half-range ambiguity·split-brain fail-closed 선택 구현
+* valid Empty tombstone과 1~63바이트 부분쓰기 전원차단 모사, `ExecuteMarked` 복원 뒤 중복실행 금지 검증
+* 새 Flash 절대주소·erase/program/store·sensor log 축소·RuntimeOwner persistence 연결 0
+* Command journal 818 checks·Command/ACK 180 checks, Host Debug·Release 각 25/25, G1/G2 contract 133/133 통과
+* fresh Pico 2 Release UF2 486,912바이트·2026-07-25 19:50:17 KST·SHA-256 `e327350ea5ebbb80d6f42d1d7082dec4a611d818e8eab12bd0a588e153769c33` 생성, Pico flash·Supabase·EMQX·server·commit·push 변경 0
+* Unified Flash Partition V1 중앙 layout·RP2350 actual dormant Command Flash A/B store 구현, 기존 sensor log·shutdown record 주소 보존
+* Command Flash adapter source graph/object compile 확인, RuntimeOwner no-activation으로 Release ELF/UF2 section GC 가능성 미검증 유지
+* Firmware A BIN 1,280KiB post-build size gate 구현, Model artifact writer·pipeline·size gate 미구현 유지
+* RuntimeOwner persistence·periodic activation·physical dispatch·Pico power-cut 미연결 유지
+* fresh Host Debug·Release 각 29/29, G1/G2 Python contract 133/133 통과
+* fresh Pico 2 Release UF2 486,912바이트·BIN 243,096바이트·2026-07-25 22:54:51 KST·SHA-256 `a6bb753a83c124f3915ddc914d787df02da8cd5664f5e66f68f1747a42ec0c1e` 생성, Pico copy/flash/serial·Supabase·EMQX·server·commit·push 변경 0
+* Spaceship 전용 RSA 4096 SSH key와 read-only 접속 확인, message script·`.env` mode/key-name·host health 수집과 worker process/service/cron 미배포 baseline 확정
+* P00-DRAFT sanitized evidence 전 항목 PASS, 제품·운영 mutation 0, current outbound IP·Bizppurio token/template·실발송은 Message activation gate로 분리
+* 기존 `deviceCmds`·telemetry command trigger를 보존하는 lowercase `device_command_state` additive migration/rollback 초안 작성
+* 한 요청당 command 1건 claim·최대 5회 redelivery·accepted/final ACK idempotent receipt·RLS·`service_role` 전용 RPC 계약 적용
+* legacy telemetry command trigger 존재 중 신규 claim을 SQLSTATE `55000`으로 구조적 차단하고 reference-zero·trigger 제거 뒤 writer/consumer 활성화로 분리
+* precheck/up/down/verify/expected-result와 migration static contract 14/14 통과, live Supabase·EMQX·Flask·Spaceship apply 0
+* Homebrew PostgreSQL 17.10 sanitized 임시 DB에서 `precheck → up → verify → down → legacy verify` 실제 rehearsal 통과, legacy 3행·function·trigger 보존과 신규 object 완전 제거 확인
+* Supabase Branching은 현재 조직의 Pro 미만 플랜으로 생성되지 않았고 과금 0, rehearsal 뒤 임시 DB·`postgresql@17`·자동 설치 의존성 제거
+* `gpt-5.6-sol` max 독립 재검토의 최초 Critical 1·Important 4 전부 해소와 최종 Critical 0·Important 0
+* numeric CSV 전환 취소와 기존 telemetry·boot·config compact JSON 유지, 신규 command request/response·ACK/receipt도 80바이트 이하 numeric JSON array로 고정
+* TEMP fresh·CRC fallback 3회/30초·4회째 실패·non-CRC 실패·stale telemetry/alarm 금지의 allocation-free quality core와 SensorTask 단일 writer 연결
+* 최소 한 개의 완전한 TEMP+MIC port pair를 Pass로 보는 snapshot health와 fresh sample 전용 telemetry 연결
+* command request correlation·TTL·dedupe·accepted/final ACK·exact receipt·single-dispatch latch·부팅 복구 금지 상태 코어 구현
+* config payload의 command side effect 제거와 `cmd/request`·`cmd/response`·`cmd/ack`·`cmd/ack/receipt` 전용 RuntimeOwner backend 경로 분리
+* Flash A/B durable journal 전 `request_status`만 성공, reboot·power-off·FOTA 실제 실행 없이 terminal execution failure로 제한
+* compact JSON Python 52/52, TEMP 112 checks, Command/ACK 133 checks, RuntimeOwner backend 454 checks, Host Debug·Release 각 24/24 통과
+* fresh Pico 2 Release UF2 486,912바이트·2026-07-25 13:38:18 KST·SHA-256 `f06e6b90bb5ff3cbd1afa91910378ed2f9d4698dac91d25f4d15a044eeab3907` 생성, Pico flash·serial·DB·EMQX·server·commit·push 변경 0
+* P00 read-only 감사의 Supabase·EMQX·Flask·Cloudflare evidence 완료 기록을 Spaceship 포함 최종 PASS로 갱신
+* RuntimeOwner 종료 결과용 64바이트 CRC A/B Flash record와 sequence wrap·손상 slot fallback 구현
+* 마지막 64KB Flash를 일반 log 56KB·shutdown slot A/B 각 4KB로 분리, 기존 32바이트 log 정렬 유지
+* initial/final USB가 모두 present이면 watchdog, 모두 absent이면 GP15, USB 변화·record 실패·deadline이면 fail-closed인 최종 정책 적용
+* GP15 active-low write 권한을 RuntimeOwner final action 한 곳으로 제한하고 GP14 producer의 USB admission 제거·runtime-ready gate 유지
+* `AT+CPWROFF` `OK`·GP2 LOW 뒤 record commit/readback CRC를 수행하고 남은 90초 budget의 settle·최종 1초 reserve 유지
+* Host Debug·Release 각 22/22, shutdown finalizer 116 checks, shutdown record 28 checks, G1 112/112와 `git diff --check` 통과
+* 최종 Pico 2 UF2 478,720바이트·SHA-256 `1cb29815e23646006007ec3808a50ac40f796071dfdb1bedecf8b3053edafdd9`, 자동 BOOTSEL·flash write/verify 100% 통과
+* USB 연결 부팅의 `LAST_SHUTDOWN result=NONE`·`SELFTEST OK`·MQTT/CONFIG 복구·`PERIODIC_READY`·`BOOT_DONE` 확인, GP15·watchdog commit 0
+* 실제 USB 미연결 GP15 전원 차단은 U6 KILL# polarity·전원 경로 실측 전 보류, DB·EMQX·server·commit·push 변경 0
+* GP14 1차 실기에서 dying publish·MQTT 정리·PDP down·CFUN 0·CPWROFF 접수·watchdog 재부팅까지 성공했으나 재부팅 뒤 모뎀 AT 무응답 반복 확인
+* Rev29의 normal `AT+CPWROFF` `OK`가 전원 차단 완료가 아닌 즉시 반환 접수 응답임을 원문·렌더 페이지로 재확인
+* GP5 TX_ON이 전원 상태가 아닌 LTE 송신 구간 표시라 종료 완료 판정에 사용할 수 없는 PCB 경계 확인
+* CPWROFF 접수 뒤 90초 종료 예산 중 최종 USB 재확인·watchdog용 1초를 제외한 남은 시간 동안 GP2 LOW를 유지하는 보정 적용
+* 보정 계약 변경 전 7/431 RED·변경 후 431/431 GREEN, Host Debug/Release 각 21/21·G1 10/10·`git diff --check` 통과와 GP15 호출 0 유지
+* 보정 UF2 474,624바이트·SHA-256 `83bce39dd98aae64244a58aa65f593891bd43e9000c8ef6407eb49af04114dc9`, 자동 BOOTSEL·flash write/verify 통과
+* 완전 전원 재인가 뒤 보정 GP14 반복 시험에서 `AT+CPWROFF` 접수·GP2 LOW 71,959ms·watchdog 재부팅·USB 자동 재연결 통과
+* 새 부팅의 modem AT·SIM·인증서·PDP·TLS·MQTT·CONFIG 복구와 `BOOT_DONE`·`PERIODIC_READY` 재도달 확인, `MODEM_AT_FAIL` 반복 0
+* GP14 500ms debounce 종료 요청·승인 원인 보존·90초 finalizer·최종 USB 재확인 뒤 watchdog 재부팅의 1차 종료 경로 구현
+* MQTT dying status·세션 1~6 CLOSE/DEL·session scan·PDP down·CFUN 0·CPWROFF 직후 GP2 LOW의 bounded cleanup 적용, GP15 실제 차단 제외
+* Host Debug/Release 각 21/21·G1 10/10·behavioral mutant 6/6 탐지와 fresh Pico 2 UF2 flash write/verify 통과
+* 종료 검증 UF2 474,112바이트·SHA-256 `d34ea9755bfef9009fe9f04bf72578ebaea1de78f300634f52caa74ab6a22a76`, 전용 Terminal 재연결과 새 부팅 `CERT_WRITE_OK` 확인
+* 실제 성공 기록의 보존 소스를 직접 빌드한 Pico 2 W 5초·10초 임시 이미지에서도 교체 장비 LCD 백라이트만 점등
+* 5초 task 직접 초기화·pre-scheduler 초기화·옛날 Git driver·당시 보존 source 10초 초기화까지 모두 동일 실패하여 software 초기화 가설 종료
+* GP16/GP17 전체 7-bit scan ACK 0과 결합해 현재 교체 PCB의 LCD harness·BSS138·SDA/SCL continuity·backpack 응답을 물리 결함 경계로 확정
+* 임시 옛날 이미지를 제거하고 current Pico 2 제품 UF2 468,992바이트·SHA-256 `b1f0f1362f2b30f08a02c2dc7259a8052ff887b32e0a56da120c91aafa9abc0a`로 복구
+* 5초 직접 초기화에서도 백라이트만 점등된 사용자 확인에 따라 현재 LCD 드라이버와 마지막 동작 버전 비교 수행
+* LCD 드라이버의 `100 kHz`·blocking write·600µs enable pulse·기존 `Send_Command(0x03)` 초기화 순서 복원, 5초 지연과 GP16/GP17 핀맵 유지
+* LCD 계약 13/34 RED→34/34 GREEN, Host Debug/Release 각 20/20과 fresh Pico 2 UF2 flash verify 통과, 실제 문자 출력 사용자 확인 대기
+* 사용자 정정에 따라 pre-init 주소 scan·early `LCD_SKIP`을 제거하고 부팅 후 5초 뒤 `0x27` HD44780 직접 초기화로 교체
+* 직접 초기화 contract 6/28 RED→28/28 GREEN, Host Debug/Release 각 20/20과 fresh Pico 2 UF2 flash verify 통과
+* 실기 `LCD_INIT_START 0x27`·`LCD_INIT_DONE 0x27` 확인, 실제 문자 출력 사용자 육안 확인 대기
+* GP16/GP17 I2C0의 `0x08`~`0x77` 전체 주소 진단 적용, source contract 4/31 RED→31/31 GREEN과 Host Debug/Release 각 20/20 통과
+* fresh Pico 2 scan UF2 470,016바이트, SHA-256 `ba3696c11c320ab19dab4fdc0d20c2f03134f80577ac9578b1dbb174ee03928b`, flash write·verify 100% 통과
+* 실기 `LCD_SCAN_DONE 0`은 pre-init probe 결과로 한정, HD44780 초기화 실패 또는 물리 단선 확정 근거로 사용하지 않는 판정 교정
+* 교체 장비 5V adapter LCD 첫 반복에서 백라이트만 점등·문자 미출력과 `LCD_SKIP` 확인, 3초 production Pass 보류
+* 승인된 실패 정책에 따라 LCD 안정화 시간을 5초로 복구하고 contract RED→GREEN·Host Debug/Release 각 20/20·fresh UF2 flash verify 통과
+* 5초 재부팅과 독립 재시도에서도 `0x27`·`0x3F` ACK 부재 `LCD_SKIP` 반복 재현, 단순 지연·일시 오류 원인 기각과 GP16/GP17·CN4·level-shifter 후속 진단 등록
+* Stage 13 orphan `/alert` 발행 제거와 300초 runtime의 `+CME ERROR: 3`·disconnect·fault·timeout 0회 확인
+* periodic `PullConfig`·임시 `PullCommand`의 동일 config request 중복 원인 제거, config 요청 60초 1회와 정규 telemetry 20분 주기 유지
+* `PERIODIC_READY` 30초 뒤 GP22 냉동실 값 `[1,-15.8]` MQTT PUBACK와 Supabase `sensorValueId=2830` 저장 확인
+* GP22 `TEMP1_CAL_OFFSET_C=5.0f` 유지, 미연결 GP26 sensor 2 실기 검증 보류
+* fresh Pico 2 UF2 469,504바이트, SHA-256 `48a504761ae71f87bfc90ffa41851d8086accae2c80fbc3216e25fbf599fc369`, flash write·verify 100% 통과
+* Pico serial 검증 시 기존 전용 macOS Terminal 재사용과 자동 재연결 monitor 운용
+* 교체 실기 장비 기준 제품 보드 target을 `pico2_w`에서 `pico2`로 교정
+* 독립 `modem_at_console` target과 수동 AT 구현은 보존하고 제품 UF2의 `NB_IOT_MANUAL_AT_SESSION_RESET_TRIAL` 자동 진입만 해제
+* 현재 PCB의 CTS NC·RTS GND 조건과 Rev29 factory profile 대응을 위해 `AT&K0` 뒤 `AT+IFC=0,0` 적용
+* device backend contract RED 2/341·diagnostic contract RED 1/42 재현 뒤 GREEN 341/341·42/42 확인
+* 누적 하드웨어 진단 변경 5개 파일의 protected SHA closure 및 Host Debug/Release 각 20/20 통과
+* 비밀값 없는 firmware 전용 로컬 설정으로 Pico 2 Release UF2 470,016바이트 생성, SHA-256 `0f735cf0b016e89d4cd4e41b7aa7e6a6be8bb7172ea8c1c2c34b86ff8bb4ca2`
+* 교체 modem의 실제 IMEI·IMSI와 서비스용 MQTT client ID·username·password를 분리하는 firmware 전용 로컬 설정 적용, topic도 서비스 device ID 기준으로 통일
+* CONFIG 구독 QoS 1에서 DATA 직후 `+KMQTT_IND: 1,0` 반복 재현, QoS 0 제한 trial로 전환 후 `BOOT_DONE`·`PERIODIC_READY` 각 1회와 CONFIG DATA 9회 연속 수신 확인
+* QoS 0 trial에서 `MQTT_CONNECT_OK` 1회·`MQTT_SUB_OK` 1회·`MQTT_PUB_OK` 10회, DATA 뒤 disconnect·RuntimeOwner fault·boot timeout 0회 확인
+* 300초 RSSI 점검의 별도 alert publish가 중첩 쌍따옴표 payload `{"alert":1}`로 `+CME ERROR: 3` 발생, CONFIG DATA 정체 해결과 분리된 후속 firmware 결함으로 등록
+* Pico 2 QoS 0 trial UF2 470,016바이트, SHA-256 `840d5beb37fe682602c08dc8ae68baa19531c1bb1bf4b2598f447f5a017f66da`, flash write·verify 100% 통과
+* 사용자 표시 전용 macOS Terminal raw 115200 자동 재연결 수집 유지, KMQTTCFG 비밀값은 추적 파일에 추가 저장하지 않고 사용자 허용 시 Terminal에만 표시하는 정책
+* 외부 서비스·DB·EMQX·server·commit·push 변경 0
+
+## 📅 2026-07-23
+
+* `MQTT_SESSION_RESET_ALL_OK` 직후 USB 수동 AT console 재진입, 이후 자동 `KCNXCFG`·TLS·`KMQTTCFG`·MQTT 연결 중단
+* RuntimeOwner 단일 modem owner·HL7811 `\r` 종결·1초 AT settle·256바이트 RX guard·DebugTask 입력 차단 유지
+* device backend contract RED 4/329 확인 후 GREEN 329/329, fresh Release UF2 471,040바이트 생성
+* Pico flash 뒤 USB serial 재연결 확인, reset 중 `AT+KMQTTDEL=3`의 분할 `+CME ERROR` 뒤 진행 정지로 `MANUAL_AT_READY` 미도달 관측
+* EMQX read-only audit — SSL 8883 listener 활성·Max QoS 2·Strict Mode off·config/telemetry/boot rule 및 HTTP action connected·alarm 0 확인, Idle Timeout 120초 변경 뒤에도 CONFIG→30초 telemetry `KMQTTPUB` timeout 재현과 broker의 client `connected=true`·keepalive 120 확인
+* CONFIG 수신 뒤 probe 직전 `AT+KMQTTCNX=1` 단일 진단 — 약 100ms 뒤 `+CME ERROR: 911`, 30초 connect 대기 뒤 liveness recovery·`KMQTTCLOSE` 진입 확인으로 이미 연결된 session의 재-CNX 가설 미채택
+* 진단 분기 제거와 `NB_IOT_POST_CONFIG_HANDOFF_TRIAL=1` 복원, device backend contract 333/333·direct handoff 68/68, fresh Release UF2 470,016바이트 생성
+* 별도 `modem_at_console.uf2` target 추가 — FreeRTOS·RuntimeOwner·sensor·LCD·audio·flash log·product task 미링크, PWRON·SIM/IMEI/IMSI 확인·인증서 chunk 주입 뒤 USB 수동 AT 원문 송수신만 수행
+* modem console contract 39/39, standalone UF2 70,656바이트·기존 product UF2 471,040바이트 fresh build, standalone ELF의 FreeRTOS·RuntimeOwner·DS18B20·KMQTT 문자열 0 확인
+* Pico flash 실기에서 `AT`·`ATE0`·`AT&K0`·`CMEE`·`CFUN`·SIM/IMEI/IMSI·certificate write `OK`와 `MANUAL_AT_READY` 확인, 사용자 첫 `AT` 입력의 즉시 `OK` 응답 확인
+* 외부 서비스·DB·EMQX·commit·push 변경 0 유지
+
+## 📅 2026-07-22
+
+* MQTT 부팅 전체 세션 reset 직후 자동 연결을 멈추고 USB Terminal 입력을 RuntimeOwner가 HL7811에 전달하는 임시 수동 AT 진단 모드 적용, 입력 명령 CR 자동 종결·응답 실시간 표시·credential 미에코 처리
+* 수동 모드 source contract 326/326, legacy cutover 48/48, producer facade 74/74, MQTT payload 회귀와 fresh Release UF2 471,552바이트 build·flash write/verify 100% 통과
+* 실기 `MQTT_SESSION_RESET_ALL_OK` 후 `MANUAL_AT_READY` 도달과 자동 `AT TX` 0 확인, 별도 macOS Terminal 양방향 입력·자동 재연결 유지
+* 진단용 CONFIG 응답을 `userSensorId` 1·2 순서의 compact JSON `[-7,-10]` 8바이트로 고정, server binary32 호환성·최종 80바이트 상한과 firmware strict 2-number JSON parser 적용
+* CONFIG 두 상한값의 parse 성공 후 원자 반영과 apply 실패의 RuntimeOwner 실패 전파 적용, malformed·verbose payload의 command 추출·config commit 성공 차단
+* Python producer 7/7, MQTT payload 93 assertions, RuntimeOwner device 294/294·legacy 48/48·producer 261/261, 독립 최종 review Critical·Important·Minor 0과 `git diff --check` 통과
+* fresh Release UF2 470,016바이트 생성, SHA-256 `fc7f650118b151530a5de4c383dcd3e595e18fc2ab2ebf38ec27e008c05b49fd`, compact apply·전체 AT trace·liveness marker 포함과 HTTP/raw TCP·`AT+KMQTTCNX?` 0 확인
+* 운영 `ssh.zxcx.io`의 helper route·RPC TMP ID 1·2 확인, helper 원본 백업 뒤 atomic cutover와 Flask owner-signal restart·localhost smoke 통과, DB·Supabase schema·EMQX rule 변경 0 유지
+* Compact CONFIG UF2의 Pico flash write·verify 100%, 실기 `[-7,-10]` 8바이트 수신·원자 적용 확인, session 1·2 동일 post-CONFIG liveness publish timeout과 `BOOT_OWNER_TIMEOUT`·`PERIODIC_READY` 미도달 확인
+* Probe topic 39바이트 `devices/<IMEI>/telemetry/probe`를 25바이트 `devices/<IMEI>/p`로만 줄인 단일 변수 실험에서도 선행 CRLF 뒤 5초 timeout 동일 재현, topic 길이 원인 가설 제외와 진단 source·firmware 원복
+* CMake `.env` 일괄 compiler-definition 경고의 기존 서버 credential 노출 재현, credential 교체와 firmware 전용 환경변수 whitelist build 후속 필요
+* Post-CONFIG liveness `AT+KMQTTPUB`의 유효 응답 0바이트 timeout에 한해 진단용 일반 `AT` 1회 실행, 성공·명시 오류·무응답 결과 분류와 기존 recovery 유지
+* `PERIODIC_READY` 전 전체 AT 원문 확인을 위해 임시 trace 지속, `KMQTTCFG` credential·인증서 본문 redaction과 RuntimeOwner 단일 modem owner 경계 유지
+* 동일 부팅의 session 1·2에서 liveness publish가 선행 `CRLF`만 남기고 5초 timeout, 직후 일반 `AT`는 약 2ms 만에 `OK`, 이어진 `AT+KMQTTCLOSE`는 선행 `CRLF` 뒤 10초 timeout으로 반복 재현
+* 장애 뒤 `CEREG?`·`CSQ`·`CCLK?`·`COPS?`는 정상 응답한 반면 `KMQTTCNX`·`KMQTTCLOSE`·`KMQTTDEL`·`KCNX*`·`KSSL*` 계열은 일시 무응답, UART 전체가 아닌 HL7811 protocol/IP command layer stall 증거 확보
+* Backend contract 275/275·legacy cutover 48/48·producer 261/261·MQTT payload 회귀와 `git diff --check` 통과, 471,552바이트 진단 UF2 빌드·flash write/verify·application reboot 통과
+* 공식 query 문법이 없는 `AT+KMQTTCNX?` 미전송, 반복 liveness 실패로 이번 회차 `PERIODIC_READY` 미도달과 trace 지속 상태 기록
+* HL7811 전역 AT quiet gate 적용 — 첫 명령과 `MQTT_SESSION_RESET_ALL` 반복을 제외한 모든 AT 송신을 마지막 UART 송·수신 뒤 연속 1,000ms 이후로 제한, 단일 `kAtCommandSettleMs` 상수로 향후 500ms 재검증 가능 구조 적용
+* MQTT 전체 session reset의 12개 CLOSE/DEL만 scoped bypass와 기존 100ms 간격 유지, reset 종료 뒤 첫 일반 AT부터 전역 gate 자동 복원
+* Backend contract 기준선 190/190, settle RED 29/235·timeout RED 2/239·review 보강 RED 7/245 뒤 최종 GREEN 245/245와 `git diff --check`, fresh Release 471,040바이트 UF2 빌드·동일 산출물 flash write/verify·application reboot 통과
+* 실기 trace의 일반 AT 30개 최소 1,000ms·위반 0, reset 12개 평균 107.9ms, `KHWIOCFG`·`CCLK` 응답 중첩 제거 확인
+* 1초 gate 적용 뒤에도 liveness `AT+KMQTTPUB`의 선행 CRLF-only·5초 timeout 동일 재현, command-response 중첩 단독 원인 가설 제외와 MQTT command-plane 후속 진단 필요
+* fresh CMake configure 경고의 Bizppurio credential 출력 재확인, 노출 credential 교체와 `.env` secret-safe build 구조 개선 필요
+* 부팅 시작부터 post-config liveness publish 실패까지 임시 전체 AT TX/RX 추적 적용, 펌웨어 경과시간과 별도 macOS Terminal 시각을 함께 표시하고 MQTT credential·인증서 본문은 길이만 남기도록 마스킹
+* Backend AT trace 계약의 변경 전 RED 18/190과 변경 후 GREEN 190/190 확인, 468,992바이트 fresh UF2 빌드·`picotool` flash write/verify·application reboot 통과
+* 실기에서 config 완료 후 1.002초 뒤 `AT`, `OK` 확인 직후 `AT+KMQTTPUB` 전송, 모뎀이 선행 `CRLF`만 반환한 뒤 5초간 본응답·`OK`·`+KMQTTPUB`·`+KMQTT_IND`를 보내지 않은 실패 경계 확인
+* 기존 `RX_BYTES=0`은 물리 수신 0바이트가 아니라 선행 CR/LF 필터 뒤 유효 버퍼 0바이트라는 의미로 정정, 초기화 구간 일부 응답 완료 전 다음 명령 전송 흔적을 후속 command-response 경계 점검 대상으로 등록
+* RuntimeOwner post-config `ProbeAt` 직전 1초 settle 지연 추가, Backend contract RED 3/158에서 GREEN 158/158 전환, fresh Release UF2 470,016바이트 빌드·`picotool` flash verify·application reboot 통과
+* 실기 1초 선행 지연 뒤에도 `LIVENESS_PROBE_PUB`의 `MQTT_PUB_NO_OK RX_BYTES=0` 동일 재현, 조기 `AT` 전송 원인 가설 미채택
+* 이번 Pico 실기 검증에서 `/dev/cu.usbmodem*` raw 115200 자동 재연결과 Codex 하단 `NB-IOT` Terminal 실시간 로그 복제 적용
+* 향후 Pico 플래시 검증은 Codex 오른쪽 `백그라운드 터미널` 우선, 미노출 시 별도 macOS Terminal 자동 실행으로 전환, Codex 하단 통합 Terminal 사용 중단
+* RuntimeOwner config frame 완료 후 30초 quiet barrier와 진단용 `AT+KMQTTCFG?` 제거, 기존 연결 세션의 probe publish·subscription·follow-up config 경로 직접 handoff 적용
+* Backend contract RED 17/153에서 GREEN 153/153 전환, Host 17/17 및 fresh Release UF2 470,016바이트 빌드·`picotool` flash verify·application reboot 통과
+* 실기 config 수신 뒤 `MQTT_CFG_QUERY`·`MQTT_CTRL_STALL` 제거와 same-session `LIVENESS_PROBE_PUB` 진입 확인, 후속 publish의 `MQTT_PUB_NO_OK RX_BYTES=0` 무응답과 recovery `MQTT_CFG_FAIL` 잔존
+* USB serial 단일 reader 복구와 macOS Terminal `tail -f` 사용자 실시간 모니터링 연결
+* CMake `.env` compiler-definition 처리 중 특수문자 포함 비밀값의 경고 로그 노출 확인, 노출 credential 교체와 secret-safe build 처리 후속 필요
+* HL7811 MQTT 세션 수명주기 개선 — cold boot 최초 1회만 session 1~6 정리, 일반 복구는 CLOSE-only와 기존 session ID 재연결 우선, 재연결 실패 시 해당 session만 삭제, 새 설정 실패 시에만 전체 reset fallback 적용
+* `+KMQTT_IND: <id>,0` 연결 중단과 명시적 `+CME ERROR: 907` 인증 실패 분리, 부팅 중간 실패·공통 recovery의 session 보존형 종료 통일
+* MQTT session contract 154/154, Host Debug·Release 각 19/19, 471,552바이트 UF2 자동 flash·verify 통과 — 실기 boot 전체 정리 1회, recovery CLOSE-only·재연결 우선·대상 session 정리·최종 reset fallback 순서 확인
+* 공용 시리얼 1회 수집과 별도 Terminal `tail -f` 기반 사용자·Codex 동시 실시간 모니터링 구성
+* HL7811 config URC 수신과 post-CONFIG publish 경계 실기 진단 — 50/100ms UART 무수신 구간의 FIFO overflow 가설 재현, polling·명령 응답·PUBACK 대기 1ms drain 계약 추가
+* 효과 없는 config 뒤 RX clear·100ms 대기 실험 원복, 이전 boot publish-before-subscribe 구현과 공식 HL78xx MQTT URC 규약 대조
+* Host Debug·Release 각 19/19, 462,336바이트 diagnostic UF2 fresh build·verified auto flash 완료
+* 이전 실패에서 남은 RM78 MQTT command-plane 상태로 clean 재부팅 검증 보류 — main-board/RM78 전원 재인가 후 post-CONFIG PUBACK 재확인 필요
+
+* CONFIG 반영 직후 post-CONFIG `AT` probe·probe publish·구독 재확인·config 재요청을 생략하고 같은 MQTT session을 RuntimeOwner Ready로 인계하는 firmware trial 적용
+* boot snapshot `ConfigAppliedHandoff` stage와 `post_config_liveness=0` 분리로 미검증 liveness 성공 기록 방지
+* `PERIODIC_READY` 뒤 30초 quiet window 후 sensor 1 실제 telemetry 1회 발행, 이후 기존 sensor 1·2 주기 발행 유지
+* direct handoff의 고정 4-effect 대기열·snapshot liveness gate를 실제 1-effect handoff에 맞게 교정하고, 기존 6개 correlation ID 순서 보존
+* 신규 handoff 통합 68 checks와 기존 core 53,196·snapshot 253·backend 327·adapter 144,067·task core 991 checks 통과, fresh Release UF2 470,016바이트 생성
+* Pico flash 실기에서 compact CONFIG `[-7,-10]` 반영 직후 추가 MQTT 제어 명령 없이 `PERIODIC_READY`·`BOOT_DONE` 확인
+* T1 DS18B20 정상값 `31.2°C`의 30초 뒤 첫 telemetry `AT+KMQTTPUB …/telemetry,"[1,31.2]"`가 선행 CRLF 뒤 5초 무응답, 지연·직접 handoff만으로 post-CONFIG MQTT stall 미해소
+* 별도 60초 periodic CONFIG 재요청도 `AT+KMQTTPUB …/config/request` 5초 timeout 재현, CONFIG downlink 뒤 HL7811 MQTT publish 처리부 복귀 실패의 추가 증거
+* 전체 host CMake configure의 기존 `tasks_debug.cpp` 보호 SHA 불일치 유지
+
+## 📅 2026-07-21
+
+* 2026-07-02 EasyEDA PCB JSON 직접 추적 기준 GPIO 핀맵 복구 — RM78 PWRON GP4·WAKEUP GP2·RESET GP3·TXON GP5, LTC2954 INT GP14·KILL GP15, LCD SDA/SCL GP16/GP17, sensor·audio·LED 배선 계약 고정
+* LCD I2C 0x27/0x3F probe·HD44780 4-bit 초기화·timeout 적용, 5초 지연 실물 문자 표시 확인 후 3초로 축소, Host Debug·Release 각 19/19 통과, 461,312바이트 UF2 Pico 자동 플래시
+* RuntimeOwner Stage 6~12 firmware atomic cutover device-free 통합 — single-owner physical executor, source-specific producer facade, Boot·Periodic·Debug direct modem 접근 제거, rollback core, pre-scheduler ingress last-write activation
+* Host Debug·Release 각 17/17, G1 112/112, Stage 12 mutant 8/8 및 Stage 4·5 mutant 회귀 17/17·7/7 거부, fresh Release UF2 생성
+* Pico copy·flash·serial, GP15·watchdog live actuation, 외부 서비스 변경, stage·commit·push 0 유지
+* RuntimeOwner producer provenance 권한표·Host 11/11·G1 112/112·behavioral mutant 7/7 검증, production ingress·actual cutover 비활성 유지
+* G2A Stage 4 RuntimeOwner queue-drain 교정 완료 — 공통 normal canonical 판정, invalid-before-admission, 실제 제품 owner-loop Host 검증, 공통 drain-until-idle recorder, ingress·실제 cutover 비활성 유지
+
+### [펌웨어/FreeRTOS] RuntimeOwner Stage 3 계약 통합 검증
+* typed executor 결과 경계, EndBoot 원자 Ready 전환, RAM snapshot, source-scoped shutdown 계약 추가
+* EndBoot exact duplicate 멱등 처리와 shutdown inflight cancel/late-result 차단 검증
+* Host Debug/Release 각 8/8, G1 계약 112/112, behavioral mutant 11/11, fresh UF2 빌드 통과
+* `ingress_enabled=0`, queue drain·physical executor·permit activation 0 유지와 legacy direct caller 존치
+
+### [펌웨어/FreeRTOS] RuntimeOwner Stage 2 Dormant 등록 및 계약 검증
+* Dormant static RuntimeOwner FreeRTOS task 등록, ingress 비활성 유지, host/firmware 검증 완료
+
 ## 📅 2026-07-04
 
 ### [펌웨어/MQTT] KeepAlive 안정화 및 EMQX rule 분리

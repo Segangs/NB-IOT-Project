@@ -9,6 +9,8 @@
 #include "pico/flash.h"
 #include <time.h>
 
+#include "../boot_v2/flash_partition_layout.hpp"
+
 // FreeRTOS headers
 #include "FreeRTOS.h"
 #include "task.h"
@@ -17,7 +19,9 @@
 extern int g_boot_reason_code;
 
 // XIP_BASE is the memory mapped address for flash
-#define FLASH_TARGET_ADDR   (XIP_BASE + FLASH_LOG_OFFSET)
+namespace flash_partition = boot_v2::flash_partition;
+static constexpr uintptr_t flash_target_addr =
+    XIP_BASE + flash_partition::sensor_log_offset;
 
 static uint32_t g_write_offset = 0;
 static bool g_initialized = false;
@@ -70,8 +74,10 @@ void flash_log_init(void) {
     if (g_initialized) return;
 
     g_write_offset = 0;
-    const FlashLogEntry *entries = (const FlashLogEntry *)FLASH_TARGET_ADDR;
-    uint32_t max_entries = FLASH_LOG_SIZE / sizeof(FlashLogEntry);
+    const FlashLogEntry *entries =
+        (const FlashLogEntry *)flash_target_addr;
+    uint32_t max_entries =
+        flash_partition::sensor_log_size / sizeof(FlashLogEntry);
 
     for (uint32_t i = 0; i < max_entries; i++) {
         if (entries[i].timestamp == 0xFFFFFFFF) {
@@ -94,7 +100,8 @@ void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t temp_err, int
     }
 
     // Safety check for offset alignment
-    if (g_write_offset >= FLASH_LOG_SIZE || (g_write_offset % sizeof(FlashLogEntry)) != 0) {
+    if (g_write_offset >= flash_partition::sensor_log_size ||
+        (g_write_offset % sizeof(FlashLogEntry)) != 0) {
         g_write_offset = 0;
     }
 
@@ -116,34 +123,41 @@ void flash_log_write(float temp, float vsys, uint8_t sent, uint8_t temp_err, int
     memset(new_entry.padding, 0, sizeof(new_entry.padding));
 
     // Page-buffered Write (flash_range_program requires 256-byte aligned writes)
-    uint32_t page_addr = g_write_offset & ~(FLASH_PAGE_SIZE - 1);
+    uint32_t page_addr =
+        g_write_offset & ~(flash_partition::page_size - 1u);
     uint32_t entry_offset_in_page = g_write_offset - page_addr;
 
-    uint8_t page_buffer[FLASH_PAGE_SIZE];
+    uint8_t page_buffer[flash_partition::page_size];
     // Copy existing flash content of this page to buffer
-    memcpy(page_buffer, (const void *)(FLASH_TARGET_ADDR + page_addr), FLASH_PAGE_SIZE);
+    memcpy(
+        page_buffer,
+        (const void *)(flash_target_addr + page_addr),
+        flash_partition::page_size);
     // Overwrite the specific log entry slot in the buffer
     memcpy(page_buffer + entry_offset_in_page, &new_entry, sizeof(FlashLogEntry));
 
     // 🚨 flash_safe_execute로 양쪽 코어를 안전하게 동기화한 뒤 플래시 I/O 수행
-    bool need_erase = (g_write_offset % FLASH_SECTOR_SIZE) == 0;
+    bool need_erase =
+        (g_write_offset % flash_partition::sector_size) == 0;
     if (need_erase) {
         LOG("FLASH_ERASE\n");
     }
 
     FlashOpParams wp;
-    wp.erase_offset = FLASH_LOG_OFFSET + g_write_offset;
-    wp.erase_size = FLASH_SECTOR_SIZE;
+    wp.erase_offset =
+        flash_partition::sensor_log_offset + g_write_offset;
+    wp.erase_size = flash_partition::sector_size;
     wp.do_erase = need_erase;
-    wp.program_offset = FLASH_LOG_OFFSET + page_addr;
+    wp.program_offset =
+        flash_partition::sensor_log_offset + page_addr;
     wp.program_data = page_buffer;
-    wp.program_size = FLASH_PAGE_SIZE;
+    wp.program_size = flash_partition::page_size;
 
     flash_safe_execute(flash_op_callback, &wp, UINT32_MAX);
 
     // Advance write offset
     g_write_offset += sizeof(FlashLogEntry);
-    if (g_write_offset >= FLASH_LOG_SIZE) {
+    if (g_write_offset >= flash_partition::sensor_log_size) {
         g_write_offset = 0; // Wrap around (circular buffer)
     }
 }
@@ -152,8 +166,10 @@ void flash_log_dump_csv(void) {
     LOG("\n=== START OF FLASH LOG CSV ===\n");
     LOG("DateTime(MMDDHHMMSS),Temperature(C),VSYS(V),SentStatus,TempStatus,ModemStatus,SystemError,BootReason\n");
 
-    const FlashLogEntry *entries = (const FlashLogEntry *)FLASH_TARGET_ADDR;
-    uint32_t max_entries = FLASH_LOG_SIZE / sizeof(FlashLogEntry);
+    const FlashLogEntry *entries =
+        (const FlashLogEntry *)flash_target_addr;
+    uint32_t max_entries =
+        flash_partition::sensor_log_size / sizeof(FlashLogEntry);
     uint32_t count = 0;
 
     for (uint32_t i = 0; i < max_entries; i++) {
@@ -181,8 +197,8 @@ void flash_log_clear(void) {
     LOG("FLASH_CLEAR\n");
 
     FlashOpParams wp;
-    wp.erase_offset = FLASH_LOG_OFFSET;
-    wp.erase_size = FLASH_LOG_SIZE;
+    wp.erase_offset = flash_partition::sensor_log_offset;
+    wp.erase_size = flash_partition::sensor_log_size;
     wp.do_erase = true;
     wp.program_offset = 0;
     wp.program_data = nullptr;
