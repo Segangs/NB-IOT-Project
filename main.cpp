@@ -4,7 +4,7 @@
 #include "hardware/watchdog.h"
 #include "hardware/structs/powman.h"
 #include "hardware/regs/powman.h"
-#include "lib/LCD_I2C.hpp"
+#include "src/boot_v2/runtime_owner_rtos.hpp"
 #include "src/config.h"
 #include "src/tasks/app_context.hpp"
 #include "src/tasks/tasks_boot.hpp"
@@ -75,7 +75,6 @@ int main()
     
     // 1. Initialize serial monitoring
     stdio_init_all();
-    
 
 
     // LOG("BOOT_BANNER\n");
@@ -94,14 +93,17 @@ int main()
     lcd_params.is_modem_busy = false;
     lcd_params.is_battery_mode = false;
     
-    // 3. Initialize LCD hardware (takes ~100ms)
-    static LCD_I2C lcd(LCD_ADDR, 16, 2, I2C_PORT, SDA_PIN, SCL_PIN);
-    lcd_params.lcd = &lcd;
-    
-    // 4. Initialize temperature GPIOs and MCU diagnostic ADCs
+    // 3. Initialize temperature GPIOs and MCU diagnostic ADCs
     sensor_init();
+
+    const boot_v2::RuntimeOwnerStartResult runtime_owner_start =
+        boot_v2::runtime_owner_rtos_start();
+    if (runtime_owner_start == boot_v2::RuntimeOwnerStartResult::Failed) {
+        LOG("FATAL_RUNTIME_OWNER_TASK\n");
+        while (true) {}
+    }
     
-    // 5. Register FreeRTOS Tasks
+    // 4. Register FreeRTOS Tasks
     // LcdTask has priority 2 (High) to drive fluent, non-stuttering screen animations
     xTaskCreate(
         vLcdTask,
@@ -180,6 +182,14 @@ int main()
         0,
         NULL
     );
+
+    const boot_v2::RuntimeOwnerAtomicCutoverResult runtime_owner_cutover =
+        boot_v2::runtime_owner_rtos_activate_atomic();
+    if (runtime_owner_cutover !=
+        boot_v2::RuntimeOwnerAtomicCutoverResult::Activated) {
+        LOG("FATAL_RUNTIME_OWNER_CUTOVER\n");
+        while (true) {}
+    }
 
     // 11. Ignite FreeRTOS Scheduler instantly!
     vTaskStartScheduler();

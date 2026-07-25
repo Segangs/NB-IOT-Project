@@ -4,6 +4,7 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/uart.h"
+#include <stddef.h>
 #include <stdint.h>
 
 // Cooperative yield sleep helper
@@ -35,6 +36,25 @@ private:
     int last_cereg;
     int mqtt_session_id;
     MqttConnectionState mqtt_state;
+    bool mqtt_boot_cleanup_done;
+    bool at_trace_enabled;
+    // Tune to 500 only after the 1000ms hardware trace is stable.
+    static constexpr uint32_t kAtCommandSettleMs = 1000;
+    uint32_t last_at_activity_ms;
+    bool at_command_started;
+    bool at_command_settle_bypass;
+
+    void modem_MqttResetAllSessions();
+    void modem_MqttCloseDeleteSession(int session_id);
+    void modem_MqttBootCleanStart();
+    bool modem_MqttReconnect();
+    void modem_TraceTxCommand(const char *cmd);
+    void modem_TraceRxBytes(const char *data, size_t length);
+    void modem_TraceTimeout(uint32_t timeout_ms);
+    void modem_TraceRedactedData(const char *label, size_t length);
+    void modem_MarkAtCommandTimeout();
+    void modem_WaitForAtCommandSlot();
+    [[noreturn]] void modem_ManualAtConsole();
     
 public:
     nb_iot();
@@ -42,6 +62,7 @@ public:
     
     bool is_unauthenticated;
 
+    void set_at_trace_enabled(bool enabled) { at_trace_enabled = enabled; }
     void modem_PacedWrite(const char *data);
     uint32_t retrieve_network_time();
         // Core Command controls with cooperative delays
@@ -71,6 +92,7 @@ public:
     bool modem_MqttPublish(const char *topic, const char *payload);
     bool modem_MqttSubscribe(const char *topic);
     bool modem_MqttPoll(uint32_t timeout_ms = 100);
+    void modem_MqttDisconnect();
     void modem_MqttClose();
 
     // Diagnostics Getters
@@ -80,6 +102,7 @@ public:
     const char* get_carrier() const { return carrier_name; }
     int get_last_csq() const { return last_csq; }
     int get_last_cereg() const { return last_cereg; }
+    int get_mqtt_session_id() const { return mqtt_session_id; }
     bool is_connected() const { return is_mqtt_connected; }
     MqttConnectionState get_mqtt_state() const { return mqtt_state; }
 };

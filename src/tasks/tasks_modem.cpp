@@ -52,6 +52,11 @@ nb_iot::nb_iot()
     last_cereg = -1;
     mqtt_session_id = 0;
     mqtt_state = LTE_DETACHED;
+    mqtt_boot_cleanup_done = false;
+    at_trace_enabled = true;
+    last_at_activity_ms = 0;
+    at_command_started = false;
+    at_command_settle_bypass = false;
     is_unauthenticated = false;
 
     memset(rx_buffer, 0, sizeof(rx_buffer));
@@ -82,24 +87,199 @@ nb_iot::~nb_iot()
     uart_deinit(UART_ID);
 }
 
+void nb_iot::modem_TraceTxCommand(const char *cmd)
+{
+    if (!at_trace_enabled || cmd == nullptr)
+    {
+        return;
+    }
+
+    const uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+    if (strncmp(cmd, "AT+KMQTTCFG=", 12) == 0)
+    {
+        LOG("[%06lu.%03lu] AT TX AT+KMQTTCFG=<REDACTED bytes=%u>\\r\n",
+            static_cast<unsigned long>(now_ms / 1000),
+            static_cast<unsigned long>(now_ms % 1000),
+            static_cast<unsigned>(strlen(cmd)));
+        return;
+    }
+
+    constexpr size_t chunk_size = 120;
+    const size_t command_length = strlen(cmd);
+    for (size_t offset = 0; offset < command_length; offset += chunk_size)
+    {
+        const size_t remaining = command_length - offset;
+        const size_t current = remaining < chunk_size ? remaining : chunk_size;
+        const bool final_chunk = offset + current == command_length;
+        LOG("[%06lu.%03lu] AT TX%s %.*s%s\n",
+            static_cast<unsigned long>(now_ms / 1000),
+            static_cast<unsigned long>(now_ms % 1000),
+            offset == 0 ? "" : "+",
+            static_cast<int>(current),
+            cmd + offset,
+            final_chunk ? "\\r" : "");
+    }
+}
+
+void nb_iot::modem_TraceRxBytes(const char *data, size_t length)
+{
+    if (!at_trace_enabled || data == nullptr || length == 0)
+    {
+        return;
+    }
+
+    constexpr size_t raw_chunk_size = 32;
+    static constexpr char hex[] = "0123456789ABCDEF";
+    for (size_t offset = 0; offset < length; offset += raw_chunk_size)
+    {
+        const size_t remaining = length - offset;
+        const size_t current =
+            remaining < raw_chunk_size ? remaining : raw_chunk_size;
+        char escaped[raw_chunk_size * 4 + 1]{};
+        size_t write = 0;
+        for (size_t index = 0; index < current; ++index)
+        {
+            const unsigned char value =
+                static_cast<unsigned char>(data[offset + index]);
+            if (value == '\r' || value == '\n' || value == '\t' ||
+                value == '\\')
+            {
+                escaped[write++] = '\\';
+                escaped[write++] = value == '\r' ? 'r'
+                                     : value == '\n' ? 'n'
+                                     : value == '\t' ? 't'
+                                                     : '\\';
+            }
+            else if (value >= 0x20 && value <= 0x7E)
+            {
+                escaped[write++] = static_cast<char>(value);
+            }
+            else
+            {
+                escaped[write++] = '\\';
+                escaped[write++] = 'x';
+                escaped[write++] = hex[(value >> 4) & 0x0F];
+                escaped[write++] = hex[value & 0x0F];
+            }
+        }
+        escaped[write] = '\0';
+        const uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+        LOG("[%06lu.%03lu] AT RX%s %s\n",
+            static_cast<unsigned long>(now_ms / 1000),
+            static_cast<unsigned long>(now_ms % 1000),
+            offset == 0 ? "" : "+",
+            escaped);
+    }
+}
+
+void nb_iot::modem_TraceTimeout(const uint32_t timeout_ms)
+{
+    if (!at_trace_enabled)
+    {
+        return;
+    }
+    const uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+    LOG("[%06lu.%03lu] AT RX <TIMEOUT %lu ms bytes=%d>\n",
+        static_cast<unsigned long>(now_ms / 1000),
+        static_cast<unsigned long>(now_ms % 1000),
+        static_cast<unsigned long>(timeout_ms),
+        buffer_idx);
+}
+
+void nb_iot::modem_TraceRedactedData(const char *label, const size_t length)
+{
+    if (!at_trace_enabled || label == nullptr)
+    {
+        return;
+    }
+    const uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+    LOG("[%06lu.%03lu] AT TX DATA <%s REDACTED bytes=%u>\n",
+        static_cast<unsigned long>(now_ms / 1000),
+        static_cast<unsigned long>(now_ms % 1000),
+        label,
+        static_cast<unsigned>(length));
+}
+
+void nb_iot::modem_MarkAtCommandTimeout()
+{
+    this->last_at_activity_ms = to_ms_since_boot(get_absolute_time());
+}
+
 void nb_iot::modem_ClearRxBuffer()
 {
     // UART 하드웨어 FIFO 버퍼에 대기 중인 잔여 바이트들을 완전히 읽어내어 버림으로써 이전 명령의 URC/에러 찌꺼기 유입을 차단합니다.
+    char trace_bytes[64]{};
+    size_t trace_length = 0;
+    bool received_any = false;
     while (uart_is_readable(UART_ID))
     {
-        (void)uart_getc(UART_ID);
+        received_any = true;
+        trace_bytes[trace_length++] = uart_getc(UART_ID);
+        if (trace_length == sizeof(trace_bytes))
+        {
+            modem_TraceRxBytes(trace_bytes, trace_length);
+            trace_length = 0;
+        }
     }
+    if (trace_length != 0)
+    {
+        modem_TraceRxBytes(trace_bytes, trace_length);
+    }
+    if (received_any)
+    {
+        last_at_activity_ms = to_ms_since_boot(get_absolute_time());
+    }
+    memset(this->rx_buffer, 0, sizeof(this->rx_buffer));
+    this->buffer_idx = 0;
+}
+
+void nb_iot::modem_WaitForAtCommandSlot()
+{
+    if (!at_command_started || at_command_settle_bypass)
+    {
+        modem_ClearRxBuffer();
+        return;
+    }
+
+    while (true)
+    {
+        modem_ReadResponse(0);
+        const uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+        const uint32_t quiet_ms = now_ms - last_at_activity_ms;
+        if (quiet_ms >= kAtCommandSettleMs &&
+            !uart_is_readable(UART_ID))
+        {
+            if (at_trace_enabled)
+            {
+                LOG("[%06lu.%03lu] AT SETTLE %lu ms\n",
+                    static_cast<unsigned long>(now_ms / 1000),
+                    static_cast<unsigned long>(now_ms % 1000),
+                    static_cast<unsigned long>(quiet_ms));
+            }
+            break;
+        }
+
+        const uint32_t remaining_ms =
+            quiet_ms < kAtCommandSettleMs
+                ? kAtCommandSettleMs - quiet_ms
+                : 1;
+        modem_sleep(remaining_ms > 10 ? 10 : remaining_ms);
+    }
+
     memset(this->rx_buffer, 0, sizeof(this->rx_buffer));
     this->buffer_idx = 0;
 }
 
 void nb_iot::modem_SendCmd(const char *cmd)
 {
-    this->modem_ClearRxBuffer(); // Clear RX buffer before character write
+    this->modem_WaitForAtCommandSlot();
+    this->modem_TraceTxCommand(cmd);
 
     // Send AT command
     uart_puts(UART_ID, cmd);
     uart_puts(UART_ID, "\r");
+    this->last_at_activity_ms = to_ms_since_boot(get_absolute_time());
+    this->at_command_started = true;
 
 }
 
@@ -128,8 +308,11 @@ void nb_iot::modem_SendCmdUserInput()
 // ====================================================================================
 void nb_iot::modem_ReadResponse(int check)
 {
+    (void)check;
     int max_bytes = 256; // 무한 루프 방지를 위해 한 번에 최대 256바이트만 수집
     int count = 0;
+    char trace_bytes[256]{};
+    size_t trace_length = 0;
 
     while (uart_is_readable(UART_ID) && count < max_bytes)
     {
@@ -137,6 +320,7 @@ void nb_iot::modem_ReadResponse(int check)
         if (this->buffer_idx < 1023)
         {
             char response = uart_getc(UART_ID);
+            trace_bytes[trace_length++] = response;
 
             // 인덱스 위치와 상관없이 시리얼 노이즈 데이터 상시 필터링
             if (response == 0x00 || (unsigned char)response == 0xFF)
@@ -150,11 +334,6 @@ void nb_iot::modem_ReadResponse(int check)
                 continue;
             }
 
-            if (!check)
-            {
-                putchar(response);
-            }
-
             this->rx_buffer[this->buffer_idx] = response;
             this->buffer_idx++;
             this->rx_buffer[this->buffer_idx] = '\0';
@@ -164,6 +343,11 @@ void nb_iot::modem_ReadResponse(int check)
             this->buffer_idx = 0; // Prevent buffer overrun
         }
     }
+    this->modem_TraceRxBytes(trace_bytes, trace_length);
+    if (trace_length != 0)
+    {
+        this->last_at_activity_ms = to_ms_since_boot(get_absolute_time());
+    }
 }
 
 bool nb_iot::modem_SendCmdWaitResponse(const char *cmd, const char *expected_resp1, const char *expected_resp2, uint32_t timeout_ms)
@@ -171,7 +355,7 @@ bool nb_iot::modem_SendCmdWaitResponse(const char *cmd, const char *expected_res
     this->modem_SendCmd(cmd);
 
     uint32_t elapsed = 0;
-    const uint32_t step_ms = 100;
+    const uint32_t step_ms = 1;
 
     while (elapsed < timeout_ms)
     {
@@ -202,6 +386,8 @@ bool nb_iot::modem_SendCmdWaitResponse(const char *cmd, const char *expected_res
             return false;
         }
     }
+    this->modem_MarkAtCommandTimeout();
+    this->modem_TraceTimeout(timeout_ms);
     return false;
 }
 
@@ -345,6 +531,18 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     LOG("MODEM_ECHO_OFF\n");
     modem_SendCmdWaitOK("ATE0", 3000, 2000);
 
+    // The current two-wire PCB leaves modem CTS unconnected and ties RTS low,
+    // so restore both Rev29 flow-control settings to none before further AT
+    // traffic. This is also required after a factory-profile reset.
+    if (!modem_SendCmdWaitOK("AT&K0", 3000, 0) ||
+        !modem_SendCmdWaitOK("AT+IFC=0,0", 3000, 0))
+    {
+        LOG("MODEM_FLOW_CFG_FAIL\n");
+        cpin_status = 1;
+        return false;
+    }
+    LOG("MODEM_FLOW_CFG_OK\n");
+
     // Step 2: Enable detailed error reporting (+CMEE=1) 및 2초 대기
     modem_SendCmdWaitOK("AT+CMEE=1", 3000, 2000);
 
@@ -371,7 +569,6 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     // Let's Encrypt의 790바이트 ISRG Root X2(Root YE) 진짜 인증서를 압축하여 0번 슬롯에 저장하고,
     // 실제 통신 시에는 KSSLCFG=0,3(Full Verification) 설정을 통해 MQTTS 보안 검증을 수행합니다.
     LOG("CERT_WRITE_START\n");
-    app_log_set_enabled(false);
     this->modem_SendCmdWaitResponse("AT+KCERTDELETE=0,0", "OK", "ERROR", 3000);
     modem_sleep(1000);
 
@@ -386,6 +583,8 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
     {
         modem_sleep(200);
         this->modem_ClearRxBuffer();
+        this->modem_TraceRedactedData("CERTIFICATE", cert_len);
+        app_log_set_enabled(false);
 
         int chunk_size = 200;
         for (int i = 0; i < cert_len; i += chunk_size)
@@ -399,6 +598,7 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
             modem_sleep(500); // 청크 간 500ms 대기 시간을 두어 모뎀 처리 여유 제공
         }
         modem_sleep(1500);
+        app_log_set_enabled(true);
 
         uint32_t elapsed = 0;
         const uint32_t step_ms = 100;

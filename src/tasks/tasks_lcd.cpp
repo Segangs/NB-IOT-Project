@@ -1,4 +1,6 @@
 #include "tasks_lcd.hpp"
+#include "../config.h"
+#include "../lib/log.hpp"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdio.h>
@@ -109,7 +111,15 @@ void lcd_tx_animation_step(LCD_I2C *lcd)
 void vLcdTask(void *pvParameters)
 {
     LcdTaskParams *params = (LcdTaskParams *)pvParameters;
-    LCD_I2C *lcd = params->lcd;
+    vTaskDelay(pdMS_TO_TICKS(LCD_POWER_STABILIZE_DELAY_MS));
+
+    const uint8_t lcd_addr = LCD_ADDR;
+    LOG("LCD_INIT_START 0x%02X\n", lcd_addr);
+    static LCD_I2C lcd_device(
+        lcd_addr, 16, 2, I2C_PORT, SDA_PIN, SCL_PIN);
+    LOG("LCD_INIT_DONE 0x%02X\n", lcd_addr);
+    LCD_I2C *const lcd = &lcd_device;
+    params->lcd = lcd;
     
     // Perform custom loading of graphics
     lcd_custom_init(lcd);

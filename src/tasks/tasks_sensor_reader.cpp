@@ -1,13 +1,86 @@
 #include "tasks_sensor_reader.hpp"
 
+#include <atomic>
+#include <cmath>
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "tasks_sensor.hpp"
 #include "../config.h"
+#include "../boot_v2/sensor_quality_core.hpp"
 #include "../lib/log.hpp"
 #include "app_context.hpp"
 #include "pico/stdlib.h"
+
+namespace {
+
+std::atomic_flag g_sensor_quality_lock = ATOMIC_FLAG_INIT;
+boot_v2::SensorQualitySnapshotV1 g_sensor_quality_snapshots[2]{};
+
+boot_v2::SensorSampleFault sample_fault(const int status) noexcept
+{
+    switch (status) {
+    case 0:
+        return boot_v2::SensorSampleFault::None;
+    case 1:
+        return boot_v2::SensorSampleFault::NoPresence;
+    case 2:
+        return boot_v2::SensorSampleFault::CrcMismatch;
+    case 3:
+        return boot_v2::SensorSampleFault::OutOfRange;
+    case 4:
+        return boot_v2::SensorSampleFault::Busy;
+    case 5:
+        return boot_v2::SensorSampleFault::StuckLow;
+    default:
+        return boot_v2::SensorSampleFault::OutOfRange;
+    }
+}
+
+std::int16_t temperature_deci(const float value) noexcept
+{
+    return static_cast<std::int16_t>(std::lround(value * 10.0f));
+}
+
+boot_v2::SensorSample sample(
+    const float value,
+    const int status,
+    const std::uint32_t observed_at_ms) noexcept
+{
+    boot_v2::SensorSample result{};
+    result.fault = sample_fault(status);
+    result.observed_at_monotonic_ms = observed_at_ms;
+    if (status == 0) {
+        result.value_deci_celsius = temperature_deci(value);
+    }
+    return result;
+}
+
+void publish_sensor_quality(
+    const boot_v2::SensorQualitySnapshotV1 first,
+    const boot_v2::SensorQualitySnapshotV1 second) noexcept
+{
+    while (g_sensor_quality_lock.test_and_set(std::memory_order_acquire)) {
+    }
+    g_sensor_quality_snapshots[0] = first;
+    g_sensor_quality_snapshots[1] = second;
+    g_sensor_quality_lock.clear(std::memory_order_release);
+}
+
+} // namespace
+
+bool copy_sensor_quality_snapshot(
+    const std::size_t channel,
+    boot_v2::SensorQualitySnapshotV1 &snapshot) noexcept
+{
+    if (channel >= 2 ||
+        g_sensor_quality_lock.test_and_set(std::memory_order_acquire)) {
+        return false;
+    }
+    snapshot = g_sensor_quality_snapshots[channel];
+    g_sensor_quality_lock.clear(std::memory_order_release);
+    return snapshot.health != boot_v2::SnapshotHealth::Unknown;
+}
 
 // ====================================================================================
 // Core 0 Task: Sensor Reader Task (Core 0)
@@ -15,12 +88,10 @@
 void vSensorTask(void *pvParameters)
 {
     uint32_t serial_print_counter = 0;
-    float last_valid_ch0 = -999.0f;
-    float last_valid_ch1 = -999.0f;
-    int last_status_ch0 = 1;
-    int last_status_ch1 = 1;
-    uint8_t fail_count_ch0 = 0;
-    uint8_t fail_count_ch1 = 0;
+    boot_v2::SensorQualityCore quality_ch0;
+    boot_v2::SensorQualityCore quality_ch1;
+    bool alarm_ch0 = false;
+    bool alarm_ch1 = false;
 
     while (true)
     {
@@ -43,51 +114,49 @@ void vSensorTask(void *pvParameters)
             check_temperature_status_dual(temp_ch0, status_ch0, temp_ch1, status_ch1);
         }
 
-        // Ch0 파라미터 매핑
-        if (status_ch0 == 0) {
-            last_valid_ch0 = temp_ch0;
-            last_status_ch0 = 0;
-            fail_count_ch0 = 0;
+        const std::uint32_t observed_at_ms =
+            to_ms_since_boot(get_absolute_time());
+        boot_v2::SensorQualityDecision quality0{};
+        boot_v2::SensorQualityDecision quality1{};
+        const bool quality0_updated = quality_ch0.observe(
+            sample(temp_ch0, status_ch0, observed_at_ms), quality0);
+        const bool quality1_updated = quality_ch1.observe(
+            sample(temp_ch1, status_ch1, observed_at_ms), quality1);
+        if (!quality0_updated || !quality1_updated) {
+            LOG("SENSOR_QUALITY_REJECT\n");
+        }
+        publish_sensor_quality(quality0.snapshot, quality1.snapshot);
+
+        if (quality0.display_value_valid != 0) {
+            temp_ch0 =
+                static_cast<float>(quality0.display_value_deci_celsius) /
+                10.0f;
             lcd_params.current_temperature = temp_ch0;
-            g_temp_ch0_sample_seq++;
-        } else if (last_status_ch0 == 0 && fail_count_ch0 < 3) {
-            fail_count_ch0++;
-            temp_ch0 = last_valid_ch0;
-            status_ch0 = 0;
-            lcd_params.current_temperature = last_valid_ch0;
         } else {
-            last_status_ch0 = status_ch0;
             lcd_params.current_temperature = -990.0f - (float)status_ch0;
+        }
+        if (quality0.alarm_update_allowed != 0) {
+            g_temp_ch0_sample_seq++;
+            alarm_ch0 = temp_ch0 > g_temp_upper_limit_ch0;
         }
         lcd_params.status_ch0 = status_ch0;
 
-        // Ch1 파라미터 매핑
-        if (status_ch1 == 0) {
-            last_valid_ch1 = temp_ch1;
-            last_status_ch1 = 0;
-            fail_count_ch1 = 0;
+        if (quality1.display_value_valid != 0) {
+            temp_ch1 =
+                static_cast<float>(quality1.display_value_deci_celsius) /
+                10.0f;
             lcd_params.current_temperature_ch1 = temp_ch1;
-            g_temp_ch1_sample_seq++;
-        } else if (last_status_ch1 == 0 && fail_count_ch1 < 3) {
-            fail_count_ch1++;
-            temp_ch1 = last_valid_ch1;
-            status_ch1 = 0;
-            lcd_params.current_temperature_ch1 = last_valid_ch1;
         } else {
-            last_status_ch1 = status_ch1;
             lcd_params.current_temperature_ch1 = -990.0f - (float)status_ch1;
+        }
+        if (quality1.alarm_update_allowed != 0) {
+            g_temp_ch1_sample_seq++;
+            alarm_ch1 = temp_ch1 > g_temp_upper_limit_ch1;
         }
         lcd_params.status_ch1 = status_ch1;
 
-        // 경보 여부 판단 (활성화된 센서 중 하나라도 임계치를 넘으면 발생)
-        bool alarm_active = false;
-        if (status_ch0 == 0 && temp_ch0 > g_temp_upper_limit_ch0) {
-            alarm_active = true;
-        }
-        if (status_ch1 == 0 && temp_ch1 > g_temp_upper_limit_ch1) {
-            alarm_active = true;
-        }
-        g_buzzer_trigger = alarm_active;
+        // Stale/fault samples neither raise nor clear an existing alarm.
+        g_buzzer_trigger = alarm_ch0 || alarm_ch1;
 
         // 시리얼 로그 출력 (1분 주기)
         if (serial_print_counter % 60 == 0) {

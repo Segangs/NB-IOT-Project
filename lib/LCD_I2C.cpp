@@ -12,7 +12,7 @@
 LCD_I2C::LCD_I2C(byte address, byte columns, byte rows, i2c_inst * I2C, uint SDA, uint SCL) noexcept
         : address(address), columns(columns), rows(rows), backlight(NO_BACKLIGHT), I2C_instance(I2C)
 {
-    static constexpr size_t BAUD_RATE = 100'000;
+    static constexpr size_t BAUD_RATE = 50'000;
 
     i2c_init(I2C, BAUD_RATE);
     gpio_set_function(SDA, GPIO_FUNC_I2C);
@@ -27,12 +27,13 @@ inline void LCD_I2C::I2C_Write_Byte(byte val) const noexcept
     static byte data;
 
     data = val | backlight;
-    i2c_write_blocking(I2C_instance, address, &data, 1, false);
+    (void)i2c_write_timeout_us(
+        I2C_instance, address, &data, 1, false, 3000);
 }
 
 void LCD_I2C::Pulse_Enable(byte val) const noexcept
 {
-    static constexpr uint16_t DELAY = 600;
+    static constexpr uint16_t DELAY = 1000;
 
     sleep_us(DELAY);
     I2C_Write_Byte(val | ENABLE);
@@ -41,24 +42,23 @@ void LCD_I2C::Pulse_Enable(byte val) const noexcept
     sleep_us(DELAY);
 }
 
-inline void LCD_I2C::Send_Nibble(byte val) const noexcept
+inline void LCD_I2C::Send_Nibble(byte val, byte mode) const noexcept
 {
-    I2C_Write_Byte(val);
-    Pulse_Enable(val);
+    const byte encoded = ((val << 4) & 0xF0) | mode;
+    I2C_Write_Byte(encoded);
+    Pulse_Enable(encoded);
 }
 
 inline void LCD_I2C::Send_Byte(byte val, byte mode) const noexcept
 {
-    static constexpr byte UPPER_NIBBLE = 0B1111'0000;
-
     static byte high;
     static byte low;
 
-    high = val & UPPER_NIBBLE;
-    low = (val << 4) & UPPER_NIBBLE;
+    high = (val >> 4) & 0x0F;
+    low = val & 0x0F;
 
-    Send_Nibble(high | mode);
-    Send_Nibble(low | mode);
+    Send_Nibble(high, mode);
+    Send_Nibble(low, mode);
 }
 
 inline void LCD_I2C::Send_Command(byte val) const noexcept
@@ -82,13 +82,20 @@ inline void LCD_I2C::Init() noexcept
     display_function = MODE_4_BIT | LINE_2 | DOTS_5x8;
     display_control = DISPLAY_ON | CURSOR_OFF | BLINK_OFF;
 
-    Send_Command(0x03);
-    Send_Command(0x03);
-    Send_Command(0x03);
-    Send_Command(0x02);
+    sleep_ms(50);
+    Send_Nibble(0x03, COMMAND);
+    sleep_ms(5);
+    Send_Nibble(0x03, COMMAND);
+    sleep_us(150);
+    Send_Nibble(0x03, COMMAND);
+    sleep_us(150);
+    Send_Nibble(0x02, COMMAND);
+    sleep_us(150);
 
-    Send_Command(ENTRY_MODE_SET | display_mode);
     Send_Command(FUNCTION_SET | display_function);
+    Send_Command(DISPLAY_CONTROL | DISPLAY_OFF);
+    Clear();
+    Send_Command(ENTRY_MODE_SET | display_mode);
     DisplayOn();
     Clear();
     Home();

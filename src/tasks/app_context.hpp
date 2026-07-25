@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include "../config.h"
 #include "tasks_lcd.hpp"
-#include "tasks_modem.hpp"
 
 struct SensorInfo {
     int user_sensor_id = -1;
@@ -31,16 +30,15 @@ extern volatile uint32_t g_temp_ch0_sample_seq;
 extern volatile uint32_t g_temp_ch1_sample_seq;
 extern volatile bool g_mic1_stream_active;
 extern volatile bool g_mic2_stream_active;
+extern volatile float g_boot_pico_temperature;
+extern volatile int g_boot_flash_integrity;
 
 extern LcdTaskParams lcd_params;
-extern nb_iot modem;
 
 int parse_sensors_json(const char *json, SensorInfo *sensors, int max_sensors);
 void init_fixed_sensor_map();
 int extract_json_int(const char *json, const char *key);
 float extract_json_float(const char *json, const char *key);
-bool apply_mqtt_config_payload(const char *payload, bool allow_commands);
-void safe_reboot(int delay_ms, int cmd_id = 0);
-void safe_power_off();
+bool apply_mqtt_config_payload(const char *payload);
 
 #endif // APP_CONTEXT_HPP

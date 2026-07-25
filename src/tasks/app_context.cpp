@@ -6,11 +6,10 @@
 #include "pico/stdlib.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "hardware/gpio.h"
-#include "hardware/watchdog.h"
 #include "../config.h"
 #include "../lib/log.hpp"
 #include "../lib/mqtt_payload.hpp"
+#include "tasks_modem.hpp"
 
 // Global boot reason codes (0: Normal, 1: Cmd Reboot, 2: Watchdog Timeout, 3: Power Cut/Brown-out)
 int g_boot_reason_code = 0;
@@ -101,6 +100,8 @@ volatile uint32_t g_temp_ch0_sample_seq = 0;
 volatile uint32_t g_temp_ch1_sample_seq = 0;
 volatile bool g_mic1_stream_active = false;
 volatile bool g_mic2_stream_active = false;
+volatile float g_boot_pico_temperature = 0.0f;
+volatile int g_boot_flash_integrity = 1;
 
 // Helper function to extract integer value from JSON response
 int extract_json_int(const char *json, const char *key) {
@@ -146,7 +147,7 @@ float extract_json_float(const char *json, const char *key) {
     return -999.0f;
 }
 
-bool apply_mqtt_config_payload(const char *payload, bool allow_commands)
+bool apply_mqtt_config_payload(const char *payload)
 {
     char config[512];
     if (!mqtt_config_payload_extract_object(payload, config, sizeof(config))) {
@@ -154,100 +155,21 @@ bool apply_mqtt_config_payload(const char *payload, bool allow_commands)
         return false;
     }
 
-    int parsed_count = parse_sensors_json(config, g_sensors, 4);
-    if (parsed_count > 0) {
-        g_sensor_count = parsed_count;
-        for (int i = 0; i < g_sensor_count; i++) {
-            if (g_sensors[i].user_sensor_id == 1) {
-                g_temp_upper_limit_ch0 = g_sensors[i].temp_upper_limit;
-                if (g_sensors[i].temp_lower_limit > -990.0f) {
-                    g_temp_lower_limit_ch0 = g_sensors[i].temp_lower_limit;
-                }
-            } else if (g_sensors[i].user_sensor_id == 2) {
-                g_temp_upper_limit_ch1 = g_sensors[i].temp_upper_limit;
-                if (g_sensors[i].temp_lower_limit > -990.0f) {
-                    g_temp_lower_limit_ch1 = g_sensors[i].temp_lower_limit;
-                }
-            }
-        }
-        g_temp_upper_limit = g_temp_upper_limit_ch0;
-        LOG("CONFIG_LIMIT_OK %.1f,%.1f\n", g_temp_upper_limit_ch0, g_temp_upper_limit_ch1);
+    float temp1_upper = 0.0f;
+    float temp2_upper = 0.0f;
+    if (!mqtt_config_compact_limits_parse(
+            config, &temp1_upper, &temp2_upper)) {
+        LOG("CONFIG_IGNORE\n");
+        return false;
     }
 
-    int cmd = extract_json_int(config, "cmd");
-    int cmd_id = extract_json_int(config, "cmdId");
-    if (allow_commands && cmd == 10) {
-        LOG("CMD_REBOOT\n");
-        safe_reboot(100, cmd_id > 0 ? cmd_id : 0);
-    }
-
-    int user_sensor_id = extract_json_int(config, "userSensorId");
-    float upper = extract_json_float(config, "setTmpUpLimit");
-    if (upper <= -990.0f) {
-        upper = extract_json_float(config, "tempUpperLimitValue");
-    }
-    if (upper > -990.0f) {
-        if (user_sensor_id == 2) {
-            g_temp_upper_limit_ch1 = upper;
-        } else {
-            g_temp_upper_limit_ch0 = upper;
-            g_temp_upper_limit = upper;
-        }
-        LOG("LIMIT_UPDATE %d,%.1f\n", user_sensor_id, upper);
-    }
-
-    float lower = extract_json_float(config, "setTmpLowLimit");
-    if (lower <= -990.0f) {
-        lower = extract_json_float(config, "tempLowerLimitValue");
-    }
-    if (lower > -990.0f) {
-        if (user_sensor_id == 2) {
-            g_temp_lower_limit_ch1 = lower;
-        } else {
-            g_temp_lower_limit_ch0 = lower;
-        }
-        LOG("LOW_LIMIT_UPDATE %d,%.1f\n", user_sensor_id, lower);
-    }
-
+    g_sensors[0].temp_upper_limit = temp1_upper;
+    g_sensors[1].temp_upper_limit = temp2_upper;
+    g_temp_upper_limit_ch0 = temp1_upper;
+    g_temp_upper_limit_ch1 = temp2_upper;
+    g_temp_upper_limit = temp1_upper;
+    LOG("CONFIG_LIMIT_OK %.1f,%.1f\n", temp1_upper, temp2_upper);
     return true;
-}
-
-// Safe reboot using Pico SDK Hardware Watchdog
-void safe_reboot(int delay_ms, int cmd_id) {
-    LOG("REBOOT\n");
-    // FreeRTOS 스케줄러 및 인터럽트 차단하여 타 테스크와 꼬임 완벽 방지
-    taskENTER_CRITICAL();
-    
-    // Save magic code and cmd_id to scratch registers before rebooting
-    watchdog_hw->scratch[2] = 0x12345678;
-    watchdog_hw->scratch[3] = cmd_id;
-    
-    // 하드웨어 워치독 재부팅 타이밍 로드 (0, 0은 일반 부팅 경로)
-    watchdog_reboot(0, 0, delay_ms);
-    
-    // 리셋 발생 전까지 무한 루프로 대기
-    while (true) {
-        // Spin
-    }
-}
-
-// Safe power-off request using LTC2954 KILL# on GP15.
-void safe_power_off()
-{
-    LOG("POWER_OFF_REQ\n");
-    sleep_ms(100);
-
-    gpio_init(POWER_KILL_PIN);
-    gpio_set_dir(POWER_KILL_PIN, GPIO_OUT);
-    gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL);
-    sleep_ms(10);
-
-    gpio_put(POWER_KILL_PIN, POWER_KILL_ACTIVE_LEVEL);
-    sleep_ms(2000);
-
-    // If power is still alive, LTC2954 is not connected yet. Restore inactive state for continued testing.
-    gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL);
-    LOG("POWER_OFF_NO_CUT\n");
 }
 
 // ====================================================================================

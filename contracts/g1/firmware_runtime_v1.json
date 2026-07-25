@@ -1,0 +1,1422 @@
+{
+  "contract_id": "nb_iot.g1.firmware_runtime",
+  "schema_version": 1,
+  "hardware_revision": "NB-IOT-HW-R1-20260702-ASBUILT",
+  "hardware_qualification": {
+    "identity_scope": "official_identifier_only",
+    "production_qualified": false,
+    "qualification_status": "pending_as_built_hardware_evidence",
+    "release_gate_refs": [
+      "sensor.hardware_release_gates",
+      "power.hardware_release_gates"
+    ]
+  },
+  "ownership": {
+    "uart0_modem": "v2_modem_command_service",
+    "pdp_mqtt": "v2_communication_lifecycle",
+    "one_wire_i2s": "sensor_coordinator",
+    "flash": "central_flash_service",
+    "snapshot": "snapshot_service",
+    "shutdown": "power_state_service",
+    "config_command": "request_coordinator",
+    "single_writer_required": true,
+    "resource_map_release_evidence_required": true,
+    "smp_affinity_priority_release_evidence_required": true,
+    "high_water_release_evidence_required": true,
+    "lock_order_release_evidence_required": true
+  },
+  "lifecycle": {
+    "boot_runtime_transport_teardown": false,
+    "periodic_ready_ends_boot_orchestration_only": true,
+    "runtime_reuses_boot_transport": true,
+    "legacy_hybrid_allowed": false,
+    "transport_teardown_allowed_reasons": [
+      "https_exclusive_mode",
+      "actual_shutdown"
+    ],
+    "post_config_liveness_gate": [
+      "at_ok",
+      "same_session_puback",
+      "subscription_alive",
+      "followup_config_received"
+    ],
+    "failed_liveness_may_report_periodic_ready": false,
+    "boot_snapshot_freeze_point": "after_post_config_liveness_before_periodic_ready",
+    "at_command_terminator": "\r",
+    "uart_response_guard_bytes": 256,
+    "debug_stdio": "usb_only",
+    "uart0_stdio_enabled": false,
+    "recovery_order": [
+      "command_retry",
+      "pdp_recovery",
+      "cfun_recovery",
+      "gp3_modem_reset",
+      "pico_reboot"
+    ],
+    "automatic_pico_reboot_allowed": [
+      0,
+      1,
+      2
+    ],
+    "automatic_pico_reboot_hard_cap": 2,
+    "cfun_requires_bounded_sim_attach_recovery": true,
+    "modem_communication_busy_guard_required": true,
+    "mqtt_keepalive_status": "not_frozen_until_24h_disconnect_reconnect_test",
+    "firmware_artifact_roles": [
+      "independent_boot_v2_baseline",
+      "boot_runtime_v2_production"
+    ],
+    "logging_policy": {
+      "bounded": true,
+      "nonblocking": true,
+      "critical_safety_failure_protected": true,
+      "debug_repetitive_drop_counted": true,
+      "depth_rate_status": "implementation_defined"
+    },
+    "queue_policy": {
+      "critical_noncritical_loss_policies_required": true,
+      "receiver_ownership_required": true,
+      "critical_event_loss_allowed": false,
+      "depth_status": "implementation_defined"
+    },
+    "release_fault_injection_targets": [
+      "command",
+      "queue",
+      "sensor",
+      "network",
+      "flash",
+      "power"
+    ],
+    "acceptance_timing_ledger_required": true,
+    "unknown_timing_status": "measure_before_freeze",
+    "lcd_startup_policy": {
+      "target_ms": 3000,
+      "rollback_ms": 5000,
+      "qualification_cycles_per_condition": 10,
+      "conditions": [
+        "adapter",
+        "battery",
+        "reboot"
+      ]
+    },
+    "https_entry_requirement": "mqtt_normal_shutdown",
+    "https_exit_requirements": [
+      "mqtt_reconnect",
+      "resubscribe",
+      "config_pull",
+      "command_pull",
+      "queued_telemetry_replay"
+    ],
+    "https_allowed_transfers": [
+      "audio_upload",
+      "firmware_artifact_download"
+    ],
+    "https_preserves_queued_telemetry": true,
+    "https_requires_hardware_qualification": true
+  },
+  "timing_ms": {
+    "boot_sensor_search_max": 15000,
+    "degraded_sensor_retry": 10000,
+    "temperature_period": 30000,
+    "telemetry_period": 1200000,
+    "rssi_period": 300000,
+    "failure_retry": 60000,
+    "adapter_debounce": 1000,
+    "shutdown_commit": 210000,
+    "shutdown_cleanup_window_after_commit": 90000,
+    "shutdown_absolute_off": 300000,
+    "fota_confirm_deadline": 600000
+  },
+  "sensor": {
+    "pass_rule": "at_least_one_complete_temp_mic_pair",
+    "otherwise_rule": "degraded",
+    "unused_empty_other_port_may_still_pass": true,
+    "health_codes": {
+      "unknown": 0,
+      "pass": 1,
+      "degraded": 2,
+      "failed": 3
+    },
+    "value_source_codes": {
+      "none": 0,
+      "fresh": 1,
+      "crc_fallback": 2
+    },
+    "quality_fields": [
+      "health",
+      "has_value",
+      "value",
+      "value_source",
+      "stale",
+      "consecutive_failures",
+      "last_valid_at"
+    ],
+    "crc_fallback_max_consecutive": 3,
+    "crc_fallback_max_age_ms": 30000,
+    "crc_fallback_use": "lcd_display_only",
+    "invalid_from_consecutive_failure": 4,
+    "invalid_when_age_exceeds_ms": 30000,
+    "stale_may_raise_or_clear_alarm": false,
+    "stale_may_publish_telemetry": false,
+    "invalid_numeric_sentinel_allowed": false,
+    "audio_discard_total_ms": 5000,
+    "audio_discard_requires_pre_and_post_segments": true,
+    "audio_discard_segment_allocation_status": "not_frozen",
+    "one_wire_i2s_time_slicing_required": true,
+    "production_calibration_status": "not_frozen_until_multipoint_calibration",
+    "audio_sample_rate_status": "not_frozen_until_3m_cable_qualification",
+    "audio_sample_rate_candidates_hz": [
+      8000,
+      16000,
+      24000
+    ],
+    "hardware_release_gates": [
+      "port1_port2_i2s_on_off_temperature_crc",
+      "three_meter_cable_sample_rate_comparison",
+      "temp1_temp2_multipoint_calibration"
+    ]
+  },
+  "snapshots": {
+    "boot": {
+      "schema_version": 1,
+      "immutable_one_shot": true,
+      "required_fields": [
+        "health",
+        "last_completed_stage",
+        "hardware_revision",
+        "firmware_build_id",
+        "config_version",
+        "config_valid",
+        "sensors",
+        "modem_ready",
+        "pdp_session_id",
+        "mqtt_session_id",
+        "subscription_alive",
+        "post_config_liveness",
+        "reboot_guard",
+        "recovery_summary"
+      ]
+    },
+    "runtime": {
+      "schema_version": 1,
+      "atomic_latest_replacement": true,
+      "revision_monotonic": true,
+      "required_fields": [
+        "revision",
+        "sensors",
+        "network_state",
+        "adapter_state",
+        "power_state",
+        "alarm_state",
+        "ui_state",
+        "config_version",
+        "last_command_id",
+        "last_command_result",
+        "queue_summary",
+        "drop_summary",
+        "recovery_summary"
+      ]
+    },
+    "forbidden_member_kinds": [
+      "pointer",
+      "task_handle",
+      "queue_handle",
+      "mutex_handle",
+      "secret",
+      "mutable_modem_object"
+    ],
+    "device_boot_snapshot_count": 1,
+    "device_runtime_snapshot_count": 1,
+    "history_owner": "server_database",
+    "consumer_write_allowed": false,
+    "sensor_fields_ref": "sensor.quality_fields"
+  },
+  "power": {
+    "states": {
+      "external_power": 1,
+      "grace": 2,
+      "committed": 3,
+      "cleanup": 4,
+      "off": 5
+    },
+    "restore_before_commit_cancels": true,
+    "restore_after_commit_is_ignored": true,
+    "new_modem_or_flash_work_after_cleanup_deadline": false,
+    "message_failure_blocks_poweroff": false,
+    "existing_transport_preserved_during_grace": true,
+    "shutdown_timing_semantics": {
+      "elapsed_origin": "battery_grace_entry_after_adapter_debounce",
+      "cleanup_starts_at": "shutdown_commit",
+      "cleanup_window": "shutdown_cleanup_window_after_commit",
+      "absolute_off": "shutdown_absolute_off",
+      "required_relation": "cleanup_starts_at_plus_cleanup_window_equals_absolute_off"
+    },
+    "incident_required_fields": [
+      "incident_id",
+      "sequence",
+      "unix_seconds",
+      "clock_valid"
+    ],
+    "incident_lifecycle": {
+      "owner": "power_state_service",
+      "scope": "device",
+      "identity": {
+        "storage": "durable",
+        "persistence": "until_closed",
+        "open_incident_id_source": "persisted_open_power_incident_id",
+        "clear_after_close": true
+      },
+      "correlated_events": [
+        "adapter_removed",
+        "poweroff_dying",
+        "device_offline",
+        "adapter_restored"
+      ],
+      "event_transitions": {
+        "adapter_removed": "open",
+        "poweroff_dying": "progress",
+        "device_offline": "correlate_if_open",
+        "adapter_restored": "close"
+      },
+      "open_incident_id_reuse_required": true,
+      "restore_before_commit": {
+        "shutdown_transition": "cancel",
+        "incident_transition": "close",
+        "close_incident_id_source": "persisted_open_power_incident_id"
+      },
+      "restore_after_commit": {
+        "shutdown_transition": "never_cancel",
+        "incident_transition": "remain_open",
+        "close_trigger": "next_successful_boot_or_restore",
+        "close_incident_id_source": "persisted_open_power_incident_id"
+      },
+      "server_offline": {
+        "cardinality_per_power_incident": "once",
+        "duplicate_suppressed": true,
+        "open_power_incident_id_source": "persisted_open_power_incident_id",
+        "without_open_power_incident": {
+          "incident_kind": "separate_offline_incident",
+          "power_incident_label_allowed": false
+        }
+      },
+      "sequence": {
+        "scope": "per_producer_per_incident",
+        "monotonic": true,
+        "producer_origin_required_for_dedupe": true
+      },
+      "required_fields_ref": "power.incident_required_fields"
+    },
+    "timing_status": "provisional_until_hardware_qualification",
+    "battery_low_supported": false,
+    "adapter_signal": {
+      "gpio": "gp7",
+      "source": "u3_mp1584_out_plus_divider",
+      "present_level": "high",
+      "measurement_status": "unverified_until_hardware_qualification",
+      "safe_upper_bound_mv": 3300
+    },
+    "hardware_forced_off_timer_separate_from_firmware_grace": true,
+    "shutdown_final_action": {
+      "usb_disconnected": "gp15_kill",
+      "usb_connected": "watchdog_reboot"
+    },
+    "hardware_release_gates": [
+      "gp7_u3_voltage_residual_backfeed_10_cycle",
+      "battery_load_voltage_current_temperature",
+      "shutdown_termination_trace",
+      "minimum_as_built_bom",
+      "schematic_pcb_drc_continuity",
+      "hardware_qualification_matrix"
+    ],
+    "grace_entry_actions": [
+      "buzzer_pwm_low",
+      "stop_periodic_telemetry",
+      "stop_long_reconnect",
+      "power_failure_warning_once"
+    ],
+    "cleanup_order": [
+      "block_new_work",
+      "dying_gasp_best_effort",
+      "bounded_session_cleanup",
+      "pdp_cfun_cpwroff_best_effort",
+      "shutdown_record",
+      "kill_or_watchdog_reboot"
+    ]
+  },
+  "event_types": {
+    "temperature_high": 1,
+    "temperature_low": 2,
+    "temperature_recovered": 3,
+    "adapter_removed": 4,
+    "adapter_restored": 5,
+    "poweroff_dying": 6,
+    "device_offline": 7,
+    "sensor_fault": 8,
+    "fota_status": 9,
+    "ai_status": 10
+  },
+  "flash_fota": {
+    "central_service_required": true,
+    "lock_order_required": true,
+    "flash_safe_execute_required": true,
+    "log_entry_alignment_bytes": 32,
+    "partition_address_status": "not_frozen_until_size_table_approval",
+    "partition_size_status": "not_frozen_until_size_table_approval",
+    "confirmed_slot_writable": false,
+    "download_target": "inactive_slot_only",
+    "bootloader_immutable": true,
+    "bootloader_application_fota_writable": false,
+    "bootloader_responsibilities": [
+      "slot_validation",
+      "slot_selection",
+      "trial",
+      "rollback"
+    ],
+    "service_recovery_methods": [
+      "usb_bootsel",
+      "service_image"
+    ],
+    "firmware_ab_required": true,
+    "trial_boot_max": 2,
+    "confirm_deadline_ms": 600000,
+    "trial_policy_provisional": true,
+    "dual_journal_required": true,
+    "boot_failure_recovery_history_required": true,
+    "boot_diagnostic_history": "bounded_local",
+    "record_layout_status": "not_frozen_until_size_table_approval",
+    "dual_journal_required_fields": [
+      "format_version",
+      "length",
+      "sequence",
+      "crc32",
+      "commit_marker",
+      "active_slot",
+      "pending_slot",
+      "confirmed_slot",
+      "bad_slot",
+      "trial_count",
+      "version",
+      "hash",
+      "rollback_reason"
+    ],
+    "boot_metadata": {
+      "copy_count": 2,
+      "copy_validation": "independent",
+      "copy_topology": {
+        "logical_copy_ids": [
+          "copy_a",
+          "copy_b"
+        ],
+        "snapshot_cardinality": "at_most_one_record_per_copy_id",
+        "validation_order": "before_record_filtering_and_selection",
+        "unknown_copy_id_result": "service_recovery_without_image_write",
+        "duplicate_copy_id_result": "service_recovery_without_image_write",
+        "one_surviving_known_copy_allowed": true,
+        "journal_target": "other_logical_copy_id"
+      },
+      "logical_validation_envelope": {
+        "abstraction": {
+          "normative_semantics": {
+            "language_scope": "language_neutral",
+            "physical_record_layout_claimed": false,
+            "production_container_abi_claimed": false
+          },
+          "host_executable_model": {
+            "language": "python",
+            "representation_scope": "executable_model_only",
+            "representation_labels_normative_for_production": false,
+            "production_firmware_evidence": false
+          },
+          "production_binding": {
+            "language_binding": "implementation_specific",
+            "container_binding": "implementation_specific",
+            "equivalent_semantics_required": true,
+            "python_representation_required": false
+          }
+        },
+        "snapshot": {
+          "normative_kind": "finite_ordered_sequence",
+          "executable_model_representations": [
+            "python_list",
+            "python_tuple"
+          ],
+          "finite": true,
+          "ordered": true,
+          "cardinality": {
+            "minimum": 0,
+            "maximum_ref": "flash_fota.boot_metadata.copy_count",
+            "range_inclusive": true
+          },
+          "element_semantics": "keyed_logical_validation_envelope",
+          "validation_order": "container_mapping_and_copy_identity_before_topology_then_record_fields_before_selection",
+          "malformed_result": "service_recovery_without_image_write",
+          "copy_identity_boundary": {
+            "required_field": "copy_id",
+            "type": "string",
+            "missing_or_wrong_type_result": "service_recovery_without_image_write"
+          }
+        },
+        "record": {
+          "normative_kind": "keyed_logical_validation_envelope",
+          "executable_model_representations": [
+            "python_dict"
+          ],
+          "required_fields": [
+            "copy_id",
+            "format_version",
+            "length",
+            "sequence",
+            "state",
+            "supported_format",
+            "approved_length",
+            "crc_matches",
+            "commit_marker_state",
+            "active_slot",
+            "confirmed_slot",
+            "pending_slot",
+            "bad_slot",
+            "trial_count",
+            "version",
+            "hash",
+            "rollback_reason",
+            "valid_firmware_slots",
+            "failed_candidate_slots"
+          ],
+          "unknown_fields": "reject_record",
+          "invalid_record_result": "record_invalid_with_other_valid_copy_fallback",
+          "untrusted_claim_fields": [
+            "candidate_verified",
+            "confirmed_valid"
+          ],
+          "untrusted_claim_result": "record_invalid",
+          "field_schemas": {
+            "copy_id": {
+              "type": "string"
+            },
+            "format_version": {
+              "type": "integer_not_boolean",
+              "minimum": 1,
+              "range_validation_phase": "canonical_semantic_projection"
+            },
+            "length": {
+              "type": "integer_not_boolean",
+              "minimum": 1,
+              "range_validation_phase": "canonical_semantic_projection"
+            },
+            "sequence": {
+              "type": "integer_not_boolean",
+              "minimum": 0,
+              "maximum_status": "not_frozen_until_record_layout_approval",
+              "range_validation_phase": "canonical_semantic_projection"
+            },
+            "state": {
+              "type": "string",
+              "allowed_values": [
+                "committed",
+                "torn",
+                "uncommitted",
+                "crc_invalid"
+              ]
+            },
+            "supported_format": {
+              "type": "exact_boolean"
+            },
+            "approved_length": {
+              "type": "exact_boolean"
+            },
+            "crc_matches": {
+              "type": "exact_boolean"
+            },
+            "commit_marker_state": {
+              "type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.commit_marker_semantics.state_meanings"
+            },
+            "active_slot": {
+              "type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.logical_firmware_slots"
+            },
+            "confirmed_slot": {
+              "type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.logical_firmware_slots"
+            },
+            "pending_slot": {
+              "type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.pending_slot.allowed_values"
+            },
+            "bad_slot": {
+              "type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.bad_slot.allowed_values"
+            },
+            "trial_count": {
+              "type": "integer_not_boolean",
+              "minimum": 0,
+              "maximum_ref": "flash_fota.trial_boot_max",
+              "range_inclusive": true,
+              "range_validation_phase": "slot_state_invariants"
+            },
+            "version": {
+              "type": "string",
+              "semantic_ref": "flash_fota.boot_metadata.candidate_trial_transitions.individual_committed_record_identity.version"
+            },
+            "hash": {
+              "type": "string",
+              "semantic_ref": "flash_fota.boot_metadata.candidate_trial_transitions.individual_committed_record_identity.hash"
+            },
+            "rollback_reason": {
+              "type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.candidate_trial_transitions.individual_committed_record_state.rollback_reason_domain"
+            },
+            "valid_firmware_slots": {
+              "type": "finite_slot_collection",
+              "normative_collection_semantics": "finite_mathematical_set",
+              "executable_model_representations": [
+                "python_list",
+                "python_tuple",
+                "python_set",
+                "python_frozenset"
+              ],
+              "element_type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.logical_firmware_slots",
+              "duplicate_semantics": "mathematical_set"
+            },
+            "failed_candidate_slots": {
+              "type": "finite_slot_collection",
+              "normative_collection_semantics": "finite_mathematical_set",
+              "executable_model_representations": [
+                "python_list",
+                "python_tuple",
+                "python_set",
+                "python_frozenset"
+              ],
+              "element_type": "string",
+              "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.logical_firmware_slots",
+              "duplicate_semantics": "mathematical_set"
+            }
+          }
+        },
+        "field_roles": {
+          "coverage": {
+            "required_fields_ref": "flash_fota.boot_metadata.logical_validation_envelope.record.required_fields",
+            "membership_rule": "exactly_one_role_per_required_field",
+            "union_rule": "equals_required_field_set"
+          },
+          "roles": {
+            "journal_semantic_fields": {
+              "fields_ref": "flash_fota.boot_metadata.crc.semantic_coverage_fields",
+              "field_order": "ordered_reference",
+              "source": "committed_boot_metadata_journal_semantics",
+              "logical_persistence": true,
+              "crc_covered": true,
+              "authority_alone": false,
+              "physical_byte_layout_claimed": false,
+              "physical_byte_layout_status_ref": "flash_fota.boot_metadata.crc.byte_layout_status"
+            },
+            "storage_copy_reader_binding": {
+              "fields": [
+                "copy_id"
+              ],
+              "source": "trusted_logical_storage_copy_reader_binding",
+              "record_payload_authority": false,
+              "logical_persistence": false,
+              "persisted_in_journal_payload": false,
+              "crc_covered": false,
+              "authority_alone": false,
+              "physical_copy_binding_status": "address_and_value_not_frozen"
+            },
+            "decoder_validation_annotations": {
+              "fields": [
+                "state",
+                "supported_format",
+                "approved_length",
+                "crc_matches"
+              ],
+              "role": "bootloader_decoder_validation_annotation",
+              "source": "bootloader_record_decoder_and_validator",
+              "logical_persistence": false,
+              "persisted_in_journal_payload": false,
+              "crc_covered": false,
+              "authority_alone": false,
+              "physical_byte_layout_claimed": false
+            },
+            "commit_marker_logical_annotation": {
+              "fields": [
+                "commit_marker_state"
+              ],
+              "role": "decoded_underlying_commit_marker_annotation",
+              "source": "decoded_underlying_commit_marker",
+              "logical_persistence": false,
+              "persisted_in_journal_payload": false,
+              "added_journal_semantic_field": false,
+              "crc_covered": false,
+              "authority_alone": false,
+              "physical_byte_layout_claimed": false,
+              "underlying_marker": {
+                "persisted": true,
+                "crc_covered": false,
+                "exact_bit_pattern_status_ref": "flash_fota.boot_metadata.commit_marker_semantics.exact_bit_pattern_status"
+              }
+            },
+            "host_executable_model_validation_context": {
+              "fields": [
+                "valid_firmware_slots",
+                "failed_candidate_slots"
+              ],
+              "role": "host_executable_model_validation_context_not_physical_journal_fields",
+              "representation_scope": "executable_model_only",
+              "field_sources": {
+                "valid_firmware_slots": "recomputed_bootloader_slot_validation",
+                "failed_candidate_slots": "committed_bad_candidate_and_failure_validation_context"
+              },
+              "logical_persistence": false,
+              "persisted_in_journal_payload": false,
+              "crc_covered": false,
+              "authority_alone": false,
+              "physical_byte_layout_claimed": false,
+              "external_revalidation_separation": {
+                "current_pending_and_confirmed_revalidation_separately_required": true,
+                "ref": "flash_fota.boot_metadata.boot_decision.external_revalidation"
+              }
+            }
+          }
+        },
+        "malformed_results": {
+          "unidentifiable_snapshot_or_topology": "service_recovery_without_image_write",
+          "identified_invalid_record": "record_invalid_with_other_valid_copy_fallback",
+          "zero_remaining_valid_records": "service_recovery_without_image_write",
+          "decision_service_recovery_shape": "null_source_next_and_action",
+          "classifier": "invalid",
+          "transition_validator": false,
+          "semantic_projection": "none",
+          "individual_validator": false
+        }
+      },
+      "crc": {
+        "algorithm": "CRC-32/ISO-HDLC",
+        "semantic_coverage_fields": [
+          "format_version",
+          "length",
+          "sequence",
+          "active_slot",
+          "pending_slot",
+          "confirmed_slot",
+          "bad_slot",
+          "trial_count",
+          "version",
+          "hash",
+          "rollback_reason"
+        ],
+        "excluded_fields": [
+          "crc32",
+          "commit_marker"
+        ],
+                "byte_layout_status": "not_frozen_until_size_table_approval",
+                "semantic_equality": {
+                    "projection_source": "ordered_crc_semantic_coverage_fields",
+                    "physical_byte_layout_claimed": false,
+                    "missing_field_result": "record_invalid",
+                    "unsupported_value_shape_result": "record_invalid"
+                }
+      },
+      "committed_record_validity": {
+        "required_checks": [
+          "supported_format",
+          "approved_length_for_format",
+          "matching_crc",
+          "committed_marker",
+          "slot_state_invariants",
+                    "candidate_identity_shape",
+                    "rollback_reason_state_relationships",
+                    "canonical_semantic_projection",
+                    "candidate_trial_transition"
+        ]
+      },
+      "commit_marker_semantics": {
+        "state_meanings": {
+          "erased": "uncommitted",
+          "programmed": "committed",
+          "partial": "invalid",
+          "torn": "invalid",
+          "unknown": "invalid"
+        },
+        "valid_committed_state": "programmed",
+        "invalid_states": [
+          "erased",
+          "partial",
+          "torn",
+          "unknown"
+        ],
+        "exact_bit_pattern_status": "not_frozen_until_record_layout_approval",
+        "program_transition": {
+          "from_state": "erased",
+          "to_state": "programmed",
+          "write_unit": "flash_program_unit",
+          "allowed_after_step": "readback_verify_fields_and_crc",
+          "last_program_operation_required": true
+        },
+        "old_valid_copy_preserved_until": "new_copy_fully_committed_and_verified"
+      },
+      "slot_state_invariants": {
+        "representation": "logical_a_b_or_none_only",
+        "logical_firmware_slots": [
+          "logical_a",
+          "logical_b"
+        ],
+        "none_value": "none",
+        "numeric_slot_codes_allowed": false,
+        "physical_layout_values_allowed": false,
+        "active_slot": {
+          "allowed_values": [
+            "logical_a",
+            "logical_b"
+          ],
+          "firmware_validation_required": true
+        },
+        "confirmed_slot": {
+          "allowed_values": [
+            "logical_a",
+            "logical_b"
+          ],
+          "firmware_validation_required": true,
+          "role": "rollback_target",
+          "must_not_equal_field": "bad_slot"
+        },
+        "pending_slot": {
+          "allowed_values": [
+            "none",
+            "logical_a",
+            "logical_b"
+          ],
+          "non_none_firmware_validation_required": true,
+          "non_none_must_not_equal_field": "active_slot",
+          "trial_must_not_equal_field": "confirmed_slot"
+        },
+        "bad_slot": {
+          "allowed_values": [
+            "none",
+            "logical_a",
+            "logical_b"
+          ],
+          "non_none_requires_failed_candidate": true,
+          "must_not_equal_fields": [
+            "active_slot",
+            "confirmed_slot",
+            "pending_slot_when_non_none"
+          ]
+        },
+        "trial_count": {
+          "type": "integer_not_boolean",
+          "minimum": 0,
+          "maximum_ref": "flash_fota.trial_boot_max",
+          "range_inclusive": true,
+          "out_of_range_result": "record_invalid"
+        },
+        "next_boot_actions": {
+          "confirmed_no_pending_no_bad": {
+            "requires": {
+              "active_slot": "valid_firmware_logical_slot",
+              "pending_slot": "none",
+              "bad_slot": "none",
+              "active_distinct_from_bad": true
+            },
+            "action": "boot_active"
+          },
+          "valid_pending_trial": {
+            "requires": {
+              "pending_slot": "valid_firmware_logical_slot",
+              "pending_distinct_from": [
+                "active_slot",
+                "confirmed_slot",
+                "bad_slot"
+              ],
+              "trial_count_relation": "less_than_trial_boot_max",
+              "durable_pre_jump_increment_required": true
+            },
+            "action": "durably_increment_trial_count_then_boot_pending"
+          },
+          "trial_exhausted_pending": {
+            "requires": {
+              "pending_slot": "valid_firmware_logical_slot",
+              "pending_distinct_from": [
+                "active_slot",
+                "confirmed_slot",
+                "bad_slot"
+              ],
+              "trial_count_relation": "equal_to_trial_boot_max"
+            },
+            "action": "mark_pending_bad_then_rollback_to_confirmed"
+          },
+          "failed_bad_candidate": {
+            "requires": {
+              "bad_slot": "failed_candidate",
+              "confirmed_slot": "valid_firmware_logical_slot_distinct_from_bad"
+            },
+            "action": "rollback_to_confirmed"
+          },
+          "impossible_or_trial_overflow": {
+            "record_result": "invalid",
+            "copy_selection_fallback": "older_valid_copy",
+            "zero_valid_copies": "service_recovery_without_image_write"
+          }
+        },
+        "impossible_combination_result": "record_invalid"
+      },
+      "candidate_trial_transitions": {
+        "candidate_identity_fields": [
+          "pending_slot",
+          "version",
+          "hash"
+        ],
+        "bad_identity_fields": [
+          "bad_slot",
+          "version",
+          "hash"
+        ],
+        "identity_comparison": "exact_tuple",
+        "version_source": "verified_manifest.version",
+        "hash_source": "verified_manifest.sha256",
+        "hash_semantics": "verified_artifact_sha256",
+        "individual_committed_record_identity": {
+          "required_check": "candidate_identity_shape",
+          "applies_to": "every_committed_candidate_including_sole_or_base_copy",
+                    "version": {
+                        "type": "non_blank_string",
+                        "source": "verified_manifest.version",
+                        "normalization_allowed": false
+                    },
+          "hash": {
+            "format": "lowercase_hex_64",
+            "source": "verified_manifest.sha256",
+            "semantics": "verified_artifact_sha256"
+          },
+          "field_ownership_ref": "flash_fota.boot_metadata.candidate_trial_transitions.field_ownership",
+          "incoherent_ownership_result": "record_invalid"
+        },
+        "individual_committed_record_state": {
+          "required_check": "rollback_reason_state_relationships",
+          "applies_to": "every_committed_record_including_sole_or_base_copy",
+          "rollback_reason_domain": [
+            "none",
+            "explicit_trial_failure",
+            "trial_exhausted",
+            "pending_revalidation_failed"
+          ],
+          "pending_state": {
+            "pending_slot": "non_none",
+            "bad_slot": "none",
+            "rollback_reason": "none",
+            "trial_count": "zero_to_trial_boot_max_inclusive"
+          },
+          "confirmed_state": {
+            "pending_slot": "none",
+            "bad_slot": "none",
+            "active_equals_confirmed": true,
+            "trial_count": 0,
+            "rollback_reason": "none"
+          },
+          "failed_state": {
+            "pending_slot": "none",
+            "bad_slot": "non_none",
+            "trial_count": 0,
+            "rollback_reason": [
+              "explicit_trial_failure",
+              "trial_exhausted",
+              "pending_revalidation_failed"
+            ]
+          },
+          "invalid_relationship_result": "record_invalid"
+        },
+        "verification_evidence": {
+          "source": "bootloader_revalidated_manifest_and_artifact",
+          "metadata_boolean_trusted": false,
+          "identity_fields": [
+            "pending_slot",
+            "version",
+            "hash"
+          ],
+          "match_rule": "exact_tuple",
+          "input_schema_ref": "flash_fota.boot_metadata.boot_decision.external_revalidation.input_schema",
+                    "journal_commit_authorization_transitions": [
+                        "stage_verified_candidate",
+                        "restage_same_candidate"
+                    ],
+                    "current_boot_pending_revalidation": true,
+          "recomputed_checks": [
+            "manifest_signature",
+            "manifest_version_binding",
+            "artifact_sha256",
+            "anti_rollback",
+            "hardware_revision",
+            "target_slot"
+          ],
+                    "missing_or_mismatched_result": "pending_revalidation_failed_boot_decision"
+        },
+        "field_ownership": {
+          "pending_non_none": "pending_candidate_identity",
+          "bad_non_none": "bad_candidate_identity",
+          "pending_none_bad_none": "active_confirmed_identity",
+          "pending_and_bad_non_none_allowed": false
+        },
+        "transition_validation": {
+          "source_record_required": true,
+          "destination_record_required": true,
+          "destination_shape_alone_sufficient": false,
+          "simple_field_mutation_allowed": false,
+          "invalid_result": "record_invalid",
+                    "commit_mechanism": "new_boot_metadata_journal_record",
+                    "atomicity_fields_share_one_committed_record": true,
+                    "classifier_ref": "flash_fota.boot_metadata.candidate_trial_transitions.transition_classifier",
+                    "selection_acceptance": "exactly_one_classified_transition",
+                    "sequence_rule": "destination_equals_source_plus_one",
+                    "copy_target_rule": "destination_is_other_logical_copy_id"
+                },
+                "transition_classifier": {
+                    "journal_transition_kinds": [
+                        "stage_verified_candidate",
+                        "restage_same_candidate",
+                        "attempt",
+                        "confirm",
+                        "fail_or_exhaust",
+                        "pending_revalidation_failed"
+                    ],
+                    "exactly_one_match_required": true,
+                    "zero_matches": "invalid",
+                    "multiple_matches": "ambiguous",
+                    "reboot": "reselect_same_existing_committed_record_without_new_record_or_sequence_advance",
+                    "higher_sequence_noop": "restage_same_candidate_only_with_exact_commit_evidence",
+                    "common_unchanged_fields": [
+                        "format_version",
+                        "length"
+                    ],
+                    "rollback_reason_rules": {
+                        "stage_verified_candidate": "none",
+                        "restage_same_candidate": "unchanged",
+                        "attempt": "unchanged",
+                        "confirm": "none",
+                        "fail_or_exhaust": "trigger_specific",
+                        "pending_revalidation_failed": "pending_revalidation_failed"
+                    }
+                },
+        "verified_new_candidate_staging": {
+          "requires": [
+            "candidate_identity_differs_from_source_pending_identity",
+            "candidate_identity_differs_from_source_bad_identity",
+            "existing_manifest_and_artifact_validation_security_gates_passed"
+          ],
+          "atomic_fields": [
+            "pending_slot",
+            "version",
+            "hash",
+                        "trial_count",
+                        "bad_slot",
+                        "rollback_reason"
+          ],
+          "trial_count": 0,
+          "bad_clear_rule": "only_same_slot_different_verified_identity",
+          "first_boot_transition": "durably_commit_0_to_1_then_boot_pending"
+        },
+        "same_candidate_restage_or_retry": {
+          "identity_rule": "exact_candidate_identity_unchanged",
+                    "trial_count_rule": "preserve_exactly_never_reset_or_decrease",
+                    "reboot_rule": "preserve_last_committed_trial_count",
+                    "unchanged_fields": [
+                        "format_version",
+                        "length",
+                        "active_slot",
+                        "confirmed_slot",
+                        "pending_slot",
+                        "bad_slot",
+                        "trial_count",
+                        "version",
+                        "hash",
+                        "rollback_reason"
+                    ]
+        },
+        "attempt": {
+          "identity_rule": "exact_pending_candidate_identity_unchanged",
+          "allowed_trial_count_transitions": [
+            "0_to_1",
+            "1_to_2"
+          ],
+          "durable_commit_before_jump": true,
+                    "action_after_commit": "boot_pending",
+                    "reboot_preserves_committed_count": true,
+                    "unchanged_fields": [
+                        "format_version",
+                        "length",
+                        "active_slot",
+                        "confirmed_slot",
+                        "pending_slot",
+                        "bad_slot",
+                        "version",
+                        "hash",
+                        "rollback_reason"
+                    ]
+        },
+        "bad_identity_reuse": {
+          "same_exact_identity": "reject_restage_and_trial_reset",
+          "same_slot_different_verified_version_or_hash": "clear_bad_and_stage_with_trial_count_zero"
+        },
+                "confirmation_terminal": {
+                    "atomic_destination": {
+                        "format_version": "source.format_version",
+                        "length": "source.length",
+                        "active_slot": "source.pending_slot",
+            "confirmed_slot": "source.pending_slot",
+            "pending_slot": "none",
+            "bad_slot": "none",
+            "trial_count": 0,
+                        "version": "source.version",
+                        "hash": "source.hash",
+                        "rollback_reason": "none"
+                    }
+                },
+                "failure_or_exhaustion_terminal": {
+                    "triggers": [
+                        "explicit_trial_failure",
+                        "trial_count_reached_max_without_confirmation",
+                        "pending_revalidation_failed"
+                    ],
+                    "source_trial_count_rules": {
+                        "explicit_trial_failure": "one_to_trial_boot_max_inclusive",
+                        "trial_count_reached_max_without_confirmation": "equal_to_trial_boot_max",
+                        "pending_revalidation_failed": "zero_to_trial_boot_max_inclusive"
+                    },
+                    "rollback_reason_by_trigger": {
+                        "explicit_trial_failure": "explicit_trial_failure",
+                        "trial_count_reached_max_without_confirmation": "trial_exhausted",
+                        "pending_revalidation_failed": "pending_revalidation_failed"
+                    },
+                    "atomic_destination": {
+                        "format_version": "source.format_version",
+                        "length": "source.length",
+                        "active_slot": "source.confirmed_slot",
+            "confirmed_slot": "source.confirmed_slot",
+            "pending_slot": "none",
+            "bad_slot": "source.pending_slot",
+            "trial_count": 0,
+                        "version": "source.version",
+                        "hash": "source.hash",
+                        "rollback_reason": "trigger_specific_exact_value"
+          },
+          "bad_identity_retained_for_same_candidate_rejection": true,
+          "pending_revalidation_failed_authorization": {
+            "pending_identity_evidence": "exact_identity_absent",
+            "confirmed_slot_evidence": "exact_slot_present",
+            "metadata_boolean_trusted": false,
+            "historical_committed_replay": "structural_validation_without_runtime_evidence",
+            "input_schema_ref": "flash_fota.boot_metadata.boot_decision.external_revalidation.input_schema"
+          }
+        },
+                "journal_power_cut": {
+                    "before_new_record_fully_committed_and_verified": "select_older_valid_copy",
+                    "zero_valid_copies": "service_recovery_without_image_write",
+                    "pending_revalidation_terminal_power_cut": "reselect_prior_pending_metadata_and_repeat_revalidation",
+                    "attempt_record_power_cut": "reselect_prior_pending_count_and_repeat_increment_commit",
+                    "trial_exhaustion_terminal_power_cut": "reselect_prior_exhausted_pending_and_repeat_rollback_commit",
+                    "uncounted_pending_boot_allowed": false
+                }
+            },
+            "boot_decision": {
+                "metadata_selection": {
+                    "before_current_artifact_revalidation": true,
+                    "pending_revalidation_part_of_committed_metadata_validity": false,
+                    "decision_uses_exact_selected_record_reference": true
+                },
+                "external_revalidation": {
+                    "pending_identity_source": "bootloader_recomputed_manifest_and_artifact_checks",
+                    "pending_identity_fields": [
+                        "pending_slot",
+                        "version",
+                        "hash"
+                    ],
+                    "confirmed_slot_source": "bootloader_revalidated_bootable_firmware_slot",
+                    "confirmed_slot_identity": "exact_logical_slot_identifier",
+                    "metadata_boolean_trusted": false,
+                    "input_schema": {
+                        "container": {
+                            "normative_collection_semantics": "finite_mathematical_set",
+                            "executable_model_representations": [
+                                "python_list",
+                                "python_tuple",
+                                "python_set",
+                                "python_frozenset"
+                            ],
+                            "arbitrary_iterables_allowed": false,
+                            "invalid_element_invalidates_whole_container": true,
+                            "duplicate_semantics": "mathematical_set"
+                        },
+                        "omitted_or_none": {
+                            "pending_candidate_evidence": "empty_exact_identity_set",
+                            "confirmed_bootable_slot_evidence": "empty_exact_slot_set"
+                        },
+                        "pending_candidate_evidence": {
+                            "element_semantics": "exact_ordered_identity_product",
+                            "executable_model_representation": "python_tuple",
+                            "arity": 3,
+                            "field_order": [
+                                "pending_slot",
+                                "version",
+                                "hash"
+                            ],
+                            "pending_slot": {
+                                "type": "string",
+                                "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.logical_firmware_slots",
+                                "none_allowed": false
+                            },
+                            "version": {
+                                "type": "non_blank_string",
+                                "normalization_allowed": false
+                            },
+                            "hash": {
+                                "format": "lowercase_hex_64"
+                            }
+                        },
+                        "confirmed_bootable_slot_evidence": {
+                            "element_semantics": "exact_logical_slot_string",
+                            "allowed_values_ref": "flash_fota.boot_metadata.slot_state_invariants.logical_firmware_slots"
+                        },
+                        "malformed_non_none_result": {
+                            "malformed_is_absence": false,
+                            "decision": "service_recovery_without_image_write_with_null_outputs",
+                            "classifier": "invalid",
+                            "transition_validator": false
+                        },
+                        "historical_structural_replay": {
+                            "journal_commit_authorization": false,
+                            "ephemeral_evidence_required": false
+                        }
+                    }
+                },
+                "result_shape": {
+                    "fields": [
+                        "disposition",
+                        "source_record_reference",
+                        "next_journal_record",
+                        "post_commit_action"
+                    ],
+                    "service_recovery_source_record_reference": "none",
+                    "no_next_journal_record": "none",
+                    "no_post_commit_action": "none"
+                },
+                "dispositions": {
+                    "no_valid_metadata": "service_recovery_without_image_write",
+                    "no_pending_confirmed_valid": "boot_confirmed",
+                    "pending_valid_trial_remaining": "attempt_required_commit_then_boot_pending",
+                    "pending_valid_trial_exhausted": "rollback_required_trial_exhausted_commit_then_boot_confirmed",
+                    "pending_invalid_confirmed_valid": "rollback_required_pending_revalidation_failed_commit_then_boot_confirmed",
+                    "confirmed_invalid": "service_recovery_without_image_write"
+                },
+                "attempt_record": {
+                    "transition_kind": "attempt",
+                    "allowed_source_trial_counts": "zero_or_one",
+                    "atomic_destination": {
+                        "copy_id": "other_logical_copy_id",
+                        "format_version": "source.format_version",
+                        "length": "source.length",
+                        "sequence": "source.sequence_plus_one",
+                        "active_slot": "source.active_slot",
+                        "confirmed_slot": "source.confirmed_slot",
+                        "pending_slot": "source.pending_slot",
+                        "bad_slot": "none",
+                        "trial_count": "source.trial_count_plus_one",
+                        "version": "source.version",
+                        "hash": "source.hash",
+                        "rollback_reason": "none"
+                    },
+                    "commit_before_post_commit_action": true,
+                    "post_commit_action": "boot_pending",
+                    "power_cut_before_commit": "reselect_prior_pending_count_and_repeat_increment_commit",
+                    "uncounted_pending_boot_allowed": false
+                },
+                "trial_exhaustion_terminal": {
+                    "transition_kind": "fail_or_exhaust",
+                    "source_trial_count": "trial_boot_max",
+                    "atomic_destination": {
+                        "copy_id": "other_logical_copy_id",
+                        "format_version": "source.format_version",
+                        "length": "source.length",
+                        "sequence": "source.sequence_plus_one",
+                        "active_slot": "source.confirmed_slot",
+                        "confirmed_slot": "source.confirmed_slot",
+                        "pending_slot": "none",
+                        "bad_slot": "source.pending_slot",
+                        "trial_count": 0,
+                        "version": "source.version",
+                        "hash": "source.hash",
+                        "rollback_reason": "trial_exhausted"
+                    },
+                    "commit_before_post_commit_action": true,
+                    "post_commit_action": "boot_confirmed",
+                    "power_cut_before_commit": "reselect_prior_exhausted_pending_and_repeat_rollback_commit",
+                    "pending_boot_allowed": false
+                },
+                "pending_revalidation_failure_terminal": {
+                    "transition_kind": "pending_revalidation_failed",
+                    "allowed_at_trial_count_zero": true,
+                    "atomic_destination": {
+                        "copy_id": "other_logical_copy_id",
+                        "format_version": "source.format_version",
+                        "length": "source.length",
+                        "sequence": "source.sequence_plus_one",
+                        "active_slot": "source.confirmed_slot",
+                        "confirmed_slot": "source.confirmed_slot",
+                        "pending_slot": "none",
+                        "bad_slot": "source.pending_slot",
+                        "trial_count": 0,
+                        "version": "source.version",
+                        "hash": "source.hash",
+                        "rollback_reason": "pending_revalidation_failed"
+                    },
+                    "commit_before_post_commit_action": true,
+                    "post_commit_action": "boot_confirmed",
+                    "power_cut_before_commit": "reselect_prior_pending_metadata_and_repeat_revalidation",
+                    "unverified_pending_boot_allowed": false
+                }
+            },
+            "selection": {
+        "candidate_state": "valid_committed",
+        "winner": "highest_unsigned_sequence",
+        "ignored_states": [
+          "torn",
+          "uncommitted",
+          "crc_invalid"
+        ],
+                "equal_sequence_identical_content": "acceptable",
+                "equal_sequence_different_content": "service_recovery_without_image_write",
+                "identical_projection_copy_id_tiebreak": "lexicographically_smallest_copy_id",
+                "topology_validation": "before_record_filtering_and_selection",
+                "selected_record_reference": {
+                    "type": "immutable",
+                    "fields": [
+                        "copy_id",
+                        "sequence",
+                        "canonical_semantic_projection"
+                    ],
+                    "projection_source": "ordered_crc_semantic_coverage_fields"
+                },
+                "service_recovery_selected_record_reference": "none",
+                "zero_valid_copies": "service_recovery_without_image_write"
+      },
+      "write_commit_sequence": [
+        "choose_non_selected_copy",
+        "erase_target_copy",
+        "program_uncommitted_record",
+        "readback_verify_fields_and_crc",
+        "program_commit_marker_last",
+        "verify_committed_record",
+        "select_in_ram"
+      ],
+      "old_valid_copy_preserved_until": "new_copy_fully_committed_and_verified",
+      "sequence": {
+        "domain": "unsigned",
+        "monotonic": true,
+        "wrap_policy": "forbidden_without_explicit_format_migration"
+      },
+      "trial_boot_sequence": [
+        "increment_trial_count",
+        "durably_commit_trial_count",
+        "jump_to_pending_slot"
+      ],
+      "reset_before_confirmation_consumes_trial": true,
+      "provisional_confirmation": {
+        "deadline_ms_ref": "timing_ms.fota_confirm_deadline",
+        "deadline_begins_at": "trial_runtime_entry",
+        "attempt_state": "already_counted",
+        "time_source": "same_boot_monotonic",
+        "absolute_wall_clock_deadline_used": false,
+        "reset_consumes_persisted_trial": true,
+        "trial_boot_max_ref": "flash_fota.trial_boot_max",
+        "cross_reset_deadline_extension_allowed": false
+      }
+    },
+    "manifest_required_fields": [
+      "format_version",
+      "artifact_type",
+      "target_slot",
+      "hardware_revision",
+      "version",
+      "size",
+      "sha256",
+      "anti_rollback_counter",
+      "key_id",
+      "signature"
+    ],
+    "hash_algorithm": "sha256",
+    "asymmetric_signature_required": true,
+    "key_id_required": true,
+    "anti_rollback_required": true,
+    "signature_encoding_status": "not_frozen",
+    "signature_algorithm": "ecdsa_p256_sha256",
+    "manifest_serialization": "deterministic_cbor_rfc8949",
+    "manifest_signed_bytes": "deterministic_map_without_signature_field",
+    "manifest_target_slot_values": {
+      "firmware": "inactive_slot_only",
+      "model": "inactive_model_slot_only"
+    },
+    "manifest_target_slot_is_logical": true,
+    "private_key_location": "separate_signing_environment",
+    "device_key_material": [
+      "public_root",
+      "key_id"
+    ],
+    "key_management_drills_required": [
+      "backup",
+      "rotation",
+      "revoke"
+    ],
+    "confirm_required_local_gates": [
+      "power_control_ok",
+      "runtime_started",
+      "flash_integrity_ok",
+      "config_integrity_ok",
+      "at_least_one_valid_temperature"
+    ],
+    "confirm_optional_degraded_allowed": [
+      "lcd",
+      "audio",
+      "network"
+    ],
+    "failed_image_marked_bad": true,
+    "rollback_target": "previous_confirmed_slot",
+    "erase_program_commit_power_cut_tests_required": true,
+    "runtime_v2_stability_gate_required": true,
+    "artifact_download_transport": "https_exclusive_after_mqtt_normal_shutdown",
+    "artifacts_immutable": true,
+    "firmware_model_activation_independent": true,
+    "model_atomic_activation_required": true,
+    "shared_artifact_pipeline": true,
+    "model_download_target": "inactive_model_slot_only",
+    "model_activation_checks": [
+      "hash",
+      "signature",
+      "compatibility",
+      "inference_self_test"
+    ],
+    "model_failure_rollback_target": "previous_confirmed_model",
+    "slot_validation_tests_required": [
+      "slot_specific_linker",
+      "slot_specific_artifact",
+      "slot_header",
+      "vector_jump",
+      "slot_a_build_jump_rollback",
+      "slot_b_build_jump_rollback"
+    ],
+    "security_claim_scope": [
+      "accidental_corruption",
+      "unauthorized_network_image",
+      "downgrade"
+    ],
+    "physical_supply_chain_security_claimed": false,
+    "first_release_scope": [
+      "immutable_bootloader",
+      "firmware_ab",
+      "rollback",
+      "minimum_remote_downloader",
+      "inactive_slot_installer",
+      "first_remote_update_validation"
+    ],
+    "automatic_rollout_status": "deferred_to_next_release",
+    "automatic_install_schedule_status": "not_frozen_until_bootstrap_canary",
+    "release_pipeline_audit_required": true
+  }
+}

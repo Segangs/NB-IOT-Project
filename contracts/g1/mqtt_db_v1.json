@@ -1,0 +1,2900 @@
+{
+  "contract_id": "nb_iot.g1.mqtt_db",
+  "schema_version": 1,
+  "encoding": "numeric_csv",
+  "wire_character_set": "ascii",
+  "numeric_tokens_only": true,
+  "numeric_token_grammar": "canonical_decimal_integer",
+  "numeric_token_regex": "^(?:0|[1-9][0-9]*|-[1-9][0-9]*)$",
+  "max_golden_selection_rule": "longest_canonical_endpoint_tie_maximum",
+  "max_payload_bytes": 80,
+  "legacy_json_allowed": false,
+  "legacy_array_allowed": false,
+  "raw_binary_allowed": false,
+  "dual_decoder_allowed": false,
+  "topics": {
+    "boot": "devices/{imei}/boot",
+    "telemetry": "devices/{imei}/telemetry",
+    "config_request": "devices/{imei}/config/request",
+    "config_response": "devices/{imei}/config/response",
+    "command_request": "devices/{imei}/cmd/request",
+    "command_response": "devices/{imei}/cmd/response",
+    "config_ack": "devices/{imei}/config/ack",
+    "command_ack": "devices/{imei}/cmd/ack",
+    "command_ack_receipt": "devices/{imei}/cmd/ack/receipt",
+    "event": "devices/{imei}/event"
+  },
+  "retained": {
+    "boot": false,
+    "telemetry": false,
+    "config_request": false,
+    "config_response": false,
+    "command_request": false,
+    "command_response": false,
+    "config_ack": false,
+    "command_ack": false,
+    "command_ack_receipt": false,
+    "event": false
+  },
+  "pull_order": [
+    "config",
+    "command"
+  ],
+  "pull_triggers": [
+    "first_connect",
+    "reconnect",
+    "periodic_telemetry"
+  ],
+  "polling": {
+    "config_command_separate": true,
+    "max_normal_apply_latency_seconds": 1200,
+    "bounded_retry": true,
+    "last_known_config_preserved_on_error": true,
+    "stale_response_keys": [
+      "request_id",
+      "config_version",
+      "cmd_id"
+    ]
+  },
+  "auth_boundary": {
+    "web_login_methods": [
+      "id_password",
+      "google_oauth"
+    ],
+    "id_password_ui_identifier": "id",
+    "google_only": false,
+    "email_input_required": false,
+    "web_session_authority": "supabase_auth",
+    "browser_key_role": "anon_public",
+    "browser_service_role_allowed": false,
+    "web_and_device_auth_separate": true,
+    "id_to_supabase_identity_mapping_status": "not_frozen_until_auth_migration_security_tests",
+    "authorization_metadata_mapping_status": "not_frozen_until_auth_migration_security_tests",
+    "user_metadata_authorization_allowed": false
+  },
+  "device_credentials": {
+    "username": "imei",
+    "password": "imsi_cimi"
+  },
+  "context_fields": {
+    "imei": {
+      "source": "authenticated_mqtt_username_after_exact_topic_match",
+      "rpc_injection": "p_imei",
+      "identity_binding_ref": "mqtt_identity_binding",
+      "payload_repetition_allowed": false
+    }
+  },
+  "mqtt_identity_binding": {
+    "authenticated_username_identity": "imei_text",
+    "topic_identity_placeholder": "{imei}",
+    "topic_imei_must_equal_authenticated_imei": true,
+    "comparison": "byte_for_byte",
+    "p_imei_source": "authenticated_identity_after_topic_match",
+    "unmatched_topic_p_imei_allowed": false,
+    "mismatch": {
+      "action": "drop",
+      "rpc_allowed": false,
+      "response_republish_allowed": false,
+      "security_audit_counter_increment": true
+    },
+    "acl": {
+      "device_publish_scope": "own_device_topic_families_only",
+      "device_subscribe_scope": "own_device_topic_families_only",
+      "device_publish_topic_families": [
+        "boot",
+        "telemetry",
+        "config_request",
+        "command_request",
+        "config_ack",
+        "command_ack",
+        "event"
+      ],
+      "device_subscribe_topic_families": [
+        "config_response",
+        "command_response",
+        "command_ack_receipt"
+      ]
+    },
+    "device_event_route": {
+      "topic_family": "event",
+      "allowed_event_types": [
+        "temperature_high",
+        "temperature_low",
+        "temperature_recovered",
+        "adapter_removed",
+        "adapter_restored",
+        "poweroff_dying",
+        "sensor_fault",
+        "fota_status",
+        "ai_status"
+      ],
+      "required_schema_producer_route": "device_mqtt_event",
+      "gateway_reject": {
+        "action": "drop",
+        "rpc_allowed": false
+      }
+    },
+    "device_event_route_server_impersonation_allowed": false
+  },
+  "authorized_server_event_routes": {
+    "device_offline": {
+      "producer": "authorized_server_monitor",
+      "transport": "direct_rpc",
+      "mqtt_topic": null,
+      "device_authenticated_mqtt_route_allowed": false,
+      "authorization": "server_authorized_device_scope",
+      "identity_source": "authorized_server_device_scope",
+      "identity_conversion_ref": "server_authorized_imei_to_pg_text",
+      "payload_semantics_ref": "event_semantics.schemas.device_offline",
+      "rpc": "event_ingest",
+      "live_sql_or_policy_frozen": false
+    }
+  },
+  "producer_consumer": {
+    "telemetry": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.telemetry_ingest"
+    },
+    "boot": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.boot_ingest"
+    },
+    "config_request": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.config_fetch"
+    },
+    "config_response": {
+      "producer": "rpc.config_fetch",
+      "broker": "emqx",
+      "consumer": "pico"
+    },
+    "command_request": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.command_claim"
+    },
+    "command_response": {
+      "producer": "rpc.command_claim",
+      "broker": "emqx",
+      "consumer": "pico"
+    },
+    "config_ack": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.config_ack"
+    },
+    "command_ack": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.command_ack"
+    },
+    "command_ack_receipt": {
+      "producer": "command_ack_receipt_gateway",
+      "broker": "emqx",
+      "consumer": "pico"
+    },
+    "event": {
+      "producer": "pico",
+      "broker": "emqx",
+      "consumer": "rpc.event_ingest"
+    }
+  },
+  "publication_rules": {
+    "invalid_publish_allowed": false,
+    "undefined_publish_allowed": false,
+    "empty_publish_allowed": false,
+    "null_publish_allowed": false,
+    "telemetry_invalid_publish_allowed": false,
+    "telemetry_stale_publish_allowed": false,
+    "temperature_sentinel_allowed": false,
+    "valid_zero_code_rows_only": [
+      "config_no_change",
+      "command_none"
+    ]
+  },
+  "wire_enums": {
+    "health_status": {
+      "unknown": 0,
+      "pass": 1,
+      "degraded": 2,
+      "failed": 3
+    },
+    "carrier_code": {
+      "unknown": 0,
+      "skt": 1,
+      "kt": 2,
+      "lgu_plus": 3
+    },
+    "boot_reason": {
+      "power_on": 0,
+      "watchdog": 1,
+      "software_reboot": 2,
+      "command_reboot": 3,
+      "power_restore": 4,
+      "brownout": 5,
+      "fota_trial": 6,
+      "rollback": 7
+    },
+    "boolean_code": {
+      "false": 0,
+      "true": 1
+    },
+    "config_result": {
+      "applied": 1,
+      "rejected": 2,
+      "stale": 3
+    },
+    "config_error": {
+      "none": 0,
+      "invalid_field": 1,
+      "checksum": 2,
+      "version": 3,
+      "storage": 4
+    },
+    "command_opcode": {
+      "none": 0,
+      "reboot": 1,
+      "power_off": 2,
+      "request_status": 3,
+      "fota_prepare": 4
+    },
+    "ack_phase": {
+      "accepted": 1,
+      "final": 2
+    },
+    "command_result": {
+      "none": 0,
+      "accepted": 1,
+      "executed": 2,
+      "failed": 3,
+      "expired": 4
+    },
+    "command_error": {
+      "none": 0,
+      "invalid_opcode": 1,
+      "duplicate": 2,
+      "execution": 3,
+      "journal": 4,
+      "expired": 5
+    },
+    "ack_receipt": {
+      "ingested": 1,
+      "rejected": 2,
+      "mismatch": 3
+    },
+    "ack_receipt_error": {
+      "none": 0,
+      "db_rejected": 1,
+      "cmd_mismatch": 2,
+      "phase_mismatch": 3,
+      "result_mismatch": 4
+    },
+    "command_journal_state": {
+      "empty": 0,
+      "accepted_persisted": 1,
+      "accepted_publish_pending": 2,
+      "accepted_puback": 3,
+      "accepted_receipted": 4,
+      "execute_marked": 5,
+      "executed": 6,
+      "final_persisted": 7,
+      "final_publish_pending": 8,
+      "final_puback": 9,
+      "final_receipted": 10
+    },
+    "event_type": {
+      "temperature_high": 1,
+      "temperature_low": 2,
+      "temperature_recovered": 3,
+      "adapter_removed": 4,
+      "adapter_restored": 5,
+      "poweroff_dying": 6,
+      "device_offline": 7,
+      "sensor_fault": 8,
+      "fota_status": 9,
+      "ai_status": 10
+    },
+    "event_state": {
+      "inactive_or_cleared": 0,
+      "active": 1,
+      "progress": 2,
+      "failed": 3
+    }
+  },
+  "cross_contract_refs": {
+    "health_status": {
+      "contract_id": "nb_iot.g1.firmware_runtime",
+      "path": "sensor.health_codes"
+    },
+    "event_type": {
+      "contract_id": "nb_iot.g1.firmware_runtime",
+      "path": "event_types"
+    },
+    "power_incident_lifecycle": {
+      "contract_id": "nb_iot.g1.firmware_runtime",
+      "path": "power.incident_lifecycle"
+    }
+  },
+  "payloads": {
+    "telemetry": {
+      "fields": [
+        "schema_version",
+        "sensor_id",
+        "value_tenths",
+        "sequence"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "sensor_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "value_tenths": {
+          "kind": "integer",
+          "signed": true,
+          "minimum": -550,
+          "maximum": 1250,
+          "unit": "tenths_celsius",
+          "zero_code": "measured_zero_celsius"
+        },
+        "sequence": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "sequence_number",
+          "zero_code": "initial_sequence"
+        }
+      },
+      "max_golden_payload": "1,4294967295,1250,4294967295",
+      "max_golden_payload_bytes": 28
+    },
+    "boot": {
+      "fields": [
+        "schema_version",
+        "cimi",
+        "voltage_mv",
+        "boot_temp_tenths",
+        "flash_status",
+        "ram_status",
+        "at_status",
+        "cpin_status",
+        "csq",
+        "carrier_code",
+        "temp1_status",
+        "temp2_status",
+        "mic1_status",
+        "mic2_status",
+        "boot_reason",
+        "last_cmd_id"
+      ],
+      "preserved_boot_meaning_fields": [
+        "cimi",
+        "voltage_mv",
+        "boot_temp_tenths",
+        "flash_status",
+        "ram_status",
+        "at_status",
+        "cpin_status",
+        "csq",
+        "carrier_code",
+        "temp1_status",
+        "temp2_status",
+        "mic1_status",
+        "mic2_status",
+        "boot_reason"
+      ],
+      "g1_added_fields": [
+        "schema_version",
+        "last_cmd_id"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "cimi": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 100000000000000,
+          "maximum": 999999999999999,
+          "unit": "imsi_digits",
+          "zero_code": "forbidden"
+        },
+        "voltage_mv": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 6000,
+          "unit": "millivolts",
+          "zero_code": "forbidden"
+        },
+        "boot_temp_tenths": {
+          "kind": "integer",
+          "signed": true,
+          "minimum": -550,
+          "maximum": 1250,
+          "unit": "tenths_celsius",
+          "zero_code": "measured_zero_celsius"
+        },
+        "flash_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "ram_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "at_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "cpin_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "csq": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 99,
+          "unit": "asu_code",
+          "zero_code": "valid_no_signal_code"
+        },
+        "carrier_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "carrier_code",
+          "zero_code": "unknown_carrier",
+          "enum_ref": "carrier_code",
+          "enum_zero_ref": "unknown"
+        },
+        "temp1_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "temp2_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "mic1_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "mic2_status": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "status_code",
+          "zero_code": "unknown_or_not_tested",
+          "enum_ref": "health_status",
+          "enum_zero_ref": "unknown"
+        },
+        "boot_reason": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 7,
+          "unit": "boot_reason_code",
+          "zero_code": "power_on",
+          "enum_ref": "boot_reason",
+          "enum_zero_ref": "power_on"
+        },
+        "last_cmd_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "no_command_completed"
+        }
+      },
+      "max_golden_payload": "1,999999999999999,6000,1250,3,3,3,3,99,3,3,3,3,3,7,4294967295",
+      "max_golden_payload_bytes": 61
+    },
+    "config_request": {
+      "fields": [
+        "schema_version",
+        "request_id",
+        "known_config_version",
+        "page_index"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "request_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "known_config_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "version_identifier",
+          "zero_code": "no_config_known"
+        },
+        "page_index": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 1,
+          "unit": "zero_based_page_index",
+          "zero_code": "first_page"
+        }
+      },
+      "max_golden_payload": "1,4294967295,4294967295,1",
+      "max_golden_payload_bytes": 25
+    },
+    "config_response": {
+      "fields": [
+        "schema_version",
+        "request_id",
+        "config_version",
+        "page_index",
+        "page_count",
+        "sensor_slot",
+        "sensor_id",
+        "upper_tenths",
+        "lower_tenths",
+        "enabled",
+        "checksum_u32"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "request_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "config_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "version_identifier",
+          "zero_code": "initial_config_version"
+        },
+        "page_index": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 1,
+          "unit": "zero_based_page_index",
+          "zero_code": "first_page"
+        },
+        "page_count": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 2,
+          "unit": "page_count",
+          "zero_code": "forbidden"
+        },
+        "sensor_slot": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 2,
+          "unit": "sensor_slot",
+          "zero_code": "config_no_change_only"
+        },
+        "sensor_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "config_no_change_only"
+        },
+        "upper_tenths": {
+          "kind": "integer",
+          "signed": true,
+          "minimum": -550,
+          "maximum": 1250,
+          "unit": "tenths_celsius",
+          "zero_code": "measured_zero_celsius"
+        },
+        "lower_tenths": {
+          "kind": "integer",
+          "signed": true,
+          "minimum": -550,
+          "maximum": 1250,
+          "unit": "tenths_celsius",
+          "zero_code": "measured_zero_celsius"
+        },
+        "enabled": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 1,
+          "unit": "boolean_code",
+          "zero_code": "disabled_or_config_no_change",
+          "enum_ref": "boolean_code",
+          "enum_zero_ref": "false"
+        },
+        "checksum_u32": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "crc32",
+          "zero_code": "valid_crc32_zero_or_config_no_change"
+        }
+      },
+      "max_golden_payload": "1,4294967295,4294967295,1,2,2,4294967295,1250,1250,1,4294967295",
+      "max_golden_payload_bytes": 63
+    },
+    "command_request": {
+      "fields": [
+        "schema_version",
+        "request_id",
+        "last_cmd_id"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "request_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "last_cmd_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "no_command_completed"
+        }
+      },
+      "max_golden_payload": "1,4294967295,4294967295",
+      "max_golden_payload_bytes": 23
+    },
+    "command_response": {
+      "fields": [
+        "schema_version",
+        "request_id",
+        "cmd_id",
+        "opcode",
+        "job_ref",
+        "ttl_seconds"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "request_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "cmd_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "no_command_only"
+        },
+        "opcode": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4,
+          "unit": "opcode",
+          "zero_code": "no_command_only",
+          "enum_ref": "command_opcode",
+          "enum_zero_ref": "none"
+        },
+        "job_ref": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "no_job_reference"
+        },
+        "ttl_seconds": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 86400,
+          "unit": "seconds_duration",
+          "zero_code": "no_command_only"
+        }
+      },
+      "max_golden_payload": "1,4294967295,4294967295,4,4294967295,86400",
+      "max_golden_payload_bytes": 42
+    },
+    "config_ack": {
+      "fields": [
+        "schema_version",
+        "request_id",
+        "config_version",
+        "result_code",
+        "error_code"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "request_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "config_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "version_identifier",
+          "zero_code": "initial_config_version"
+        },
+        "result_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 3,
+          "unit": "config_result_code",
+          "zero_code": "forbidden",
+          "enum_ref": "config_result"
+        },
+        "error_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4,
+          "unit": "config_error_code",
+          "zero_code": "none",
+          "enum_ref": "config_error",
+          "enum_zero_ref": "none"
+        }
+      },
+      "max_golden_payload": "1,4294967295,4294967295,3,4",
+      "max_golden_payload_bytes": 27
+    },
+    "command_ack": {
+      "fields": [
+        "schema_version",
+        "cmd_id",
+        "phase",
+        "result_code",
+        "error_code",
+        "unix_seconds",
+        "clock_valid"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "cmd_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "phase": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 2,
+          "unit": "ack_phase_code",
+          "zero_code": "forbidden",
+          "enum_ref": "ack_phase"
+        },
+        "result_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4,
+          "unit": "command_result_code",
+          "zero_code": "none",
+          "enum_ref": "command_result",
+          "enum_zero_ref": "none"
+        },
+        "error_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 5,
+          "unit": "command_error_code",
+          "zero_code": "none",
+          "enum_ref": "command_error",
+          "enum_zero_ref": "none"
+        },
+        "unix_seconds": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "unix_seconds",
+          "zero_code": "clock_invalid_only"
+        },
+        "clock_valid": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 1,
+          "unit": "boolean_code",
+          "zero_code": "device_time_invalid",
+          "enum_ref": "boolean_code",
+          "enum_zero_ref": "false"
+        }
+      },
+      "max_golden_payload": "1,4294967295,2,4,5,4294967295,1",
+      "max_golden_payload_bytes": 31
+    },
+    "command_ack_receipt": {
+      "fields": [
+        "schema_version",
+        "cmd_id",
+        "phase",
+        "result_code",
+        "receipt_code",
+        "error_code"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "cmd_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "phase": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 2,
+          "unit": "ack_phase_code",
+          "zero_code": "forbidden",
+          "enum_ref": "ack_phase"
+        },
+        "result_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4,
+          "unit": "command_result_code",
+          "zero_code": "none",
+          "enum_ref": "command_result",
+          "enum_zero_ref": "none"
+        },
+        "receipt_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 3,
+          "unit": "ack_receipt_code",
+          "zero_code": "forbidden",
+          "enum_ref": "ack_receipt"
+        },
+        "error_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4,
+          "unit": "ack_receipt_error_code",
+          "zero_code": "none",
+          "enum_ref": "ack_receipt_error",
+          "enum_zero_ref": "none"
+        }
+      },
+      "max_golden_payload": "1,4294967295,2,4,3,4",
+      "max_golden_payload_bytes": 20
+    },
+    "event": {
+      "fields": [
+        "schema_version",
+        "event_type",
+        "incident_id",
+        "sequence",
+        "state_code",
+        "value0",
+        "value1",
+        "unix_seconds",
+        "clock_valid"
+      ],
+      "field_specs": {
+        "schema_version": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 1,
+          "unit": "protocol_version",
+          "zero_code": "forbidden"
+        },
+        "event_type": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 10,
+          "unit": "event_type_code",
+          "zero_code": "forbidden",
+          "enum_ref": "event_type"
+        },
+        "incident_id": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "unit": "identifier",
+          "zero_code": "forbidden"
+        },
+        "sequence": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "sequence_number",
+          "zero_code": "initial_sequence"
+        },
+        "state_code": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 3,
+          "unit": "event_state_code",
+          "zero_code": "inactive_or_cleared",
+          "enum_ref": "event_state",
+          "enum_zero_ref": "inactive_or_cleared"
+        },
+        "value0": {
+          "kind": "integer",
+          "signed": true,
+          "minimum": -2147483648,
+          "maximum": 2147483647,
+          "unit": "event_schema_value0",
+          "zero_code": "per_event_schema"
+        },
+        "value1": {
+          "kind": "integer",
+          "signed": true,
+          "minimum": -2147483648,
+          "maximum": 2147483647,
+          "unit": "event_schema_value1",
+          "zero_code": "per_event_schema"
+        },
+        "unix_seconds": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 4294967295,
+          "unit": "unix_seconds",
+          "zero_code": "clock_invalid_only"
+        },
+        "clock_valid": {
+          "kind": "integer",
+          "signed": false,
+          "minimum": 0,
+          "maximum": 1,
+          "unit": "boolean_code",
+          "zero_code": "device_time_invalid",
+          "enum_ref": "boolean_code",
+          "enum_zero_ref": "false"
+        }
+      },
+      "max_golden_payload": "1,10,4294967295,4294967295,3,-2147483648,-2147483648,4294967295,1",
+      "max_golden_payload_bytes": 65
+    }
+  },
+  "valid_zero_code_rows": {
+    "config_no_change": {
+      "payload_family": "config_response",
+      "meaning": "no_new_config",
+      "condition": "known_config_version_equals_current",
+      "field_relations": {
+        "schema_version": "constant:1",
+        "request_id": "echo:request.request_id",
+        "config_version": "echo:request.known_config_version",
+        "page_index": "constant:0",
+        "page_count": "constant:1",
+        "sensor_slot": "constant:0",
+        "sensor_id": "constant:0",
+        "upper_tenths": "constant:0",
+        "lower_tenths": "constant:0",
+        "enabled": "constant:0",
+        "checksum_u32": "constant:0"
+      },
+      "request_precondition": {
+        "page_index": 0
+      },
+      "unique_relation_required": true,
+      "boundary_example_only": true,
+      "examples": [
+        {
+          "request": {
+            "request_id": 1,
+            "known_config_version": 0,
+            "page_index": 0
+          },
+          "response": "1,1,0,0,1,0,0,0,0,0,0"
+        },
+        {
+          "request": {
+            "request_id": 42,
+            "known_config_version": 7,
+            "page_index": 0
+          },
+          "response": "1,42,7,0,1,0,0,0,0,0,0"
+        }
+      ],
+      "boundary_example": {
+        "request": {
+          "request_id": 4294967295,
+          "known_config_version": 4294967295,
+          "page_index": 0
+        },
+        "response": "1,4294967295,4294967295,0,1,0,0,0,0,0,0"
+      }
+    },
+    "command_none": {
+      "payload_family": "command_response",
+      "meaning": "no_claimable_command",
+      "condition": "claim_result_empty",
+      "field_relations": {
+        "schema_version": "constant:1",
+        "request_id": "echo:request.request_id",
+        "cmd_id": "constant:0",
+        "opcode": "constant:0",
+        "job_ref": "constant:0",
+        "ttl_seconds": "constant:0"
+      },
+      "unique_relation_required": true,
+      "boundary_example_only": true,
+      "examples": [
+        {
+          "request": {
+            "request_id": 1,
+            "last_cmd_id": 0
+          },
+          "response": "1,1,0,0,0,0"
+        },
+        {
+          "request": {
+            "request_id": 42,
+            "last_cmd_id": 7
+          },
+          "response": "1,42,0,0,0,0"
+        }
+      ],
+      "boundary_example": {
+        "request": {
+          "request_id": 4294967295,
+          "last_cmd_id": 4294967295
+        },
+        "response": "1,4294967295,0,0,0,0"
+      }
+    }
+  },
+  "config_semantics": {
+    "one_sensor_per_page": true,
+    "page_index_base": 0,
+    "page_count_min": 1,
+    "sensor_slot_values": [
+      1,
+      2
+    ],
+    "sensor_slot_zero_use": "config_no_change_only",
+    "checksum_ref": "config_checksum",
+    "response_echo_fields": [
+      "request_id",
+      "page_index"
+    ],
+    "last_page_relation": "page_index_equals_page_count_minus_one",
+    "atomic_apply_after_all_pages_verified": true,
+    "no_change_row": "config_no_change",
+    "enum_refs": {
+      "result_code": "config_result",
+      "error_code": "config_error"
+    },
+    "request_coordinator": {
+      "owner": "pico_request_coordinator",
+      "start_page_index": 0,
+      "same_request_id_across_pages": true,
+      "one_page_request_at_a_time": true,
+      "next_page_rule": "request_page_index_plus_one_when_response_page_index_less_than_page_count_minus_one",
+      "response_echo_fields": [
+        "request_id",
+        "page_index"
+      ],
+      "last_page_relation": "response.page_index_equals_response.page_count_minus_one",
+      "timeout_action": "retry_same_request_id_same_page_index",
+      "duplicate_action": "idempotent_accept_same_request_id_same_page_index_same_version",
+      "out_of_order_action": "discard_assembly_new_request_id_page_zero",
+      "version_change_action": "discard_assembly_new_request_id_page_zero",
+      "before_all_pages_forbidden": [
+        "atomic_apply",
+        "config_ack",
+        "command_pull"
+      ],
+      "after_all_pages_order": [
+        "verify_checksum",
+        "atomic_apply",
+        "config_ack",
+        "command_pull"
+      ]
+    }
+  },
+  "config_checksum": {
+    "name": "CRC-32/ISO-HDLC",
+    "width_bits": 32,
+    "polynomial_normal_u32": 79764919,
+    "polynomial_reflected_u32": 3988292384,
+    "init_u32": 4294967295,
+    "refin": true,
+    "refout": true,
+    "xorout_u32": 4294967295,
+    "semantic_row_fields": [
+      "schema_version",
+      "config_version",
+      "sensor_slot",
+      "sensor_id",
+      "upper_tenths",
+      "lower_tenths",
+      "enabled"
+    ],
+    "row_order": "sensor_slot_ascending",
+    "encoding": "canonical_decimal_csv_ascii",
+    "field_separator": ",",
+    "row_separator": "LF",
+    "trailing_lf": false,
+    "excluded_payload_fields": [
+      "request_id",
+      "page_index",
+      "page_count",
+      "checksum_u32"
+    ],
+    "known_answer_vectors": [
+      {
+        "name": "standard_check",
+        "input_ascii": "123456789",
+        "crc32_u32": 3421780262
+      },
+      {
+        "name": "two_sensor_config",
+        "input_ascii": "1,7,1,101,-200,50,1\n1,7,2,202,-300,40,1",
+        "crc32_u32": 3194237552
+      }
+    ]
+  },
+  "command_semantics": {
+    "enum_refs": {
+      "opcode": "command_opcode",
+      "phase": "ack_phase",
+      "result_code": "command_result",
+      "error_code": "command_error"
+    },
+    "claim_count_per_request": 1,
+    "command_claim_lease_seconds": 60,
+    "ttl_field": "ttl_seconds",
+    "ttl_semantics": "duration_seconds_from_device_receive",
+    "non_none_ttl_min_seconds": 1,
+    "zero_ttl_use": "command_none_only",
+    "absolute_expires_at_allowed": false,
+    "response_clock_valid_allowed": false,
+    "no_command_row": "command_none",
+    "job_ref_zero_meaning": "no_job_reference",
+    "dedupe_key": "cmd_id",
+    "accepted_before_execute_opcodes": [
+      "reboot",
+      "power_off"
+    ],
+    "final_ack_recovered_on_next_boot": true,
+    "reboot_journal_required": true,
+    "database_state_flow": [
+      "queued",
+      "delivered",
+      "accepted",
+      "executed_or_failed_or_expired"
+    ]
+  },
+  "command_ack_recovery": {
+    "applies_to_opcodes": [
+      "reboot",
+      "power_off"
+    ],
+    "durable_journal": {
+      "required_fields": [
+        "cmd_id",
+        "opcode",
+        "job_ref",
+        "ttl_seconds",
+        "phase",
+        "result",
+        "error",
+        "state",
+        "retry_count",
+        "boot_sequence_before_execute",
+        "expected_effect",
+        "remaining_ttl_seconds",
+        "ttl_checkpoint_monotonic_seconds",
+        "ttl_checkpoint_unix_seconds",
+        "ttl_checkpoint_clock_valid",
+        "ttl_checkpoint_boot_sequence",
+        "dispatch_latched"
+      ],
+      "field_enum_refs": {
+        "opcode": "command_opcode",
+        "phase": "ack_phase",
+        "result": "command_result",
+        "error": "command_error",
+        "state": "command_journal_state"
+      },
+      "field_semantics": {
+        "boot_sequence_before_execute": "monotonic_boot_sequence_snapshot_persisted_before_execute",
+        "expected_effect": "opcode_specific_reset_or_power_effect_evidence",
+        "remaining_ttl_seconds": "nonnegative_duration_checkpointed_on_each_durable_pre_execute_transition",
+        "ttl_checkpoint_monotonic_seconds": "nondecreasing_same_boot_elapsed_time_source",
+        "ttl_checkpoint_unix_seconds": "trusted_reboot_elapsed_time_source_only_when_both_clock_valid_flags_are_true",
+        "ttl_checkpoint_clock_valid": "validity_of_persisted_unix_checkpoint",
+        "ttl_checkpoint_boot_sequence": "boot_identity_for_same_boot_or_reboot_elapsed_selection",
+        "dispatch_latched": "durable_single_dispatch_latch_persisted_and_verified_before_first_dispatch"
+      },
+      "persistent_before_publish_or_execute": true,
+      "retry_count_monotonic": true
+    },
+    "sequence": [
+      "persist_accepted",
+      "persist_accepted_publish_pending",
+      "publish_accepted_ack",
+      "record_accepted_puback",
+      "validate_and_persist_accepted_receipted",
+      "persist_execute_marker",
+      "execute_once",
+      "persist_executed",
+      "persist_final",
+      "persist_final_publish_pending",
+      "publish_final_ack",
+      "record_final_puback",
+      "validate_and_persist_final_receipted",
+      "clear_journal"
+    ],
+    "normal_linear_states": [
+      "empty",
+      "accepted_persisted",
+      "accepted_publish_pending",
+      "accepted_puback",
+      "accepted_receipted",
+      "execute_marked",
+      "executed",
+      "final_persisted",
+      "final_publish_pending",
+      "final_puback",
+      "final_receipted",
+      "empty"
+    ],
+    "create_transition": {
+      "event": "accept_destructive_command",
+      "action": "persist_full_accepted_journal",
+      "next_state": "accepted_persisted",
+      "reexecute_allowed": false
+    },
+    "normal_transitions": {
+      "accepted_persisted": {
+        "event": "normal_resume",
+        "action": "persist_accepted_publish_pending",
+        "next_state": "accepted_publish_pending",
+        "reexecute_allowed": false
+      },
+      "accepted_publish_pending": {
+        "event": "accepted_publish_attempt",
+        "action": "publish_accepted_ack_and_persist_puback",
+        "next_state": "accepted_puback",
+        "reexecute_allowed": false
+      },
+      "accepted_puback": {
+        "event": "matching_accepted_db_receipt",
+        "action": "validate_and_persist_accepted_receipted",
+        "next_state": "accepted_receipted",
+        "reexecute_allowed": false
+      },
+      "accepted_receipted": {
+        "event": "execution_ready",
+        "action": "persist_execute_marker",
+        "next_state": "execute_marked",
+        "reexecute_allowed": false
+      },
+      "execute_marked": {
+        "event": "execute_dispatch",
+        "action": "execute_once_and_persist_terminal_outcome",
+        "next_state": "executed",
+        "reexecute_allowed": false
+      },
+      "executed": {
+        "event": "terminal_outcome_ready",
+        "action": "persist_final",
+        "next_state": "final_persisted",
+        "reexecute_allowed": false
+      },
+      "final_persisted": {
+        "event": "normal_resume",
+        "action": "persist_final_publish_pending",
+        "next_state": "final_publish_pending",
+        "reexecute_allowed": false
+      },
+      "final_publish_pending": {
+        "event": "final_publish_attempt",
+        "action": "publish_final_ack_and_persist_puback",
+        "next_state": "final_puback",
+        "reexecute_allowed": false
+      },
+      "final_puback": {
+        "event": "matching_final_db_receipt",
+        "action": "validate_and_persist_final_receipted",
+        "next_state": "final_receipted",
+        "reexecute_allowed": false
+      },
+      "final_receipted": {
+        "event": "journal_cleanup",
+        "action": "clear_journal",
+        "next_state": "empty",
+        "reexecute_allowed": false
+      }
+    },
+    "boot_recovery_transitions": {
+      "accepted_persisted": {
+        "event": "boot_recovery",
+        "action": "persist_accepted_publish_pending_replay_accepted_ack_and_persist_puback",
+        "next_state": "accepted_puback",
+        "reexecute_allowed": false
+      },
+      "accepted_publish_pending": {
+        "event": "boot_recovery",
+        "action": "replay_accepted_ack_and_persist_puback",
+        "next_state": "accepted_puback",
+        "reexecute_allowed": false
+      },
+      "accepted_puback": {
+        "event": "boot_recovery",
+        "action": "replay_accepted_ack_and_wait_matching_receipt",
+        "next_state": "accepted_puback",
+        "reexecute_allowed": false
+      },
+      "accepted_receipted": {
+        "event": "boot_recovery",
+        "action": "persist_execute_marker_execute_once_and_persist_terminal_outcome",
+        "next_state": "executed",
+        "reexecute_allowed": false
+      },
+      "execute_marked": {
+        "event": "boot_recovery",
+        "action": "derive_terminal_outcome_from_boot_and_expected_effect_without_reexecute",
+        "next_state": "executed",
+        "reexecute_allowed": false
+      },
+      "executed": {
+        "event": "boot_recovery",
+        "action": "persist_final",
+        "next_state": "final_persisted",
+        "reexecute_allowed": false
+      },
+      "final_persisted": {
+        "event": "boot_recovery",
+        "action": "persist_final_publish_pending_replay_final_ack_and_persist_puback",
+        "next_state": "final_puback",
+        "reexecute_allowed": false
+      },
+      "final_publish_pending": {
+        "event": "boot_recovery",
+        "action": "replay_final_ack_and_persist_puback",
+        "next_state": "final_puback",
+        "reexecute_allowed": false
+      },
+      "final_puback": {
+        "event": "boot_recovery",
+        "action": "replay_final_ack_and_wait_matching_receipt",
+        "next_state": "final_puback",
+        "reexecute_allowed": false
+      },
+      "final_receipted": {
+        "event": "boot_recovery",
+        "action": "clear_journal",
+        "next_state": "empty",
+        "reexecute_allowed": false
+      }
+    },
+    "execute_marked_boot_resolution": {
+      "inputs": [
+        "boot_sequence_before_execute",
+        "current_boot_sequence",
+        "opcode",
+        "expected_effect",
+        "reset_reason",
+        "power_state_evidence"
+      ],
+      "opcode_evidence": {
+        "reboot": "boot_sequence_advanced_and_reset_reason_matches_expected_effect",
+        "power_off": "boot_sequence_advanced_and_power_state_matches_expected_effect"
+      },
+      "success": {
+        "result": "executed",
+        "error": "none",
+        "next_state": "executed"
+      },
+      "failure": {
+        "result": "failed",
+        "error": "journal",
+        "next_state": "executed"
+      },
+      "reexecute_allowed": false
+    },
+    "ttl_enforcement": {
+      "origin": "device_command_response_receipt",
+      "original_ttl_field": "ttl_seconds",
+      "non_none_ttl_min_seconds": 1,
+      "zero_ttl_use": "command_none_only",
+      "pre_execute_states": [
+        "accepted_persisted",
+        "accepted_publish_pending",
+        "accepted_puback",
+        "accepted_receipted"
+      ],
+      "checkpoint_fields": [
+        "remaining_ttl_seconds",
+        "ttl_checkpoint_monotonic_seconds",
+        "ttl_checkpoint_unix_seconds",
+        "ttl_checkpoint_clock_valid",
+        "ttl_checkpoint_boot_sequence"
+      ],
+      "checkpoint_on_each_durable_pre_execute_transition": true,
+      "same_boot_elapsed_source": "monotonic_seconds_nondecreasing",
+      "reboot_elapsed_rule": "subtract_trusted_nondecreasing_unix_elapsed_only_when_both_clocks_valid",
+      "reboot_unprovable_time_action": "persist_final_expired_without_dispatch",
+      "pre_execute_expiry_transitions": {
+        "accepted_persisted": {
+          "condition": "remaining_ttl_zero_or_validity_unprovable",
+          "action": "persist_terminal_expired",
+          "next_state": "executed",
+          "result": "expired",
+          "error": "expired",
+          "dispatch_allowed": false
+        },
+        "accepted_publish_pending": {
+          "condition": "remaining_ttl_zero_or_validity_unprovable",
+          "action": "persist_terminal_expired",
+          "next_state": "executed",
+          "result": "expired",
+          "error": "expired",
+          "dispatch_allowed": false
+        },
+        "accepted_puback": {
+          "condition": "remaining_ttl_zero_or_validity_unprovable",
+          "action": "persist_terminal_expired",
+          "next_state": "executed",
+          "result": "expired",
+          "error": "expired",
+          "dispatch_allowed": false
+        },
+        "accepted_receipted": {
+          "condition": "remaining_ttl_zero_or_validity_unprovable",
+          "action": "persist_terminal_expired",
+          "next_state": "executed",
+          "result": "expired",
+          "error": "expired",
+          "dispatch_allowed": false
+        }
+      },
+      "immediate_pre_dispatch_order": [
+        "checkpoint_remaining_ttl",
+        "if_expired_persist_terminal_expired",
+        "atomically_persist_dispatch_latch_and_execute_marked",
+        "verify_dispatch_latch_persisted",
+        "dispatch_once"
+      ],
+      "boot_pre_execute_order": [
+        "evaluate_expiry",
+        "persist_expired_or_recover_state"
+      ],
+      "expired_terminal": {
+        "result": "expired",
+        "error": "expired",
+        "state": "executed",
+        "dispatch_allowed": false,
+        "continue_to": "final_persisted_then_existing_final_receipt_flow"
+      }
+    },
+    "single_dispatch": {
+      "latch_field": "dispatch_latched",
+      "persist_operation": "atomic_persist_dispatch_latch_and_execute_marked",
+      "verify_persisted_before_dispatch": true,
+      "dispatch_count_max": 1,
+      "duplicate_event_action": "ignore_duplicate_no_dispatch",
+      "execute_marked_boot_dispatch_allowed": false
+    },
+    "ack_phase_result_error_matrix": {
+      "accepted": {
+        "accepted": [
+          "none"
+        ]
+      },
+      "final": {
+        "executed": [
+          "none"
+        ],
+        "failed": [
+          "invalid_opcode",
+          "duplicate",
+          "execution",
+          "journal"
+        ],
+        "expired": [
+          "expired"
+        ]
+      }
+    },
+    "receipt_matrix": {
+      "ingested": {
+        "allowed_error_codes": [
+          "none"
+        ],
+        "requires_exact_match": [
+          "cmd_id",
+          "phase",
+          "result_code"
+        ],
+        "accepted_current_state": "accepted_puback",
+        "accepted_action": "validate_and_persist_accepted_receipted",
+        "accepted_next_state": "accepted_receipted",
+        "final_current_state": "final_puback",
+        "final_action": "validate_and_persist_final_receipted",
+        "final_next_state": "final_receipted"
+      },
+      "rejected": {
+        "allowed_error_codes": [
+          "db_rejected"
+        ],
+        "journal_action": "retain_and_bounded_retry"
+      },
+      "mismatch": {
+        "allowed_error_codes": [
+          "cmd_mismatch",
+          "phase_mismatch",
+          "result_mismatch"
+        ],
+        "journal_action": "retain_and_bounded_retry"
+      }
+    },
+    "receipt_ownership": {
+      "wire_receipts": {
+        "ingested": {
+          "owner": "rpc.command_ack_success_response",
+          "prerequisite": "actual_db_ingest_succeeded"
+        },
+        "rejected": {
+          "owner": "rpc.command_ack_logical_rejection_response",
+          "prerequisite": "actual_rpc_response_logical_rejection"
+        },
+        "mismatch": {
+          "owner": "command_ack_receipt_gateway_validation",
+          "prerequisite": "actual_rpc_response_cmd_phase_or_result_mismatch"
+        }
+      },
+      "local_timeout": {
+        "owner": "pico_receipt_timer",
+        "wire_publish_allowed": false,
+        "local_action": "retain_journal_and_bounded_retry"
+      }
+    },
+    "clear_predicate_all": [
+      "journal_state_is_final_receipted"
+    ],
+    "boot_recovery": {
+      "after": "mqtt_recovery",
+      "pending_replay_precedes": [
+        "config_pull",
+        "command_pull"
+      ],
+      "replay_phases": [
+        "accepted",
+        "final"
+      ],
+      "same_cmd_reexecution_allowed": false
+    },
+    "bounded_retry": true
+  },
+  "event_semantics": {
+    "enum_refs": {
+      "event_type": "event_type",
+      "state_code": "event_state"
+    },
+    "idempotency_key": [
+      "authenticated_imei_context",
+      "event_origin",
+      "event_type",
+      "incident_id",
+      "sequence"
+    ],
+    "idempotency_context": {
+      "key_fields_ref": "event_semantics.idempotency_key",
+      "field_sources": {
+        "authenticated_imei_context": {
+          "device_mqtt_event": {
+            "source_ref": "mqtt_identity_binding.p_imei_source",
+            "conversion_rule_ref": "authenticated_imei_to_pg_text"
+          },
+          "authorized_server_direct_event_ingest": {
+            "source_ref": "authorized_server_event_routes.device_offline.identity_source",
+            "conversion_rule_ref": "server_authorized_imei_to_pg_text"
+          }
+        },
+        "event_origin": {
+          "source": "event_schema.producer_route",
+          "allowed_values": [
+            "device_mqtt_event",
+            "authorized_server_direct_event_ingest"
+          ]
+        }
+      },
+      "producer_sequence_collision_prevention": {
+        "scope_fields": [
+          "authenticated_imei_context",
+          "event_origin",
+          "event_type",
+          "incident_id"
+        ],
+        "sequence_field": "sequence",
+        "same_sequence_different_origin_collides": false
+      },
+      "no_open_power_fallback_binding": {
+        "source_ref": "event_semantics.power_incident_continuity.no_open_power_fallback",
+        "event_origin": "authorized_server_direct_event_ingest",
+        "incident_kind": "separate_offline_incident"
+      }
+    },
+    "schema_coverage": "exact_wire_event_type_keys",
+    "schemas": {
+      "temperature_high": {
+        "owner": "temperature_alarm_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "active"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "measured_temperature",
+          "unit": "tenths_celsius",
+          "minimum": -550,
+          "maximum": 1250,
+          "zero_rule": "measured_zero_is_valid"
+        },
+        "value1": {
+          "meaning": "upper_alarm_threshold",
+          "unit": "tenths_celsius",
+          "minimum": -550,
+          "maximum": 1250,
+          "zero_rule": "zero_threshold_is_valid"
+        }
+      },
+      "temperature_low": {
+        "owner": "temperature_alarm_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "active"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "measured_temperature",
+          "unit": "tenths_celsius",
+          "minimum": -550,
+          "maximum": 1250,
+          "zero_rule": "measured_zero_is_valid"
+        },
+        "value1": {
+          "meaning": "lower_alarm_threshold",
+          "unit": "tenths_celsius",
+          "minimum": -550,
+          "maximum": 1250,
+          "zero_rule": "zero_threshold_is_valid"
+        }
+      },
+      "temperature_recovered": {
+        "owner": "temperature_alarm_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "inactive_or_cleared"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "measured_temperature",
+          "unit": "tenths_celsius",
+          "minimum": -550,
+          "maximum": 1250,
+          "zero_rule": "measured_zero_is_valid"
+        },
+        "value1": {
+          "meaning": "recovery_threshold",
+          "unit": "tenths_celsius",
+          "minimum": -550,
+          "maximum": 1250,
+          "zero_rule": "zero_threshold_is_valid"
+        }
+      },
+      "adapter_removed": {
+        "owner": "power_state_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "active"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "adapter_present",
+          "unit": "boolean_code",
+          "minimum": 0,
+          "maximum": 1,
+          "zero_rule": "removed_requires_zero",
+          "event_value": 0
+        },
+        "value1": {
+          "meaning": "unused",
+          "unit": "unused_zero",
+          "minimum": 0,
+          "maximum": 0,
+          "zero_rule": "required_unused_zero"
+        }
+      },
+      "adapter_restored": {
+        "owner": "power_state_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "inactive_or_cleared"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "adapter_present",
+          "unit": "boolean_code",
+          "minimum": 0,
+          "maximum": 1,
+          "zero_rule": "restored_requires_one",
+          "event_value": 1
+        },
+        "value1": {
+          "meaning": "unused",
+          "unit": "unused_zero",
+          "minimum": 0,
+          "maximum": 0,
+          "zero_rule": "required_unused_zero"
+        }
+      },
+      "poweroff_dying": {
+        "owner": "power_state_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "progress"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "grace_elapsed_seconds",
+          "unit": "seconds",
+          "minimum": 0,
+          "maximum": 300,
+          "zero_rule": "initial_grace_elapsed"
+        },
+        "value1": {
+          "meaning": "remaining_shutdown_seconds",
+          "unit": "seconds",
+          "minimum": 0,
+          "maximum": 300,
+          "zero_rule": "shutdown_deadline_reached"
+        }
+      },
+      "device_offline": {
+        "owner": "authorized_server_offline_monitor",
+        "producer_route": "authorized_server_direct_event_ingest",
+        "allowed_state_codes": [
+          "active"
+        ],
+        "time_source": "server_unix_seconds",
+        "value0": {
+          "meaning": "offline_age_seconds",
+          "unit": "seconds",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "zero_rule": "zero_age_is_valid_at_detection_boundary"
+        },
+        "value1": {
+          "meaning": "unused",
+          "unit": "unused_zero",
+          "minimum": 0,
+          "maximum": 0,
+          "zero_rule": "required_unused_zero"
+        }
+      },
+      "sensor_fault": {
+        "owner": "sensor_coordinator",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "active",
+          "inactive_or_cleared"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "sensor_slot",
+          "unit": "sensor_slot",
+          "minimum": 1,
+          "maximum": 2,
+          "zero_rule": "forbidden"
+        },
+        "value1": {
+          "meaning": "consecutive_failure_count",
+          "unit": "count",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "zero_rule": "clear_resets_count"
+        }
+      },
+      "fota_status": {
+        "owner": "fota_update_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "progress",
+          "failed",
+          "inactive_or_cleared"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "progress_percent",
+          "unit": "percent",
+          "minimum": 0,
+          "maximum": 100,
+          "zero_rule": "zero_percent_is_valid"
+        },
+        "value1": {
+          "meaning": "unused",
+          "unit": "unused_zero",
+          "minimum": 0,
+          "maximum": 0,
+          "zero_rule": "required_unused_zero"
+        }
+      },
+      "ai_status": {
+        "owner": "ai_inference_service",
+        "producer_route": "device_mqtt_event",
+        "allowed_state_codes": [
+          "progress",
+          "failed",
+          "inactive_or_cleared"
+        ],
+        "time_source": "device_unix_seconds_with_clock_valid",
+        "value0": {
+          "meaning": "unused",
+          "unit": "unused_zero",
+          "minimum": 0,
+          "maximum": 0,
+          "zero_rule": "required_unused_zero"
+        },
+        "value1": {
+          "meaning": "unused",
+          "unit": "unused_zero",
+          "minimum": 0,
+          "maximum": 0,
+          "zero_rule": "required_unused_zero"
+        }
+      }
+    },
+    "power_incident_continuity": {
+      "firmware_contract_ref": {
+        "contract_id": "nb_iot.g1.firmware_runtime",
+        "path": "power.incident_lifecycle"
+      },
+      "incident_scope": "authenticated_imei_context",
+      "correlated_events": [
+        "adapter_removed",
+        "poweroff_dying",
+        "device_offline",
+        "adapter_restored"
+      ],
+      "same_open_incident_id_required": true,
+      "server_offline_max_per_open_incident": 1,
+      "adapter_restored_closes_open_incident": true,
+      "no_open_power_fallback": {
+        "incident_kind": "separate_offline_incident",
+        "power_incident_label_allowed": false
+      }
+    }
+  },
+  "rpc": {
+    "device_auth": {
+      "name": "auth_device",
+      "arguments": [
+        "username text",
+        "password text"
+      ]
+    },
+    "telemetry_ingest": {
+      "name": "t",
+      "arguments": [
+        "p_imei text",
+        "p_schema_version integer",
+        "p_user_sensor_id bigint",
+        "p_value_tenths integer",
+        "p_sequence bigint"
+      ]
+    },
+    "boot_ingest": {
+      "name": "b",
+      "arguments": [
+        "p_imei text",
+        "p_cimi text",
+        "p_schema_version integer",
+        "p_voltage_mv integer",
+        "p_boot_temp_tenths integer",
+        "p_flash_status integer",
+        "p_ram_status integer",
+        "p_at_status integer",
+        "p_cpin_status integer",
+        "p_csq integer",
+        "p_carrier_code integer",
+        "p_temp1_status integer",
+        "p_temp2_status integer",
+        "p_mic1_status integer",
+        "p_mic2_status integer",
+        "p_boot_reason integer",
+        "p_last_cmd_id bigint"
+      ]
+    },
+    "config_fetch": {
+      "name": "get_device_config_page",
+      "arguments": [
+        "p_imei text",
+        "p_request_id bigint",
+        "p_known_config_version bigint",
+        "p_page_index integer"
+      ]
+    },
+    "command_claim": {
+      "name": "claim_device_command",
+      "arguments": [
+        "p_imei text",
+        "p_request_id bigint",
+        "p_last_cmd_id bigint",
+        "p_lease_seconds integer"
+      ]
+    },
+    "config_ack": {
+      "name": "ack_device_config",
+      "arguments": [
+        "p_imei text",
+        "p_request_id bigint",
+        "p_config_version bigint",
+        "p_result_code integer",
+        "p_error_code integer"
+      ]
+    },
+    "command_ack": {
+      "name": "ack_device_command",
+      "arguments": [
+        "p_imei text",
+        "p_cmd_id bigint",
+        "p_phase integer",
+        "p_result_code integer",
+        "p_error_code integer",
+        "p_unix_seconds bigint",
+        "p_clock_valid boolean"
+      ]
+    },
+    "event_ingest": {
+      "name": "ingest_device_event",
+      "arguments": [
+        "p_imei text",
+        "p_event_type integer",
+        "p_incident_id bigint",
+        "p_sequence bigint",
+        "p_state_code integer",
+        "p_value0 bigint",
+        "p_value1 bigint",
+        "p_unix_seconds bigint",
+        "p_clock_valid boolean"
+      ]
+    }
+  },
+  "rpc_policy": {
+    "contract_status": "proposal_only",
+    "device_auth_overloads_allowed": false,
+    "diagnostic_context_requires_separate_rpc_name": true
+  },
+  "rpc_argument_mappings": {
+    "telemetry_ingest": {
+      "payload": "telemetry",
+      "rpc": "telemetry_ingest",
+      "gateway_validated_payload_fields": [],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_schema_version integer",
+          "source_kind": "payload_field",
+          "field": "schema_version",
+          "payload_index": 0
+        },
+        {
+          "argument": "p_user_sensor_id bigint",
+          "source_kind": "payload_field",
+          "field": "sensor_id",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_value_tenths integer",
+          "source_kind": "payload_field",
+          "field": "value_tenths",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_sequence bigint",
+          "source_kind": "payload_field",
+          "field": "sequence",
+          "payload_index": 3
+        }
+      ]
+    },
+    "boot_ingest": {
+      "payload": "boot",
+      "rpc": "boot_ingest",
+      "gateway_validated_payload_fields": [],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_cimi text",
+          "source_kind": "payload_field",
+          "field": "cimi",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_schema_version integer",
+          "source_kind": "payload_field",
+          "field": "schema_version",
+          "payload_index": 0
+        },
+        {
+          "argument": "p_voltage_mv integer",
+          "source_kind": "payload_field",
+          "field": "voltage_mv",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_boot_temp_tenths integer",
+          "source_kind": "payload_field",
+          "field": "boot_temp_tenths",
+          "payload_index": 3
+        },
+        {
+          "argument": "p_flash_status integer",
+          "source_kind": "payload_field",
+          "field": "flash_status",
+          "payload_index": 4
+        },
+        {
+          "argument": "p_ram_status integer",
+          "source_kind": "payload_field",
+          "field": "ram_status",
+          "payload_index": 5
+        },
+        {
+          "argument": "p_at_status integer",
+          "source_kind": "payload_field",
+          "field": "at_status",
+          "payload_index": 6
+        },
+        {
+          "argument": "p_cpin_status integer",
+          "source_kind": "payload_field",
+          "field": "cpin_status",
+          "payload_index": 7
+        },
+        {
+          "argument": "p_csq integer",
+          "source_kind": "payload_field",
+          "field": "csq",
+          "payload_index": 8
+        },
+        {
+          "argument": "p_carrier_code integer",
+          "source_kind": "payload_field",
+          "field": "carrier_code",
+          "payload_index": 9
+        },
+        {
+          "argument": "p_temp1_status integer",
+          "source_kind": "payload_field",
+          "field": "temp1_status",
+          "payload_index": 10
+        },
+        {
+          "argument": "p_temp2_status integer",
+          "source_kind": "payload_field",
+          "field": "temp2_status",
+          "payload_index": 11
+        },
+        {
+          "argument": "p_mic1_status integer",
+          "source_kind": "payload_field",
+          "field": "mic1_status",
+          "payload_index": 12
+        },
+        {
+          "argument": "p_mic2_status integer",
+          "source_kind": "payload_field",
+          "field": "mic2_status",
+          "payload_index": 13
+        },
+        {
+          "argument": "p_boot_reason integer",
+          "source_kind": "payload_field",
+          "field": "boot_reason",
+          "payload_index": 14
+        },
+        {
+          "argument": "p_last_cmd_id bigint",
+          "source_kind": "payload_field",
+          "field": "last_cmd_id",
+          "payload_index": 15
+        }
+      ]
+    },
+    "config_fetch": {
+      "payload": "config_request",
+      "rpc": "config_fetch",
+      "gateway_validated_payload_fields": [
+        "schema_version"
+      ],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_request_id bigint",
+          "source_kind": "payload_field",
+          "field": "request_id",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_known_config_version bigint",
+          "source_kind": "payload_field",
+          "field": "known_config_version",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_page_index integer",
+          "source_kind": "payload_field",
+          "field": "page_index",
+          "payload_index": 3
+        }
+      ]
+    },
+    "command_claim": {
+      "payload": "command_request",
+      "rpc": "command_claim",
+      "gateway_validated_payload_fields": [
+        "schema_version"
+      ],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_request_id bigint",
+          "source_kind": "payload_field",
+          "field": "request_id",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_last_cmd_id bigint",
+          "source_kind": "payload_field",
+          "field": "last_cmd_id",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_lease_seconds integer",
+          "source_kind": "server_policy",
+          "field": "command_claim_lease_seconds"
+        }
+      ]
+    },
+    "config_ack": {
+      "payload": "config_ack",
+      "rpc": "config_ack",
+      "gateway_validated_payload_fields": [
+        "schema_version"
+      ],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_request_id bigint",
+          "source_kind": "payload_field",
+          "field": "request_id",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_config_version bigint",
+          "source_kind": "payload_field",
+          "field": "config_version",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_result_code integer",
+          "source_kind": "payload_field",
+          "field": "result_code",
+          "payload_index": 3
+        },
+        {
+          "argument": "p_error_code integer",
+          "source_kind": "payload_field",
+          "field": "error_code",
+          "payload_index": 4
+        }
+      ]
+    },
+    "command_ack": {
+      "payload": "command_ack",
+      "rpc": "command_ack",
+      "gateway_validated_payload_fields": [
+        "schema_version"
+      ],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_cmd_id bigint",
+          "source_kind": "payload_field",
+          "field": "cmd_id",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_phase integer",
+          "source_kind": "payload_field",
+          "field": "phase",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_result_code integer",
+          "source_kind": "payload_field",
+          "field": "result_code",
+          "payload_index": 3
+        },
+        {
+          "argument": "p_error_code integer",
+          "source_kind": "payload_field",
+          "field": "error_code",
+          "payload_index": 4
+        },
+        {
+          "argument": "p_unix_seconds bigint",
+          "source_kind": "payload_field",
+          "field": "unix_seconds",
+          "payload_index": 5
+        },
+        {
+          "argument": "p_clock_valid boolean",
+          "source_kind": "payload_field",
+          "field": "clock_valid",
+          "payload_index": 6
+        }
+      ]
+    },
+    "event_ingest": {
+      "payload": "event",
+      "rpc": "event_ingest",
+      "gateway_validated_payload_fields": [
+        "schema_version"
+      ],
+      "arguments": [
+        {
+          "argument": "p_imei text",
+          "source_kind": "authenticated_identity_after_topic_match",
+          "field": "imei",
+          "identity_binding_ref": "mqtt_identity_binding"
+        },
+        {
+          "argument": "p_event_type integer",
+          "source_kind": "payload_field",
+          "field": "event_type",
+          "payload_index": 1
+        },
+        {
+          "argument": "p_incident_id bigint",
+          "source_kind": "payload_field",
+          "field": "incident_id",
+          "payload_index": 2
+        },
+        {
+          "argument": "p_sequence bigint",
+          "source_kind": "payload_field",
+          "field": "sequence",
+          "payload_index": 3
+        },
+        {
+          "argument": "p_state_code integer",
+          "source_kind": "payload_field",
+          "field": "state_code",
+          "payload_index": 4
+        },
+        {
+          "argument": "p_value0 bigint",
+          "source_kind": "payload_field",
+          "field": "value0",
+          "payload_index": 5
+        },
+        {
+          "argument": "p_value1 bigint",
+          "source_kind": "payload_field",
+          "field": "value1",
+          "payload_index": 6
+        },
+        {
+          "argument": "p_unix_seconds bigint",
+          "source_kind": "payload_field",
+          "field": "unix_seconds",
+          "payload_index": 7
+        },
+        {
+          "argument": "p_clock_valid boolean",
+          "source_kind": "payload_field",
+          "field": "clock_valid",
+          "payload_index": 8
+        }
+      ]
+    }
+  },
+  "rpc_output_mappings": {
+    "config_response": {
+      "rpc": "config_fetch",
+      "null_output_publish_allowed": false,
+      "empty_output_publish_allowed": false,
+      "zero_code_row": "config_no_change",
+      "positions": [
+        {
+          "payload_index": 0,
+          "rpc_output": "schema_version",
+          "payload_field": "schema_version"
+        },
+        {
+          "payload_index": 1,
+          "rpc_output": "request_id",
+          "payload_field": "request_id"
+        },
+        {
+          "payload_index": 2,
+          "rpc_output": "config_version",
+          "payload_field": "config_version"
+        },
+        {
+          "payload_index": 3,
+          "rpc_output": "page_index",
+          "payload_field": "page_index"
+        },
+        {
+          "payload_index": 4,
+          "rpc_output": "page_count",
+          "payload_field": "page_count"
+        },
+        {
+          "payload_index": 5,
+          "rpc_output": "sensor_slot",
+          "payload_field": "sensor_slot"
+        },
+        {
+          "payload_index": 6,
+          "rpc_output": "sensor_id",
+          "payload_field": "sensor_id"
+        },
+        {
+          "payload_index": 7,
+          "rpc_output": "upper_tenths",
+          "payload_field": "upper_tenths"
+        },
+        {
+          "payload_index": 8,
+          "rpc_output": "lower_tenths",
+          "payload_field": "lower_tenths"
+        },
+        {
+          "payload_index": 9,
+          "rpc_output": "enabled",
+          "payload_field": "enabled"
+        },
+        {
+          "payload_index": 10,
+          "rpc_output": "checksum_u32",
+          "payload_field": "checksum_u32"
+        }
+      ]
+    },
+    "command_response": {
+      "rpc": "command_claim",
+      "null_output_publish_allowed": false,
+      "empty_output_publish_allowed": false,
+      "zero_code_row": "command_none",
+      "positions": [
+        {
+          "payload_index": 0,
+          "rpc_output": "schema_version",
+          "payload_field": "schema_version"
+        },
+        {
+          "payload_index": 1,
+          "rpc_output": "request_id",
+          "payload_field": "request_id"
+        },
+        {
+          "payload_index": 2,
+          "rpc_output": "cmd_id",
+          "payload_field": "cmd_id"
+        },
+        {
+          "payload_index": 3,
+          "rpc_output": "opcode",
+          "payload_field": "opcode"
+        },
+        {
+          "payload_index": 4,
+          "rpc_output": "job_ref",
+          "payload_field": "job_ref"
+        },
+        {
+          "payload_index": 5,
+          "rpc_output": "ttl_seconds",
+          "payload_field": "ttl_seconds"
+        }
+      ]
+    },
+    "command_ack_receipt": {
+      "rpc": "command_ack",
+      "null_output_publish_allowed": false,
+      "empty_output_publish_allowed": false,
+      "actual_db_ingest_required_for_ingested_receipt": true,
+      "positions": [
+        {
+          "payload_index": 0,
+          "rpc_output": "schema_version",
+          "payload_field": "schema_version"
+        },
+        {
+          "payload_index": 1,
+          "rpc_output": "cmd_id",
+          "payload_field": "cmd_id"
+        },
+        {
+          "payload_index": 2,
+          "rpc_output": "phase",
+          "payload_field": "phase"
+        },
+        {
+          "payload_index": 3,
+          "rpc_output": "result_code",
+          "payload_field": "result_code"
+        },
+        {
+          "payload_index": 4,
+          "rpc_output": "receipt_code",
+          "payload_field": "receipt_code"
+        },
+        {
+          "payload_index": 5,
+          "rpc_output": "error_code",
+          "payload_field": "error_code"
+        }
+      ]
+    }
+  },
+  "rpc_conversions": {
+    "rules": {
+      "mqtt_username_imei_to_pg_text": {
+        "source": "authenticated_mqtt_username",
+        "target_postgres_type": "text",
+        "input_grammar": "canonical_decimal_ascii_token",
+        "preserve_exact_ascii": true,
+        "numeric_intermediate_allowed": false
+      },
+      "mqtt_password_cimi_to_pg_text": {
+        "source": "authenticated_mqtt_password",
+        "target_postgres_type": "text",
+        "input_grammar": "canonical_decimal_ascii_token",
+        "preserve_exact_ascii": true,
+        "numeric_intermediate_allowed": false
+      },
+      "authenticated_imei_to_pg_text": {
+        "source": "authenticated_imei_after_exact_topic_match",
+        "target_postgres_type": "text",
+        "input_grammar": "canonical_decimal_ascii_token",
+        "preserve_exact_ascii": true,
+        "numeric_intermediate_allowed": false
+      },
+      "server_authorized_imei_to_pg_text": {
+        "source": "server_authorized_device_scope",
+        "target_postgres_type": "text",
+        "input_grammar": "canonical_decimal_ascii_token",
+        "preserve_exact_ascii": true,
+        "numeric_intermediate_allowed": false
+      },
+      "wire_cimi_to_pg_text": {
+        "source": "numeric_csv_cimi_token",
+        "target_postgres_type": "text",
+        "input_grammar": "canonical_decimal_ascii_token",
+        "preserve_exact_ascii": true,
+        "numeric_intermediate_allowed": false
+      },
+      "wire_integer_to_pg_integer": {
+        "source": "numeric_csv_integer_token",
+        "target_postgres_type": "integer",
+        "validation_order": [
+          "canonical_decimal_grammar",
+          "declared_field_range",
+          "postgres_range"
+        ]
+      },
+      "wire_integer_to_pg_bigint": {
+        "source": "numeric_csv_integer_token",
+        "target_postgres_type": "bigint",
+        "validation_order": [
+          "canonical_decimal_grammar",
+          "declared_field_range",
+          "postgres_range"
+        ]
+      },
+      "wire_boolean_code_to_pg_boolean": {
+        "source": "numeric_csv_boolean_code",
+        "target_postgres_type": "boolean",
+        "input_mapping": {
+          "0": false,
+          "1": true
+        },
+        "exact_range_validation_before_conversion": true
+      },
+      "server_policy_integer_to_pg_integer": {
+        "source": "validated_server_policy_integer",
+        "target_postgres_type": "integer",
+        "validation_order": [
+          "server_policy_declared_range",
+          "postgres_range"
+        ]
+      },
+      "pg_integer_to_wire_canonical_integer": {
+        "source_postgres_type": "integer",
+        "target": "numeric_csv_integer_token",
+        "serialization": "canonical_decimal_ascii",
+        "declared_field_range_validation": true
+      },
+      "pg_bigint_to_wire_canonical_integer": {
+        "source_postgres_type": "bigint",
+        "target": "numeric_csv_integer_token",
+        "serialization": "canonical_decimal_ascii",
+        "declared_field_range_validation": true
+      },
+      "pg_boolean_to_wire_boolean_code": {
+        "source_postgres_type": "boolean",
+        "target": "numeric_csv_boolean_code",
+        "accepted_postgres_types": [
+          "boolean"
+        ],
+        "output_mapping": {
+          "false": "0",
+          "true": "1"
+        },
+        "boolean_text_output_allowed": false
+      }
+    },
+    "input_argument_rule_refs": {
+      "device_auth": {
+        "username text": "mqtt_username_imei_to_pg_text",
+        "password text": "mqtt_password_cimi_to_pg_text"
+      },
+      "telemetry_ingest": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_schema_version integer": "wire_integer_to_pg_integer",
+        "p_user_sensor_id bigint": "wire_integer_to_pg_bigint",
+        "p_value_tenths integer": "wire_integer_to_pg_integer",
+        "p_sequence bigint": "wire_integer_to_pg_bigint"
+      },
+      "boot_ingest": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_cimi text": "wire_cimi_to_pg_text",
+        "p_schema_version integer": "wire_integer_to_pg_integer",
+        "p_voltage_mv integer": "wire_integer_to_pg_integer",
+        "p_boot_temp_tenths integer": "wire_integer_to_pg_integer",
+        "p_flash_status integer": "wire_integer_to_pg_integer",
+        "p_ram_status integer": "wire_integer_to_pg_integer",
+        "p_at_status integer": "wire_integer_to_pg_integer",
+        "p_cpin_status integer": "wire_integer_to_pg_integer",
+        "p_csq integer": "wire_integer_to_pg_integer",
+        "p_carrier_code integer": "wire_integer_to_pg_integer",
+        "p_temp1_status integer": "wire_integer_to_pg_integer",
+        "p_temp2_status integer": "wire_integer_to_pg_integer",
+        "p_mic1_status integer": "wire_integer_to_pg_integer",
+        "p_mic2_status integer": "wire_integer_to_pg_integer",
+        "p_boot_reason integer": "wire_integer_to_pg_integer",
+        "p_last_cmd_id bigint": "wire_integer_to_pg_bigint"
+      },
+      "config_fetch": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_request_id bigint": "wire_integer_to_pg_bigint",
+        "p_known_config_version bigint": "wire_integer_to_pg_bigint",
+        "p_page_index integer": "wire_integer_to_pg_integer"
+      },
+      "command_claim": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_request_id bigint": "wire_integer_to_pg_bigint",
+        "p_last_cmd_id bigint": "wire_integer_to_pg_bigint",
+        "p_lease_seconds integer": "server_policy_integer_to_pg_integer"
+      },
+      "config_ack": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_request_id bigint": "wire_integer_to_pg_bigint",
+        "p_config_version bigint": "wire_integer_to_pg_bigint",
+        "p_result_code integer": "wire_integer_to_pg_integer",
+        "p_error_code integer": "wire_integer_to_pg_integer"
+      },
+      "command_ack": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_cmd_id bigint": "wire_integer_to_pg_bigint",
+        "p_phase integer": "wire_integer_to_pg_integer",
+        "p_result_code integer": "wire_integer_to_pg_integer",
+        "p_error_code integer": "wire_integer_to_pg_integer",
+        "p_unix_seconds bigint": "wire_integer_to_pg_bigint",
+        "p_clock_valid boolean": "wire_boolean_code_to_pg_boolean"
+      },
+      "event_ingest": {
+        "p_imei text": "authenticated_imei_to_pg_text",
+        "p_event_type integer": "wire_integer_to_pg_integer",
+        "p_incident_id bigint": "wire_integer_to_pg_bigint",
+        "p_sequence bigint": "wire_integer_to_pg_bigint",
+        "p_state_code integer": "wire_integer_to_pg_integer",
+        "p_value0 bigint": "wire_integer_to_pg_bigint",
+        "p_value1 bigint": "wire_integer_to_pg_bigint",
+        "p_unix_seconds bigint": "wire_integer_to_pg_bigint",
+        "p_clock_valid boolean": "wire_boolean_code_to_pg_boolean"
+      }
+    },
+    "route_specific_input_argument_rule_overrides": {
+      "authorized_server_event_routes.device_offline": {
+        "rpc": "event_ingest",
+        "input_argument_rule_refs": {
+          "p_imei text": "server_authorized_imei_to_pg_text"
+        }
+      }
+    },
+    "output_position_rule_refs": {
+      "config_response": [
+        "pg_integer_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_boolean_to_wire_boolean_code",
+        "pg_bigint_to_wire_canonical_integer"
+      ],
+      "command_response": [
+        "pg_integer_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer"
+      ],
+      "command_ack_receipt": [
+        "pg_integer_to_wire_canonical_integer",
+        "pg_bigint_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer",
+        "pg_integer_to_wire_canonical_integer"
+      ]
+    },
+    "invalid_conversion": {
+      "rpc_allowed": false,
+      "response_republish_allowed": false,
+      "last_known_state_preserved": true,
+      "bounded_error_accounting": true
+    }
+  },
+  "database_time_type": "timestamptz",
+  "operations_timezone": "Asia/Seoul",
+  "device_event_time": [
+    "unix_seconds",
+    "clock_valid"
+  ],
+  "db_receive_time_required": true,
+  "time_contract": {
+    "device_unix_clock_payloads": [
+      "command_ack",
+      "event"
+    ],
+    "payloads_without_device_time": [
+      "telemetry",
+      "boot",
+      "config_request",
+      "config_response",
+      "command_request",
+      "command_response",
+      "config_ack",
+      "command_ack_receipt"
+    ],
+    "db_receive_time_source": "database_server",
+    "db_receive_time_separate_from_device_time": true
+  },
+  "proposal_scope": {
+    "sql_changed": false,
+    "emqx_changed": false,
+    "live_schema_changed": false,
+    "implementation_gate": "g2c_migration_proposal",
+    "migration_requirements": [
+      "caller_graph",
+      "compatibility",
+      "rollback",
+      "user_approval"
+    ]
+  }
+}
