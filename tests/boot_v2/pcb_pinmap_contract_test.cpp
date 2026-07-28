@@ -31,6 +31,8 @@ void test_config_matches_final_pcb_gpio_map() noexcept
 {
     const std::string config =
         read_file(NB_IOT_SOURCE_ROOT "/src/config.h");
+    const std::string power_task =
+        read_file(NB_IOT_SOURCE_ROOT "/src/tasks/tasks_led.cpp");
     const char *const required[] = {
         "#define UART_TX_PIN       0",
         "#define UART_RX_PIN       1",
@@ -68,6 +70,49 @@ void test_config_matches_final_pcb_gpio_map() noexcept
           std::string::npos);
     CHECK(config.find("#define SDA_PIN           20") == std::string::npos);
     CHECK(config.find("#define SCL_PIN           21") == std::string::npos);
+
+    CHECK(config.find("#define POWER_ADAPTER_DEBOUNCE_MS 1000") !=
+          std::string::npos);
+    CHECK(config.find("#define POWER_ADAPTER_SHUTDOWN_COMMIT_MS 210000") !=
+          std::string::npos);
+    CHECK(config.find("#define POWER_ADAPTER_ABSOLUTE_OFF_MS 300000") !=
+          std::string::npos);
+
+    CHECK(power_task.find(
+              "gpio_disable_pulls(POWER_ADAPTER_DETECT_PIN)") !=
+          std::string::npos);
+    const std::size_t probe_function =
+        power_task.find("PowerAdapterProbeSample probe_power_adapter_input");
+    const std::size_t probe_pull_down =
+        power_task.find("gpio_pull_down(POWER_ADAPTER_DETECT_PIN)",
+                        probe_function);
+    const std::size_t probe_pull_restore =
+        power_task.find("gpio_disable_pulls(POWER_ADAPTER_DETECT_PIN)",
+                        probe_pull_down);
+    CHECK(probe_function != std::string::npos);
+    CHECK(probe_pull_down != std::string::npos);
+    CHECK(probe_pull_restore != std::string::npos);
+    CHECK(probe_function < probe_pull_down);
+    CHECK(probe_pull_down < probe_pull_restore);
+    CHECK(power_task.find("adapter_present = probe.floating_high") !=
+          std::string::npos);
+    CHECK(power_task.find("POWER_ADAPTER_PROBE FLOAT=") ==
+          std::string::npos);
+    CHECK(power_task.find("POWER_ADAPTER_EDGE FALL=") ==
+          std::string::npos);
+    CHECK(power_task.find("PowerStateCore") != std::string::npos);
+    CHECK(power_task.find(
+              "runtime_owner_power_publish_adapter_removed") !=
+          std::string::npos);
+    CHECK(power_task.find(
+              "runtime_owner_power_publish_adapter_restored") !=
+          std::string::npos);
+    CHECK(power_task.find(
+              "runtime_owner_adapter_loss_request_shutdown") !=
+          std::string::npos);
+    CHECK(power_task.find("lcd_params.is_battery_mode = false") ==
+          std::string::npos);
+    CHECK(power_task.find("gpio_put(POWER_KILL_PIN") == std::string::npos);
 }
 
 } // namespace

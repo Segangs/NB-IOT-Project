@@ -132,6 +132,12 @@ bool map_normal_intent(
     case NormalIntentKind::PullCommand:
         kind = RuntimeOwnerDeviceOperationKind::PullCommand;
         return true;
+    case NormalIntentKind::PublishAdapterRemoved:
+        kind = RuntimeOwnerDeviceOperationKind::PublishAdapterRemoved;
+        return true;
+    case NormalIntentKind::PublishAdapterRestored:
+        kind = RuntimeOwnerDeviceOperationKind::PublishAdapterRestored;
+        return true;
     case NormalIntentKind::Invalid:
     default:
         return false;

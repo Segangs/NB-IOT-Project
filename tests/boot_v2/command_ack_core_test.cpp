@@ -172,6 +172,45 @@ void check_codec_rejects_malformed_or_relationally_invalid_payloads()
     }
 }
 
+void check_codec_accepts_only_canonical_receipt_error_pairs()
+{
+    CommandAckReceipt output{};
+    CHECK(boot_v2::mqtt_command_ack_receipt_parse(
+        "[9,1,1,1,0]", output));
+    CHECK(output.receipt == CommandAckReceiptCode::Ingested);
+    CHECK(output.error == 0);
+    CHECK(boot_v2::mqtt_command_ack_receipt_parse(
+        "[9,1,1,2,1]", output));
+    CHECK(boot_v2::mqtt_command_ack_receipt_parse(
+        "[9,1,1,2,2]", output));
+    CHECK(output.receipt == CommandAckReceiptCode::Rejected);
+    CHECK(output.error == 2);
+    CHECK(boot_v2::mqtt_command_ack_receipt_parse(
+        "[9,1,1,3,3]", output));
+    CHECK(boot_v2::mqtt_command_ack_receipt_parse(
+        "[9,1,1,3,4]", output));
+    CHECK(!boot_v2::mqtt_command_ack_receipt_parse(
+        "[9,1,1,3,2]", output));
+
+    const char *const invalid_receipt_error_pairs[] = {
+        "[9,1,1,1,1]",
+        "[9,1,1,1,2]",
+        "[9,1,1,1,3]",
+        "[9,1,1,1,4]",
+        "[9,1,1,1,5]",
+        "[9,1,1,2,0]",
+        "[9,1,1,2,3]",
+        "[9,1,1,2,4]",
+        "[9,1,1,2,5]",
+        "[9,1,1,3,0]",
+        "[9,1,1,3,1]",
+        "[9,1,1,3,5]",
+    };
+    for (const char *payload : invalid_receipt_error_pairs) {
+        CHECK(!boot_v2::mqtt_command_ack_receipt_parse(payload, output));
+    }
+}
+
 void advance_accepted_receipt(
     CommandAckCore &core,
     CommandAckMessage &accepted) noexcept
@@ -371,13 +410,20 @@ void check_boot_recovery_never_reexecutes_execute_marked()
           CommandExecutionDecision::Dispatch);
 
     CommandAckCore recovered;
-    CHECK(recovered.restore_after_boot(original.record(), 3) ==
+    CHECK(recovered.restore_after_boot(original.record(), 3, false) ==
           CommandTransitionResult::Accepted);
     CHECK(recovered.state() == CommandJournalState::Executed);
     CHECK(recovered.record().result == CommandResult::Failed);
     CHECK(recovered.record().error == CommandError::Journal);
     CHECK(recovered.mark_execute(12) ==
           CommandExecutionDecision::Rejected);
+
+    CommandAckCore confirmed;
+    CHECK(confirmed.restore_after_boot(original.record(), 3, true) ==
+          CommandTransitionResult::Accepted);
+    CHECK(confirmed.state() == CommandJournalState::Executed);
+    CHECK(confirmed.record().result == CommandResult::Executed);
+    CHECK(confirmed.record().error == CommandError::None);
 }
 
 } // namespace
@@ -386,6 +432,7 @@ int main()
 {
     check_codec_round_trip_and_exact_shape();
     check_codec_rejects_malformed_or_relationally_invalid_payloads();
+    check_codec_accepts_only_canonical_receipt_error_pairs();
     check_normal_command_flow_and_exact_receipts();
     check_expected_effect_and_ttl_checkpoint_contract();
     check_duplicate_stale_and_no_command_paths();

@@ -2,9 +2,21 @@
 
 # EMQX 6.2.1 Supabase 연동 자동화 설정 스크립트
 # 사용법: ./emqx_setup.sh
+# Command rule/action 전용 구성:
+#   ./emqx_setup.sh command [plan|apply-disabled|verify|enable|disable|delete]
 
 # 스크립트 위치 기준으로 .env 파일 경로 지정
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+if [ "${1:-}" = "command" ]; then
+    shift
+    exec python3 "$SCRIPT_DIR/emqx_command_setup.py" "$@"
+fi
+
+if [ "${1:-}" = "event" ]; then
+    shift
+    exec python3 "$SCRIPT_DIR/emqx_event_setup.py" "$@"
+fi
 
 # .env 파일에서 Supabase URL과 Key 추출
 if [ -f "$SCRIPT_DIR/.env" ]; then

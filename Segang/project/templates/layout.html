@@ -10,6 +10,7 @@
     <link rel="preload" href="/static/fonts/SUITE-Bold.woff2" as="font" type="font/woff2" crossorigin>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="/static/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/mobile_input_zoom_guard.css">
     <!-- ChartJS -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -112,6 +113,25 @@
             left: 0;
             z-index: 100;
             transition: all 0.3s ease;
+        }
+
+        .mobile-menu-button {
+            display: none;
+            flex: 0 0 auto;
+            width: 40px;
+            height: 40px;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-surface);
+            color: var(--text-main);
+            font-size: 1.1rem;
+            cursor: pointer;
+        }
+
+        .sidebar-overlay {
+            display: none;
         }
 
         .brand {
@@ -387,21 +407,105 @@
         }
 
         @media (max-width: 768px) {
-            .sidebar {
-                width: 70px;
-                padding: 1.5rem 0.5rem;
+            body {
+                display: block;
+                font-size: 0.9rem;
             }
-            .sidebar .brand-text, 
-            .sidebar .brand-subtitle, 
-            .sidebar .nav-item span,
-            .sidebar .sidebar-banner {
+
+            .sidebar {
+                width: min(82vw, 280px);
+                padding: 1.25rem;
+                transform: translateX(-105%);
+                box-shadow: 12px 0 30px rgba(0, 0, 0, 0.35);
+                transition: transform 0.25s ease;
+            }
+
+            body.mobile-sidebar-open {
+                overflow: hidden;
+            }
+
+            body.mobile-sidebar-open .sidebar {
+                transform: translateX(0);
+            }
+
+            .sidebar-overlay {
+                display: block;
+                position: fixed;
+                inset: 0;
+                z-index: 90;
+                border: 0;
+                background: rgba(2, 6, 23, 0.72);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.2s ease;
+            }
+
+            body.mobile-sidebar-open .sidebar-overlay {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .main-panel {
+                margin-left: 0;
+                padding: 0.85rem;
+            }
+
+            .top-navbar {
+                align-items: flex-start;
+                gap: 0.65rem;
+                margin-bottom: 1rem;
+            }
+
+            .mobile-menu-button {
+                display: inline-flex;
+            }
+
+            .user-welcome {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            .user-welcome h1 {
+                font-size: 1.25rem;
+                line-height: 1.25;
+            }
+
+            .user-welcome p {
+                font-size: 0.75rem;
+                line-height: 1.35;
+                margin-top: 0.2rem;
+            }
+
+            .top-nav-actions {
+                gap: 0.5rem;
+            }
+
+            .profile-menu {
+                padding: 0.25rem;
+            }
+
+            .profile-name,
+            .profile-menu > .fa-chevron-down {
                 display: none;
             }
-            .main-panel {
-                margin-left: 70px;
+
+            .toast-container {
+                top: 10px;
+                right: 10px;
+                left: 10px;
             }
+
+            .toast {
+                min-width: 0;
+                width: 100%;
+                font-size: 0.8rem;
+                padding: 0.75rem;
+            }
+
             .dashboard-grid {
                 grid-template-columns: 1fr;
+                gap: 0.85rem;
+                margin-bottom: 1.25rem;
             }
         }
     </style>
@@ -428,7 +532,7 @@
     </div>
 
     <!-- Navigation Sidebar -->
-    <div class="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="주요 메뉴">
         <div>
             <div class="brand">
                 <div class="brand-logo" style="background: url('/static/1_logo.png') no-repeat center center; background-size: cover; box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);"></div>
@@ -465,11 +569,29 @@
             <h3 class="sidebar-banner-title">안전 온도 관제</h3>
             <p class="sidebar-banner-desc">전국 냉동공조기계를 실시간 소켓 통신으로 정밀 모니터링 중입니다. ❄️</p>
         </div>
-    </div>
+    </aside>
+
+    <button
+        class="sidebar-overlay"
+        id="sidebarOverlay"
+        type="button"
+        aria-label="메뉴 닫기"
+        tabindex="-1"
+    ></button>
 
     <!-- Main Content Panel -->
     <div class="main-panel">
         <div class="top-navbar">
+            <button
+                class="mobile-menu-button"
+                id="mobileMenuButton"
+                type="button"
+                aria-controls="sidebar"
+                aria-expanded="false"
+                aria-label="메뉴 열기"
+            >
+                <i class="fa-solid fa-bars" aria-hidden="true"></i>
+            </button>
             <div class="user-welcome">
                 {% block navbar_header %}{% endblock %}
             </div>
@@ -501,7 +623,12 @@
         {% block content %}{% endblock %}
     </div>
 
+    <script src="/static/js/dashboard_responsive.js"></script>
     <script>
+        if (window.NBResponsive) {
+            window.NBResponsive.installMobileSidebar(document, window);
+        }
+
         // Profile dropdown toggle
         const profileMenuBtn = document.getElementById('profileMenuBtn');
         const profileDropdown = document.getElementById('profileDropdown');

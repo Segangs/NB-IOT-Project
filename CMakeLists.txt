@@ -33,22 +33,12 @@ project(nb_iot_project C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-# Read .env file if it exists and define compiler macros
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.env")
-    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/.env" ENV_LINES)
-    foreach(line ${ENV_LINES})
-        # Ignore comments and empty lines
-        if(NOT line MATCHES "^#" AND line MATCHES "=")
-            string(REPLACE "=" ";" line_split ${line})
-            list(GET line_split 0 key)
-            list(GET line_split 1 val)
-            # Remove any wrapping quotes from val
-            string(REGEX REPLACE "^\"|\"$" "" val "${val}")
-            # Register the definition as a compiler preprocessor macro
-            add_compile_definitions(${key}="${val}")
-        endif()
-    endforeach()
-endif()
+# Load only the public settings required by the firmware target.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/load_firmware_env.cmake")
+nb_iot_load_firmware_env(
+    "${CMAKE_CURRENT_SOURCE_DIR}/.env"
+    NB_IOT_FIRMWARE_ENV_DEFINITIONS
+)
 
 # 5. Pico SDK 초기화
 pico_sdk_init()
@@ -86,12 +76,19 @@ add_executable(nb_iot_project
     src/boot_v2/runtime_owner_shutdown_finalizer_core.cpp
     src/boot_v2/runtime_owner_shutdown_record_core.cpp
     src/boot_v2/runtime_owner_shutdown_record_store.cpp
+    src/boot_v2/power_state_core.cpp
+    src/boot_v2/power_state_runtime.cpp
     src/boot_v2/sensor_quality_core.cpp
+    src/boot_v2/temperature_alarm_publish_core.cpp
+    src/boot_v2/mqtt_power_event_codec.cpp
     src/boot_v2/mqtt_command_codec.cpp
     src/boot_v2/command_ack_core.cpp
     src/boot_v2/command_journal_record_core.cpp
     src/boot_v2/command_journal_store_core.cpp
     src/boot_v2/command_journal_flash_store.cpp
+    src/boot_v2/command_boot_effect_core.cpp
+    src/boot_v2/command_runtime_coordinator.cpp
+    src/boot_v2/command_status_snapshot_evaluator.cpp
     lib/LCD_I2C.cpp
     src/tasks/app_context.cpp
     src/tasks/tasks_boot.cpp
@@ -146,6 +143,7 @@ target_link_libraries(nb_iot_project
 )
 
 target_compile_definitions(nb_iot_project PRIVATE
+    ${NB_IOT_FIRMWARE_ENV_DEFINITIONS}
     NB_IOT_POST_CONFIG_HANDOFF_TRIAL=1
     NB_IOT_CONFIG_QOS0_TRIAL=1
     PICO_STDIO_USB_CONNECTION_WITHOUT_DTR=1

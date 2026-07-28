@@ -6,6 +6,10 @@ do $precheck$
 declare
     v_assign_md5 text;
     v_invalid_count bigint;
+    v_legacy_reboot_count bigint;
+    v_sensor_reboot_count bigint;
+    v_existing_normalized_command_count bigint;
+    v_existing_normalized_sensor_count bigint;
 begin
     if current_setting('server_version_num')::integer < 150000 then
         raise exception 'PostgreSQL 15 or newer is required';
@@ -17,8 +21,9 @@ begin
     end if;
 
     if to_regclass('public."deviceCmds"') is null
-       or to_regclass('public.device') is null then
-        raise exception 'legacy public."deviceCmds" or public.device is missing';
+       or to_regclass('public.device') is null
+       or to_regclass('public.sensorvalue') is null then
+        raise exception 'legacy public."deviceCmds", public.device, or public.sensorvalue is missing';
     end if;
 
     if to_regclass('public.device_command_state') is not null
@@ -113,9 +118,104 @@ begin
     end if;
 
     select count(*)
+    into v_legacy_reboot_count
+    from public."deviceCmds" as c
+    where c.cmd = 10
+      and c.status = 1;
+
+    if v_legacy_reboot_count <> 11 then
+        raise exception 'expected 11 legacy reboot rows, got %',
+            v_legacy_reboot_count;
+    end if;
+
+    select count(*)
+    into v_existing_normalized_command_count
+    from public."deviceCmds" as c
+    where c.cmd = 1
+      and c.status = 1;
+
+    if v_existing_normalized_command_count <> 0 then
+        raise exception 'existing normalized command rows are not allowed: %',
+            v_existing_normalized_command_count;
+    end if;
+
+    select count(*)
+    into v_existing_normalized_sensor_count
+    from public.sensorvalue as s
+    join public."deviceCmds" as c
+      on c."cmdId" = s."cmdId"
+    where s."cmd" = 1
+      and c.cmd = 10
+      and c.status = 1;
+
+    if v_existing_normalized_sensor_count <> 0 then
+        raise exception
+            'legacy reboot targets already have normalized sensor rows: %',
+            v_existing_normalized_sensor_count;
+    end if;
+
+    select count(*)
+    into v_sensor_reboot_count
+    from public.sensorvalue as s
+    join public."deviceCmds" as c
+      on c."cmdId" = s."cmdId"
+    where s."cmd" = 10
+      and c.cmd = 10
+      and c.status = 1;
+
+    if v_sensor_reboot_count <> 11 then
+        raise exception 'expected 11 linked legacy reboot sensor rows, got %',
+            v_sensor_reboot_count;
+    end if;
+
+    select count(*)
+    into v_invalid_count
+    from public.sensorvalue as s
+    where s."cmd" = 10
+      and not exists (
+          select 1
+          from public."deviceCmds" as c
+          where c."cmdId" = s."cmdId"
+            and c.cmd = 10
+            and c.status = 1
+      );
+
+    if v_invalid_count <> 0 then
+        raise exception 'legacy reboot sensor rows contain unlinked command references: %',
+            v_invalid_count;
+    end if;
+
+    select count(*)
     into v_invalid_count
     from public."deviceCmds" as c
-    where c.cmd not between 1 and 4
+    where c.cmd = 10
+      and c.status = 1
+      and not exists (
+          select 1
+          from public.sensorvalue as s
+          where s."cmdId" = c."cmdId"
+            and s."cmd" = 10
+      );
+
+    if v_invalid_count <> 0 then
+        raise exception 'legacy reboot commands without a linked sensor row: %',
+            v_invalid_count;
+    end if;
+
+    select count(*)
+    into v_invalid_count
+    from public."deviceCmds" as c
+    where c.status = 0;
+
+    if v_invalid_count <> 0 then
+        raise exception 'pending legacy command rows are not allowed: %',
+            v_invalid_count;
+    end if;
+
+    select count(*)
+    into v_invalid_count
+    from public."deviceCmds" as c
+    where (c.cmd not between 1 and 4 and c.cmd <> 10)
        or c.status not between 0 and 1;
 
     if v_invalid_count <> 0 then

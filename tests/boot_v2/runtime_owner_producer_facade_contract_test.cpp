@@ -1,4 +1,5 @@
 #include "runtime_owner_producer_facade.hpp"
+#include "power_state_runtime.hpp"
 #include "runtime_owner_rtos_drain_core.hpp"
 
 #include <cstddef>
@@ -134,19 +135,115 @@ void test_periodic_normal_routes() noexcept
     }
 }
 
+void test_battery_grace_blocks_only_periodic_work() noexcept
+{
+    power_state_set_battery_grace(true);
+
+    runtime_owner_rtos_detail::reset();
+    CHECK(runtime_owner_periodic_request_transport() ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_periodic_publish_telemetry(1, 7) ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_periodic_refresh_rssi() ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_periodic_pull_config() ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_periodic_pull_command() ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_rtos_detail::g_calls == 0);
+
+    CHECK(runtime_owner_sensor_publish_telemetry(1, 7) ==
+          RuntimeOwnerIngressResult::AcceptedForDelivery);
+    CHECK(runtime_owner_rtos_detail::g_calls == 1);
+
+    runtime_owner_rtos_detail::reset();
+    CHECK(runtime_owner_power_publish_adapter_removed(42, 1) ==
+          RuntimeOwnerIngressResult::AcceptedForDelivery);
+    CHECK(runtime_owner_rtos_detail::g_calls == 1);
+
+    power_state_set_battery_grace(false);
+    runtime_owner_rtos_detail::reset();
+    CHECK(runtime_owner_periodic_pull_config() ==
+          RuntimeOwnerIngressResult::AcceptedForDelivery);
+    CHECK(runtime_owner_rtos_detail::g_calls == 1);
+}
+
+void test_sensor_publish_route() noexcept
+{
+    runtime_owner_rtos_detail::reset();
+    CHECK(runtime_owner_sensor_publish_telemetry(1, 17) ==
+          RuntimeOwnerIngressResult::AcceptedForDelivery);
+    CHECK(runtime_owner_rtos_detail::g_calls == 1);
+    CHECK(runtime_owner_rtos_detail::g_lane == RuntimeOwnerRtosLane::Normal);
+    CHECK(runtime_owner_rtos_detail::g_normal.kind ==
+          NormalIntentKind::PublishTelemetry);
+    CHECK(runtime_owner_rtos_detail::g_normal.subject_id == 1);
+    CHECK(runtime_owner_rtos_detail::g_normal.snapshot_revision == 17);
+
+    runtime_owner_rtos_detail::reset();
+    CHECK(runtime_owner_sensor_publish_telemetry(0, 17) ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_sensor_publish_telemetry(3, 17) ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_sensor_publish_telemetry(1, 0) ==
+          RuntimeOwnerIngressResult::RejectedInvalid);
+    CHECK(runtime_owner_rtos_detail::g_calls == 0);
+}
+
+void test_adapter_monitor_power_event_routes() noexcept
+{
+    struct Case {
+        RuntimeOwnerIngressResult (*call)(
+            std::uint32_t,
+            std::uint32_t) noexcept;
+        NormalIntentKind expected;
+    };
+    constexpr Case cases[] = {
+        {runtime_owner_power_publish_adapter_removed,
+         NormalIntentKind::PublishAdapterRemoved},
+        {runtime_owner_power_publish_adapter_restored,
+         NormalIntentKind::PublishAdapterRestored},
+    };
+    for (const Case item : cases) {
+        runtime_owner_rtos_detail::reset();
+        CHECK(item.call(42, 2) ==
+              RuntimeOwnerIngressResult::AcceptedForDelivery);
+        CHECK(runtime_owner_rtos_detail::g_calls == 1);
+        CHECK(runtime_owner_rtos_detail::g_lane ==
+              RuntimeOwnerRtosLane::Normal);
+        CHECK(runtime_owner_rtos_detail::g_normal.kind == item.expected);
+        CHECK(runtime_owner_rtos_detail::g_normal.subject_id == 42);
+        CHECK(runtime_owner_rtos_detail::g_normal.snapshot_revision == 2);
+
+        runtime_owner_rtos_detail::reset();
+        CHECK(item.call(0, 2) ==
+              RuntimeOwnerIngressResult::RejectedInvalid);
+        CHECK(item.call(42, 0) ==
+              RuntimeOwnerIngressResult::RejectedInvalid);
+        CHECK(runtime_owner_rtos_detail::g_calls == 0);
+    }
+}
+
 void test_exact_shutdown_sources_and_invalid_identity() noexcept
 {
     struct Case {
         RuntimeOwnerIngressResult (*call)(std::uint32_t, std::uint32_t) noexcept;
         RuntimeOwnerUrgentSource expected;
+        RuntimeOwnerShutdownIntent expected_intent;
     };
     constexpr Case cases[] = {
         {runtime_owner_power_button_request_shutdown,
-         RuntimeOwnerUrgentSource::PowerButton},
+         RuntimeOwnerUrgentSource::PowerButton,
+         RuntimeOwnerShutdownIntent::AutomaticByUsb},
         {runtime_owner_adapter_loss_request_shutdown,
-         RuntimeOwnerUrgentSource::AdapterLossCommitted},
-        {runtime_owner_authenticated_request_shutdown,
-         RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand},
+         RuntimeOwnerUrgentSource::AdapterLossCommitted,
+         RuntimeOwnerShutdownIntent::AutomaticByUsb},
+        {runtime_owner_authenticated_request_reboot,
+         RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand,
+         RuntimeOwnerShutdownIntent::Reboot},
+        {runtime_owner_authenticated_request_power_off,
+         RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand,
+         RuntimeOwnerShutdownIntent::PowerOff},
     };
     for (const Case item : cases) {
         runtime_owner_rtos_detail::reset();
@@ -155,6 +252,8 @@ void test_exact_shutdown_sources_and_invalid_identity() noexcept
         CHECK(runtime_owner_rtos_detail::g_calls == 1);
         CHECK(runtime_owner_rtos_detail::g_lane == RuntimeOwnerRtosLane::Urgent);
         CHECK(runtime_owner_rtos_detail::g_urgent.source == item.expected);
+        CHECK(runtime_owner_rtos_detail::g_urgent.intent ==
+              item.expected_intent);
         CHECK(runtime_owner_rtos_detail::g_urgent.producer_sequence == 7);
         CHECK(runtime_owner_rtos_detail::g_urgent.incident_correlation_id == 11);
 
@@ -192,6 +291,9 @@ int main()
 {
     test_boot_and_periodic_control_routes();
     test_periodic_normal_routes();
+    test_battery_grace_blocks_only_periodic_work();
+    test_sensor_publish_route();
+    test_adapter_monitor_power_event_routes();
     test_exact_shutdown_sources_and_invalid_identity();
     test_public_surface_is_nonforgeable();
     if (g_failures != 0) {

@@ -77,6 +77,8 @@ enum class NormalIntentKind : std::uint8_t {
     RefreshRssi = 2,
     PullConfig = 3,
     PullCommand = 4,
+    PublishAdapterRemoved = 5,
+    PublishAdapterRestored = 6,
 };
 
 struct NormalIntent {
@@ -95,6 +97,8 @@ struct NormalIntent {
     }
     switch (input.kind) {
     case NormalIntentKind::PublishTelemetry:
+    case NormalIntentKind::PublishAdapterRemoved:
+    case NormalIntentKind::PublishAdapterRestored:
         return input.subject_id != 0 && input.snapshot_revision != 0;
     case NormalIntentKind::RefreshRssi:
     case NormalIntentKind::PullConfig:

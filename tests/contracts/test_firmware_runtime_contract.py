@@ -2690,6 +2690,19 @@ class FirmwareRuntimeContractTest(unittest.TestCase):
             self.data["flash_fota"]["confirm_deadline_ms"],
         )
 
+    def test_product_temperature_sample_interval_matches_contract(self):
+        config_source = (ROOT / "src" / "config.h").read_text()
+        sample_interval = re.search(
+            r"^#define\s+DS18B20_SAMPLE_INTERVAL_MS\s+(\d+)\s*$",
+            config_source,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(sample_interval)
+        self.assertEqual(
+            int(sample_interval.group(1)),
+            self.data["timing_ms"]["temperature_period"],
+        )
+
     def test_shutdown_timing_origin_and_relation(self):
         timing = self.data["timing_ms"]
         self.assertEqual(

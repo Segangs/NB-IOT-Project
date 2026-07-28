@@ -41,6 +41,13 @@ enum class RuntimeOwnerUrgentSource : std::uint8_t {
     AuthenticatedRemoteCommand = 3,
 };
 
+enum class RuntimeOwnerShutdownIntent : std::uint8_t {
+    Invalid = 0,
+    AutomaticByUsb = 1,
+    Reboot = 2,
+    PowerOff = 3,
+};
+
 enum class RuntimeOwnerActivationPreflightResult : std::uint8_t {
     RejectedInvalid = 0,
     RejectedIncomplete = 1,
@@ -55,7 +62,8 @@ enum class RuntimeOwnerStopPreflightResult : std::uint8_t {
 
 struct RuntimeOwnerUrgentMessage {
     RuntimeOwnerUrgentSource source{RuntimeOwnerUrgentSource::Invalid};
-    std::uint8_t reserved[3]{};
+    RuntimeOwnerShutdownIntent intent{RuntimeOwnerShutdownIntent::Invalid};
+    std::uint8_t reserved[2]{};
     std::uint32_t producer_sequence{0};
     std::uint32_t incident_correlation_id{0};
 };
@@ -113,8 +121,17 @@ static_assert(std::is_trivially_copyable<RuntimeOwnerStopFacts>::value);
         input.source == RuntimeOwnerUrgentSource::PowerButton ||
         input.source == RuntimeOwnerUrgentSource::AdapterLossCommitted ||
         input.source == RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand;
+    const bool local_intent =
+        input.intent == RuntimeOwnerShutdownIntent::AutomaticByUsb;
+    const bool authenticated_intent =
+        input.intent == RuntimeOwnerShutdownIntent::Reboot ||
+        input.intent == RuntimeOwnerShutdownIntent::PowerOff;
+    const bool source_intent_valid =
+        input.source == RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand
+            ? authenticated_intent
+            : local_intent;
     return source_valid && input.reserved[0] == 0 &&
-           input.reserved[1] == 0 && input.reserved[2] == 0 &&
+           input.reserved[1] == 0 && source_intent_valid &&
            input.producer_sequence != 0 &&
            input.incident_correlation_id != 0;
 }

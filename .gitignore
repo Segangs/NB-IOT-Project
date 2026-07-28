@@ -12,3 +12,11 @@
 /DOCS
 /.env
 project_history.md.bak*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+/ops/spaceship/tests/test_bizppurio_webhook.php
+/ops/spaceship/webhook/.htaccess
+/ops/spaceship/webhook/bizppurio_result.php

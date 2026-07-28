@@ -20,11 +20,11 @@ bool urgent_messages_equal(
     const RuntimeOwnerUrgentMessage right) noexcept
 {
     return left.source == right.source &&
+           left.intent == right.intent &&
            left.producer_sequence == right.producer_sequence &&
            left.incident_correlation_id == right.incident_correlation_id &&
            left.reserved[0] == right.reserved[0] &&
-           left.reserved[1] == right.reserved[1] &&
-           left.reserved[2] == right.reserved[2];
+           left.reserved[1] == right.reserved[1];
 }
 
 bool initial_usb_is_clean(const UsbPowerObservation observation) noexcept
@@ -214,6 +214,10 @@ RuntimeOwnerShutdownFinalizerCore::submit_usb_recheck(
     if (hard_deadline_reached_ != 0 || poweroff_evidence_ready_ == 0) {
         phase_ = Phase::EvidenceMissing;
         return RuntimeOwnerShutdownUsbResult::EvidenceMissing;
+    }
+    if (context_.intent == RuntimeOwnerShutdownIntent::Reboot) {
+        phase_ = Phase::WatchdogAllowed;
+        return RuntimeOwnerShutdownUsbResult::WatchdogAllowed;
     }
     if (observation.present == 0) {
         phase_ = Phase::Gp15Allowed;

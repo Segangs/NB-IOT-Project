@@ -2134,6 +2134,8 @@ void test_enum_numeric_and_unknown_contract()
     check_enum_value(NormalIntentKind::RefreshRssi, 2);
     check_enum_value(NormalIntentKind::PullConfig, 3);
     check_enum_value(NormalIntentKind::PullCommand, 4);
+    check_enum_value(NormalIntentKind::PublishAdapterRemoved, 5);
+    check_enum_value(NormalIntentKind::PublishAdapterRestored, 6);
 
     check_enum_type_and_unknown<TrustedReceiptKind>();
     check_enum_value(TrustedReceiptKind::Invalid, 0);
@@ -14337,15 +14339,19 @@ void test_shared_normal_intent_canonical_contract()
         NormalIntent intent;
         bool expected;
     };
-    constexpr std::array<Case, 13> cases{{
+    constexpr std::array<Case, 17> cases{{
         {{NormalIntentKind::PublishTelemetry, 0, 0, 1, 1}, true},
         {{NormalIntentKind::RefreshRssi, 0, 0, 0, 0}, true},
         {{NormalIntentKind::PullConfig, 0, 0, 0, 0}, true},
         {{NormalIntentKind::PullCommand, 0, 0, 0, 0}, true},
+        {{NormalIntentKind::PublishAdapterRemoved, 0, 0, 1, 1}, true},
+        {{NormalIntentKind::PublishAdapterRestored, 0, 0, 1, 2}, true},
         {{NormalIntentKind::Invalid, 0, 0, 0, 0}, false},
         {{static_cast<NormalIntentKind>(0xff), 0, 0, 0, 0}, false},
         {{NormalIntentKind::PublishTelemetry, 0, 0, 0, 1}, false},
         {{NormalIntentKind::PublishTelemetry, 0, 0, 1, 0}, false},
+        {{NormalIntentKind::PublishAdapterRemoved, 0, 0, 0, 1}, false},
+        {{NormalIntentKind::PublishAdapterRestored, 0, 0, 1, 0}, false},
         {{NormalIntentKind::RefreshRssi, 0, 0, 1, 0}, false},
         {{NormalIntentKind::PullConfig, 0, 0, 0, 1}, false},
         {{NormalIntentKind::PullCommand, 0, 0, 1, 0}, false},
@@ -14354,7 +14360,7 @@ void test_shared_normal_intent_canonical_contract()
     }};
 
     static_assert(runtime_owner_normal_intent_is_canonical(cases[0].intent));
-    static_assert(!runtime_owner_normal_intent_is_canonical(cases[4].intent));
+    static_assert(!runtime_owner_normal_intent_is_canonical(cases[6].intent));
     for (const Case &entry : cases) {
         CHECK(runtime_owner_normal_intent_is_canonical(entry.intent) ==
               entry.expected);
@@ -14393,7 +14399,7 @@ void test_normal_admission_precedence_and_canonical_validation()
             before, RuntimeOwnerAdapterCoreTestPeer::snapshot(adapter)));
     }
 
-    const std::array<NormalIntent, 8> invalid_inputs{{
+    const std::array<NormalIntent, 10> invalid_inputs{{
         {},
         {static_cast<NormalIntentKind>(255), 0, 0, 0, 0},
         {NormalIntentKind::PublishTelemetry, 0, 0, 0, 1},
@@ -14402,6 +14408,8 @@ void test_normal_admission_precedence_and_canonical_validation()
         {NormalIntentKind::PublishTelemetry, 0, 1, 1, 1},
         {NormalIntentKind::RefreshRssi, 0, 0, 1, 0},
         {NormalIntentKind::PullConfig, 0, 0, 0, 1},
+        {NormalIntentKind::PublishAdapterRemoved, 0, 0, 0, 1},
+        {NormalIntentKind::PublishAdapterRestored, 0, 0, 1, 0},
     }};
     for (const NormalIntent input : invalid_inputs) {
         RuntimeOwnerAdapterCore adapter{};

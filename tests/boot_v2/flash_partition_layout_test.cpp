@@ -68,6 +68,49 @@ void test_consumers_use_central_partition_layout()
           std::string::npos);
 }
 
+void test_power_adapter_diagnostic_reuses_sensor_log_partition()
+{
+    const std::string flash_logger_header =
+        read_source("src/lib/flash_logger.hpp");
+    const std::string flash_logger =
+        read_source("src/lib/flash_logger.cpp");
+    const std::string status_task =
+        read_source("src/tasks/tasks_led.cpp");
+    const std::string debug_task =
+        read_source("src/tasks/tasks_debug.cpp");
+
+    CHECK(flash_logger_header.find(
+              "flash_log_write_power_adapter_probe") !=
+          std::string::npos);
+    CHECK(flash_logger_header.find(
+              "flash_log_dump_power_adapter_probes") !=
+          std::string::npos);
+    CHECK(flash_logger.find(
+              "POWER_ADAPTER_DIAGNOSTIC_MARKER = -707") !=
+          std::string::npos);
+    CHECK(status_task.find("GPIO_IRQ_EDGE_FALL") != std::string::npos);
+    CHECK(status_task.find(
+              "kPowerAdapterEdgeMask =\n"
+              "    GPIO_IRQ_EDGE_FALL;") !=
+          std::string::npos);
+    CHECK(status_task.find(
+              "flash_log_write_power_adapter_probe") !=
+          std::string::npos);
+    CHECK(status_task.find("stdio_usb_connected()") == std::string::npos);
+    CHECK(status_task.find(
+              "flash_log_dump_power_adapter_probes") !=
+          std::string::npos);
+    CHECK(status_task.find(
+              "gpio_acknowledge_irq(") !=
+          std::string::npos);
+    CHECK(debug_task.find(
+              "command_equals(command, \"dump_power\")") !=
+          std::string::npos);
+    CHECK(debug_task.find(
+              "flash_log_dump_power_adapter_probes();") !=
+          std::string::npos);
+}
+
 void test_exact_partition_table() noexcept
 {
     CHECK(version == 1u);
@@ -203,6 +246,7 @@ void test_every_region_is_sector_aligned() noexcept
 int main()
 {
     test_consumers_use_central_partition_layout();
+    test_power_adapter_diagnostic_reuses_sensor_log_partition();
     test_exact_partition_table();
     test_top_level_regions_are_exactly_adjacent();
     test_audio_slots_are_five_exact_subdivisions();

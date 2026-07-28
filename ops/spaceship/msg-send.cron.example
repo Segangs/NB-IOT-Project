@@ -1,0 +1,1 @@
+* * * * * /usr/bin/flock -n /home/yjijjnuzbr/tmp/msg-send.lock /home/yjijjnuzbr/project/msg_send_current/ops/spaceship/msg-send-run-once.sh >> /home/yjijjnuzbr/logs/msg-send-cron.log 2>&1

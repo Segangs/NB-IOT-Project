@@ -26,6 +26,7 @@ static constexpr uintptr_t flash_target_addr =
 static uint32_t g_write_offset = 0;
 static bool g_initialized = false;
 static uint32_t g_boot_epoch_offset = 0; // Baseline Unix time when system was booted
+static constexpr int16_t POWER_ADAPTER_DIAGNOSTIC_MARKER = -707;
 
 // Encodes Unix epoch time into decimal MMDDHHMMSS representation
 static uint32_t epoch_to_mmddhhmmss(uint32_t epoch) {
@@ -191,6 +192,51 @@ void flash_log_dump_csv(void) {
     }
 
     LOG("=== END OF FLASH LOG CSV (Total entries: %d) ===\n\n", count);
+}
+
+void flash_log_write_power_adapter_probe(
+    const uint32_t falling_edges,
+    const uint32_t rising_edges,
+    const uint8_t flags,
+    const int16_t recovery_us) {
+    flash_log_write(
+        static_cast<float>(falling_edges),
+        static_cast<float>(rising_edges),
+        1,
+        flags,
+        recovery_us,
+        POWER_ADAPTER_DIAGNOSTIC_MARKER);
+}
+
+void flash_log_dump_power_adapter_probes(void) {
+    const FlashLogEntry *entries =
+        (const FlashLogEntry *)flash_target_addr;
+    const uint32_t max_entries =
+        flash_partition::sensor_log_size / sizeof(FlashLogEntry);
+    uint32_t count = 0;
+
+    LOG("POWER_PROBE_FLASH_BEGIN\n");
+    for (uint32_t i = 0; i < max_entries; i++) {
+        if (entries[i].timestamp == 0xFFFFFFFF) {
+            break;
+        }
+        if (entries[i].system_error !=
+            POWER_ADAPTER_DIAGNOSTIC_MARKER) {
+            continue;
+        }
+
+        LOG(
+            "POWER_PROBE_FLASH TS=%u FALL=%.0f RISE=%.0f "
+            "FLAGS=0x%02X RECOVERY_US=%d BOOT=%u\n",
+            entries[i].timestamp,
+            entries[i].temperature,
+            entries[i].vsys_voltage,
+            entries[i].temp_status,
+            entries[i].modem_status,
+            entries[i].boot_reason);
+        count++;
+    }
+    LOG("POWER_PROBE_FLASH_END COUNT=%u\n", count);
 }
 
 void flash_log_clear(void) {

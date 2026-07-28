@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>센서별 온도 알림 설정</title>
+    <link rel="stylesheet" href="/static/css/mobile_input_zoom_guard.css">
+    <style>
+        @font-face {
+            font-family: "Sweet";
+            src: url("/static/fonts/SUITE-Regular.woff2") format("woff2");
+            font-weight: 400;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: "Sweet";
+            src: url("/static/fonts/SUITE-Bold.woff2") format("woff2");
+            font-weight: 700;
+            font-display: swap;
+        }
+
+        :root {
+            color-scheme: dark;
+            --bg-base: #0f172a;
+            --bg-surface: #1e293b;
+            --primary: #2563eb;
+            --secondary: #38bdf8;
+            --danger: #ef4444;
+            --success: #10b981;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            padding: 2rem 1rem;
+            background:
+                radial-gradient(circle at top, rgba(37, 99, 235, 0.16), transparent 42%),
+                var(--bg-base);
+            color: var(--text-main);
+            font-family: "Sweet", sans-serif;
+        }
+
+        .settings-shell {
+            width: min(900px, 100%);
+            margin: 0 auto;
+        }
+
+        .settings-header {
+            margin-bottom: 1.25rem;
+        }
+
+        .eyebrow {
+            color: var(--secondary);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+
+        h1 {
+            margin-top: 0.35rem;
+            font-size: clamp(1.45rem, 4vw, 2rem);
+        }
+
+        .settings-header p,
+        .fixed-note {
+            margin-top: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.55;
+        }
+
+        .saved-panel {
+            padding: 2rem 1.25rem;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            border-radius: 18px;
+            background: rgba(16, 185, 129, 0.08);
+            text-align: center;
+        }
+
+        .saved-panel h2 {
+            color: var(--success);
+            font-size: 1.35rem;
+        }
+
+        .saved-panel p {
+            margin-top: 0.65rem;
+            color: var(--text-muted);
+            line-height: 1.55;
+        }
+
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .sensor-card {
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: rgba(30, 41, 59, 0.92);
+            box-shadow: 0 12px 30px rgba(2, 6, 23, 0.22);
+        }
+
+        .sensor-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .sensor-name {
+            font-size: 1.15rem;
+            font-weight: 700;
+        }
+
+        .latest-value {
+            margin-top: 0.2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .sensor-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 999px;
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--secondary);
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+
+        .field {
+            display: grid;
+            gap: 0.4rem;
+            margin-top: 0.85rem;
+        }
+
+        label {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        input,
+        select {
+            width: 100%;
+            min-height: 44px;
+            padding: 0.65rem 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            outline: none;
+            background: rgba(15, 23, 42, 0.8);
+            color: var(--text-main);
+            font: inherit;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--secondary);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+        }
+
+        .fixed-note {
+            padding: 0.85rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .save-button {
+            display: block;
+            width: min(360px, 100%);
+            margin: 1.25rem auto 0;
+            padding: 0.85rem 1rem;
+            border: 0;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), #1d4ed8);
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 8px 22px rgba(37, 99, 235, 0.28);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem 0.75rem;
+                font-size: 0.9rem;
+            }
+
+            .settings-header {
+                margin-bottom: 0.85rem;
+            }
+
+            .settings-header p,
+            .fixed-note {
+                font-size: 0.78rem;
+            }
+
+            .sensor-grid {
+                grid-template-columns: 1fr;
+                gap: 0.7rem;
+            }
+
+            .sensor-card {
+                padding: 0.9rem;
+                border-radius: 13px;
+            }
+
+            .field {
+                margin-top: 0.65rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="settings-shell">
+        {% if saved %}
+            <section class="saved-panel">
+                <h2>설정 저장 완료</h2>
+                <p>새 온도값부터 변경된 기준을 사용합니다.<br>이 링크는 다시 사용할 수 없습니다.</p>
+            </section>
+        {% else %}
+            <header class="settings-header">
+                <div class="eyebrow">DEVICE {{ device_id }}</div>
+                <h1>센서별 온도 알림 설정</h1>
+                <p>연결된 온도 센서마다 상한 온도와 한 번의 이상 상황에서 받을 알림 횟수를 정합니다.</p>
+            </header>
+
+            <form method="post" action="/device-settings/{{ device_id }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="sensor-grid">
+                    {% for sensor in sensors %}
+                        <section class="sensor-card">
+                            <div class="sensor-card-header">
+                                <div>
+                                    <div class="sensor-name">{{ sensor.label }}</div>
+                                    <div class="latest-value">
+                                        {% if sensor.latest_value is not none %}
+                                            최근 {{ sensor.latest_value }}°C
+                                        {% else %}
+                                            측정값 없음
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <span class="sensor-badge">온도 센서</span>
+                            </div>
+
+                            <div class="field">
+                                <label for="upper_limit_{{ sensor.sensor_pk }}">상한 온도</label>
+                                <input
+                                    id="upper_limit_{{ sensor.sensor_pk }}"
+                                    name="upper_limit_{{ sensor.sensor_pk }}"
+                                    type="number"
+                                    min="-50"
+                                    max="25"
+                                    step="0.5"
+                                    value="{{ sensor.upper_limit }}"
+                                    required
+                                >
+                            </div>
+
+                            <div class="field">
+                                <label for="max_notifications_{{ sensor.sensor_pk }}">최대 알림 횟수</label>
+                                <select
+                                    id="max_notifications_{{ sensor.sensor_pk }}"
+                                    name="max_notifications_{{ sensor.sensor_pk }}"
+                                    required
+                                >
+                                    {% for count in (1, 2, 3) %}
+                                        <option value="{{ count }}" {% if count == sensor.max_notifications %}selected{% endif %}>{{ count }}회</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </section>
+                    {% endfor %}
+                </div>
+
+                <p class="fixed-note">재알림 간격: 20분 고정 · 저장 후 다음 온도 수신부터 적용</p>
+                <button class="save-button" type="submit">설정 저장</button>
+            </form>
+        {% endif %}
+    </main>
+</body>
+</html>

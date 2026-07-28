@@ -33,6 +33,16 @@ void flash_log_set_boot_epoch(uint32_t epoch_offset);
 // Print all stored logs in CSV format to standard output.
 void flash_log_dump_csv(void);
 
+// Persist one GP7 adapter diagnostic snapshot in the existing 32-byte log.
+void flash_log_write_power_adapter_probe(
+    uint32_t falling_edges,
+    uint32_t rising_edges,
+    uint8_t flags,
+    int16_t recovery_us);
+
+// Print only persisted GP7 adapter diagnostic snapshots.
+void flash_log_dump_power_adapter_probes(void);
+
 // Clear all logged entries from flash memory.
 void flash_log_clear(void);
 

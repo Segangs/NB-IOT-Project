@@ -8,6 +8,8 @@
 #include "tasks_sensor.hpp"
 #include "../config.h"
 #include "../boot_v2/sensor_quality_core.hpp"
+#include "../boot_v2/temperature_alarm_publish_core.hpp"
+#include "../boot_v2/runtime_owner_producer_facade.hpp"
 #include "../lib/log.hpp"
 #include "app_context.hpp"
 #include "pico/stdlib.h"
@@ -90,6 +92,8 @@ void vSensorTask(void *pvParameters)
     uint32_t serial_print_counter = 0;
     boot_v2::SensorQualityCore quality_ch0;
     boot_v2::SensorQualityCore quality_ch1;
+    boot_v2::TemperatureAlarmPublishCore alert_publish_ch0;
+    boot_v2::TemperatureAlarmPublishCore alert_publish_ch1;
     bool alarm_ch0 = false;
     bool alarm_ch1 = false;
 
@@ -137,7 +141,18 @@ void vSensorTask(void *pvParameters)
         }
         if (quality0.alarm_update_allowed != 0) {
             g_temp_ch0_sample_seq++;
+            if (g_temp_ch0_sample_seq == 0) {
+                g_temp_ch0_sample_seq = 1;
+            }
             alarm_ch0 = temp_ch0 > g_temp_upper_limit_ch0;
+        }
+        const auto alert0 = alert_publish_ch0.observe(
+            quality0.alarm_update_allowed != 0, alarm_ch0);
+        if (alert0.publish_required != 0 &&
+            boot_v2::runtime_owner_sensor_publish_telemetry(
+                1, g_temp_ch0_sample_seq) ==
+                boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery) {
+            alert_publish_ch0.confirm_submitted();
         }
         lcd_params.status_ch0 = status_ch0;
 
@@ -151,7 +166,18 @@ void vSensorTask(void *pvParameters)
         }
         if (quality1.alarm_update_allowed != 0) {
             g_temp_ch1_sample_seq++;
+            if (g_temp_ch1_sample_seq == 0) {
+                g_temp_ch1_sample_seq = 1;
+            }
             alarm_ch1 = temp_ch1 > g_temp_upper_limit_ch1;
+        }
+        const auto alert1 = alert_publish_ch1.observe(
+            quality1.alarm_update_allowed != 0, alarm_ch1);
+        if (alert1.publish_required != 0 &&
+            boot_v2::runtime_owner_sensor_publish_telemetry(
+                2, g_temp_ch1_sample_seq) ==
+                boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery) {
+            alert_publish_ch1.confirm_submitted();
         }
         lcd_params.status_ch1 = status_ch1;
 

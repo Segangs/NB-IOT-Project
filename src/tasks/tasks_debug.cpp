@@ -72,6 +72,8 @@ void vDebugTask(void *)
                     trim_command(command);
                     if (command_equals(command, "dump_csv")) {
                         flash_log_dump_csv();
+                    } else if (command_equals(command, "dump_power")) {
+                        flash_log_dump_power_adapter_probes();
                     } else if (command_equals(command, "clear_csv")) {
                         flash_log_clear();
                     } else if (command[0] != '\0') {

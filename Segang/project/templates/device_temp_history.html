@@ -155,6 +155,90 @@
         background-color: var(--bg-surface);
         color: var(--text-main);
     }
+
+    @media (max-width: 768px) {
+        .history-header-actions {
+            align-items: flex-start;
+            gap: 0.6rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .history-header-actions h2 {
+            font-size: 0.92rem !important;
+            line-height: 1.35;
+        }
+
+        .btn-back {
+            flex: 0 0 auto;
+            padding: 0.45rem 0.6rem;
+            border-radius: 9px;
+            font-size: 0.72rem;
+        }
+
+        .info-card-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.5rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .info-card {
+            min-width: 0;
+            min-height: 68px;
+            padding: 0.62rem 0.7rem;
+            border-radius: 10px;
+            gap: 0.15rem;
+        }
+
+        .info-card-imei {
+            grid-column: 1 / -1;
+        }
+
+        .info-card-label {
+            font-size: 0.64rem;
+            letter-spacing: 0.2px;
+        }
+
+        .info-card-value {
+            overflow-wrap: anywhere;
+            font-size: 0.9rem;
+            line-height: 1.25;
+        }
+
+        .info-card select {
+            margin-top: 0.1rem;
+            padding: 0.28rem 0.35rem;
+            font-size: 0.82rem;
+        }
+
+        .chart-card {
+            padding: 0.75rem;
+            margin-bottom: 0.8rem;
+            border-radius: 12px;
+        }
+
+        .chart-card h3 {
+            margin-bottom: 0.65rem !important;
+            font-size: 0.82rem !important;
+        }
+
+        .chart-container {
+            height: 220px;
+        }
+
+        .table-card {
+            border-radius: 12px;
+        }
+
+        .history-table {
+            min-width: 620px;
+            font-size: 0.75rem;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 0.7rem 0.75rem;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -197,7 +281,7 @@
             <span class="info-card-label">기기 모델명</span>
             <span class="info-card-value">{{ device.model_name }}</span>
         </div>
-        <div class="info-card">
+        <div class="info-card info-card-imei">
             <span class="info-card-label">단말 IMEI 식별코드</span>
             <span class="info-card-value" style="font-family: monospace; font-size: 1.1rem; color: var(--text-muted);">{{ device.imei }}</span>
         </div>
@@ -209,7 +293,7 @@
 
     <!-- Chart Section -->
     <div class="chart-card">
-        <h3 style="font-family: var(--font-title); font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+        <h3 id="deviceTempChartTitle" style="font-family: var(--font-title); font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
             <i class="fa-solid fa-chart-line" style="color: var(--secondary);"></i> 최근 50건 온도 변화 그래프
         </h3>
         <div class="chart-container">
@@ -264,9 +348,27 @@
         document.addEventListener("DOMContentLoaded", function() {
             const ctx = document.getElementById('deviceTempChart').getContext('2d');
             
-            const labels = {{ chart_labels | tojson }};
-            const values = {{ chart_values | tojson }};
+            const sourceLabels = {{ chart_labels | tojson }};
+            const sourceValues = {{ chart_values | tojson }};
             const upperLimit = {{ device.upper_limit }};
+            const mobileMedia = window.matchMedia("(max-width: 768px)");
+            const selectedWindow = window.NBResponsive.selectChartWindow(
+                sourceLabels,
+                sourceValues,
+                mobileMedia.matches
+            );
+            const labels = selectedWindow.labels;
+            const values = selectedWindow.values;
+
+            function updateChartTitle(mobile) {
+                const title = document.getElementById("deviceTempChartTitle");
+                if (title) {
+                    title.lastChild.textContent = mobile
+                        ? " 최근 10건 온도 변화 그래프"
+                        : " 최근 50건 온도 변화 그래프";
+                }
+            }
+            updateChartTitle(mobileMedia.matches);
             
             // Build threshold array
             const thresholdLine = Array(labels.length).fill(upperLimit);
@@ -282,7 +384,7 @@
             const pointRadius = values.map(v => v > upperLimit ? 6 : 4);
             const pointHoverRadius = values.map(v => v > upperLimit ? 8 : 6);
 
-            new Chart(ctx, {
+            const chart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
@@ -359,6 +461,35 @@
                     }
                 }
             });
+
+            function updateChartWindow() {
+                const nextWindow = window.NBResponsive.selectChartWindow(
+                    sourceLabels,
+                    sourceValues,
+                    mobileMedia.matches
+                );
+                chart.data.labels = nextWindow.labels;
+                chart.data.datasets[0].data = nextWindow.values;
+                chart.data.datasets[0].pointBackgroundColor = nextWindow.values.map(
+                    value => value > upperLimit ? '#ef4444' : '#2563eb'
+                );
+                chart.data.datasets[0].pointBorderColor = nextWindow.values.map(() => '#ffffff');
+                chart.data.datasets[0].pointRadius = nextWindow.values.map(
+                    value => value > upperLimit ? 6 : 4
+                );
+                chart.data.datasets[0].pointHoverRadius = nextWindow.values.map(
+                    value => value > upperLimit ? 8 : 6
+                );
+                chart.data.datasets[1].data = Array(nextWindow.labels.length).fill(upperLimit);
+                updateChartTitle(mobileMedia.matches);
+                chart.update();
+            }
+
+            if (typeof mobileMedia.addEventListener === "function") {
+                mobileMedia.addEventListener("change", updateChartWindow);
+            } else if (typeof mobileMedia.addListener === "function") {
+                mobileMedia.addListener(updateChartWindow);
+            }
 
             // --- Workplace / Machine dropdown navigation ---
             const userMachines = {{ user_machines | tojson }};

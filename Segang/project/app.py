@@ -1,23 +1,38 @@
 import os
 import secrets
+import sys
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from supabase import Client
+from supabase_clients import OAuthPkceStorage, create_machine_client, create_oauth_client
 
 # Load environment variables
-load_dotenv()
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(PROJECT_DIR, "..", ".."))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
+from message_integration import install_message_routes
+
+load_dotenv(os.path.join(REPO_ROOT, ".env"))
+load_dotenv(os.path.join(PROJECT_DIR, ".env"), override=True)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_URL and os.environ.get("SUPABASE_HOST"):
+    SUPABASE_URL = f"https://{os.environ.get('SUPABASE_HOST')}"
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(24))
 
-# Initialize Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Machine/DB client. OAuth code must never mutate this client's auth session.
+supabase_machine: Client = create_machine_client(SUPABASE_URL, SUPABASE_KEY)
+# Existing DB call sites use this alias; all auth calls use request-local oauth_client.
+supabase: Client = supabase_machine
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=30)
+message_services = install_message_routes(app, environ=os.environ)
 
 # Global storage for pending desktop logins
 pending_logins = {}
@@ -41,6 +56,36 @@ def parse_to_kst(t_str):
     if not dt:
         return None
     return dt
+
+def load_user_sensor_context():
+    sensor_res = supabase.table("USER_SENSOR").select(
+        "Id, userSensorId, deviceId, sensorCtgyId, setTmpUpLimit, setTmpLowLimit"
+    ).execute()
+    ctgy_res = supabase.table("SENSOR_CTGY").select(
+        "sensorCtgyId, sensorCtgyType, sensorCtgyModel"
+    ).execute()
+
+    ctgy_map = {c["sensorCtgyId"]: c for c in (ctgy_res.data or [])}
+    sensor_map = {}
+    device_sensor_map = {}
+    for item in (sensor_res.data or []):
+        sensor_pk = item["Id"]
+        ctgy = ctgy_map.get(item.get("sensorCtgyId"), {})
+        merged = {
+            **item,
+            "sensorCtgyType": ctgy.get("sensorCtgyType", ""),
+            "sensorCtgyModel": ctgy.get("sensorCtgyModel", "")
+        }
+        sensor_map[sensor_pk] = merged
+        device_sensor_map[(item["deviceId"], item["userSensorId"])] = merged
+    return sensor_map, device_sensor_map
+
+def sensor_label(user_sensor_id, sensor_type=""):
+    labels = {1: "TMP1", 2: "TMP2", 3: "MIC1", 4: "MIC2"}
+    return labels.get(user_sensor_id, sensor_type or f"Sensor {user_sensor_id}")
+
+def status_label(value):
+    return "정상" if value == 0 else "이상"
 
 def get_recent_logs(n=10):
     """Fetches recent database events from Supabase in the last 24 hours and formats them as simplified real-time logs."""
@@ -67,21 +112,11 @@ def get_recent_logs(n=10):
             .execute()
         sens_logs = sens_res.data or []
         
-        # Load sensors to map sensorId -> deviceId
-        sensor_res = supabase.table("sensor").select("sensorId, deviceId").execute()
-        sensor_map = {s["sensorId"]: s["deviceId"] for s in (sensor_res.data or [])}
+        sensor_map, _ = load_user_sensor_context()
 
         # Load device to map deviceId -> (deviceIMEI, userId)
         dev_res = supabase.table("device").select("deviceId, deviceIMEI, userId").execute()
         dev_map = {d["deviceId"]: (d["deviceIMEI"], d["userId"]) for d in (dev_res.data or [])}
-
-        # Load userMachine to map deviceId -> userMachineId
-        um_res = supabase.table("usermachine").select("deviceId, userMachineId").execute()
-        um_map = {um["deviceId"]: um["userMachineId"] for um in (um_res.data or [])}
-
-        # Load userSettings to map userMachineId -> tempUpperLimitValue
-        us_res = supabase.table("usersettings").select("userMachineId, tempUpperLimitValue").execute()
-        us_map = {us["userMachineId"]: float(us["tempUpperLimitValue"] or 30.0) for us in (us_res.data or [])}
 
         # Load user map
         users_res = supabase.table("users").select("userId, userName").execute()
@@ -116,7 +151,8 @@ def get_recent_logs(n=10):
             sens_id = slog.get("sensorId", 1)
             val = float(slog.get("sensorValue", 0.0))
             
-            d_id = sensor_map.get(sens_id)
+            sensor_info = sensor_map.get(sens_id, {})
+            d_id = sensor_info.get("deviceId")
             imei = "Unknown IMEI"
             u_id = None
             if d_id in dev_map:
@@ -125,11 +161,7 @@ def get_recent_logs(n=10):
             user_name = user_map.get(u_id, "외부인(OAuth)")
             
             # Check upper limit
-            upper_limit = 30.0 # Default fallback
-            if d_id in um_map:
-                um_id = um_map[d_id]
-                if um_id in us_map:
-                    upper_limit = us_map[um_id]
+            upper_limit = float(sensor_info.get("setTmpUpLimit") or -10.0)
                     
             status_str = "정상" if val <= upper_limit else "이상"
             
@@ -166,6 +198,12 @@ def add_static_font_cache_headers(response):
 
 @app.before_request
 def check_admin_inactivity():
+    if request.blueprint in (
+        "message_delivery",
+        "device_temperature_settings",
+    ):
+        return
+
     if request.endpoint in ('static', 'logout'):
         return
 
@@ -195,7 +233,7 @@ def check_admin_inactivity():
 
 def get_dynamic_anomalies():
     """
-    Computes anomalies in the last 24 hours by matching sensorvalue against usersettings limits.
+    Computes anomalies in the last 24 hours by matching sensorvalue against USER_SENSOR limits.
     Returns a list of calculated anomalies.
     """
     try:
@@ -210,9 +248,7 @@ def get_dynamic_anomalies():
             .order("sensorValueId", desc=True)\
             .limit(500)\
             .execute()
-        s_res = supabase.table("sensor").select("sensorId, deviceId").execute()
         um_res = supabase.table("usermachine").select("deviceId, userMachineId, machineId").execute()
-        us_res = supabase.table("usersettings").select("userMachineId, tempUpperLimitValue, tempLowerLimitValue").execute()
         m_res = supabase.table("machine").select("machineId, modelName").execute()
         
         # Load device owners mapping
@@ -220,15 +256,12 @@ def get_dynamic_anomalies():
         u_res = supabase.table("users").select("userId, userName").execute()
         
         sensorvalues = sv_res.data or []
-        sensors = s_res.data or []
         usermachines = um_res.data or []
-        usersettings = us_res.data or []
         machines = m_res.data or []
         devices = d_res.data or []
         users = u_res.data or []
         
-        # 1. Create sensor -> device mapping
-        sensor_device = {item["sensorId"]: item["deviceId"] for item in sensors}
+        sensor_map, _ = load_user_sensor_context()
         
         # 2. Create device -> userMachineId & machineId mapping
         device_machine = {}
@@ -241,14 +274,6 @@ def get_dynamic_anomalies():
         # 3. Create machineId -> modelName mapping
         machine_model = {item["machineId"]: item["modelName"] for item in machines}
         
-        # 4. Create userMachineId -> settings limits mapping
-        settings_map = {}
-        for item in usersettings:
-            settings_map[item["userMachineId"]] = {
-                "upper": float(item["tempUpperLimitValue"] or 0.0),
-                "lower": float(item["tempLowerLimitValue"] or 0.0)
-            }
-            
         # 5. Create device -> user name mapping
         device_user = {d["deviceId"]: d["userId"] for d in devices}
         user_name_map = {u["userId"]: u["userName"] for u in users}
@@ -256,7 +281,10 @@ def get_dynamic_anomalies():
         anomalies = []
         for sv in sensorvalues:
             sensor_id = sv.get("sensorId")
-            device_id = sensor_device.get(sensor_id)
+            sensor_info = sensor_map.get(sensor_id)
+            if not sensor_info or sensor_info.get("sensorCtgyType") != "TMP":
+                continue
+            device_id = sensor_info.get("deviceId")
             if not device_id:
                 continue
                 
@@ -267,13 +295,9 @@ def get_dynamic_anomalies():
             user_machine_id = dm["userMachineId"]
             machine_id = dm["machineId"]
             
-            limits = settings_map.get(user_machine_id)
-            if not limits:
-                continue
-                
             val = float(sv.get("sensorValue") or 0.0)
-            upper = limits["upper"]
-            lower = limits["lower"]
+            upper = float(sensor_info.get("setTmpUpLimit") or -10.0)
+            lower = float(sensor_info.get("setTmpLowLimit") or -10.0)
             
             is_anomaly = False
             msg = ""
@@ -455,6 +479,12 @@ def google_login():
         is_desktop = True
         
     try:
+        pkce_storage = OAuthPkceStorage()
+        oauth_client = create_oauth_client(
+            SUPABASE_URL,
+            SUPABASE_KEY,
+            storage=pkce_storage,
+        )
         if is_desktop:
             # Generate a unique login session ID for this desktop handshake
             login_id = secrets.token_hex(16)
@@ -465,12 +495,16 @@ def google_login():
             if "localhost" not in redirect_url and "127.0.0.1" not in redirect_url:
                 redirect_url = redirect_url.replace("http://", "https://")
             
-            res = supabase.auth.sign_in_with_oauth({
+            res = oauth_client.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": {
                     "redirect_to": redirect_url
                 }
             })
+            code_verifier = pkce_storage.code_verifier()
+            if not code_verifier:
+                raise Exception("Google OAuth PKCE verifier was not created")
+            session["oauth_code_verifier"] = code_verifier
             
             # Open the Google OAuth URL in the user's default system browser (outside PyWebView)
             # This enables standard OAuth redirects and native OS Passkey validation (WebAuthn)
@@ -484,12 +518,16 @@ def google_login():
             if "localhost" not in redirect_url and "127.0.0.1" not in redirect_url:
                 redirect_url = redirect_url.replace("http://", "https://")
                 
-            res = supabase.auth.sign_in_with_oauth({
+            res = oauth_client.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": {
                     "redirect_to": redirect_url
                 }
             })
+            code_verifier = pkce_storage.code_verifier()
+            if not code_verifier:
+                raise Exception("Google OAuth PKCE verifier was not created")
+            session["oauth_code_verifier"] = code_verifier
             return redirect(res.url)
     except Exception as err:
         flash(f"구글 로그인 호출 실패: {err}", "danger")
@@ -518,18 +556,25 @@ def auth_session():
     access_token = None
 
     try:
+        oauth_client = create_oauth_client(SUPABASE_URL, SUPABASE_KEY)
         # JWT format: three segments separated by '.'
         if re.fullmatch(r"[^\.]+\.[^\.]+\.[^\.]+", token_val):
             access_token = token_val
-            user_res = supabase.auth.get_user(access_token)
+            user_res = oauth_client.auth.get_user(access_token)
         else:
             # Exchange authorization code for session
-            exchange_res = supabase.auth.exchange_code_for_session({"auth_code": token_val})
+            code_verifier = session.pop("oauth_code_verifier", None)
+            if not code_verifier:
+                raise Exception("Google OAuth PKCE verifier is missing or expired")
+            exchange_res = oauth_client.auth.exchange_code_for_session({
+                "auth_code": token_val,
+                "code_verifier": code_verifier,
+            })
             if not exchange_res or not getattr(exchange_res, "session", None):
                 raise Exception("Failed to exchange auth code")
             access_token = exchange_res.session.access_token
             refresh_token = exchange_res.session.refresh_token
-            user_res = supabase.auth.get_user(access_token)
+            user_res = oauth_client.auth.get_user(access_token)
             
         if not user_res:
             raise Exception("User profile not found")
@@ -902,6 +947,10 @@ def device_status():
                 "cpin_status": "정상(READY)" if log.get("cpin_status") == 0 else "이상",
                 "csq_rssi": log.get("csq_rssi", 99),
                 "temp_sensor_status": "정상" if log.get("temp_sensor_status") == 0 else "이상",
+                "tmp1_status": status_label(log.get("tmp1_status", log.get("temp_sensor_status"))),
+                "tmp2_status": status_label(log.get("tmp2_status", log.get("temp_sensor_status"))),
+                "mic1_status": status_label(log.get("mic1_status", 1)),
+                "mic2_status": status_label(log.get("mic2_status", 1)),
                 "boot_reason_code": reason_code,
                 "cmd_id": c_id,
                 "cmd_submitted_time": cmd_submitted_time
@@ -914,22 +963,47 @@ def device_status():
     return render_template("device_status.html", logs=formatted_logs)
 
 # ----------------- Send Control Command to DeviceCmds -----------------
+COMMAND_OPCODES = frozenset({1, 2, 3, 4})
+
 @app.route("/send-command", methods=["POST"])
 def send_command():
     if not is_logged_in():
         return jsonify({"success": False, "error": "로그인이 필요합니다."}), 401
         
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"success": False, "error": "잘못된 요청 파라미터입니다."}), 400
+
         device_id = data.get("deviceId")
         cmd_code = data.get("cmd")
-        
-        if not device_id or cmd_code is None:
+
+        if (
+            type(device_id) is not int
+            or not 1 <= device_id <= 2147483647
+            or type(cmd_code) is not int
+            or cmd_code not in COMMAND_OPCODES
+        ):
             return jsonify({"success": False, "error": "잘못된 요청 파라미터입니다."}), 400
+
+        user_id = session.get("user_id")
+        if user_id is None:
+            return jsonify({"success": False, "error": "로그인이 필요합니다."}), 401
+
+        owner_res = (
+            supabase.table("device")
+            .select("deviceId")
+            .eq("deviceId", device_id)
+            .eq("userId", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not owner_res.data:
+            return jsonify({"success": False, "error": "기기를 찾을 수 없습니다."}), 404
             
         insert_data = {
-            "deviceId": int(device_id),
-            "cmd": int(cmd_code),
+            "deviceId": device_id,
+            "cmd": cmd_code,
             "status": 0
         }
         
@@ -939,8 +1013,12 @@ def send_command():
             
         return jsonify({"success": True, "message": "명령 전송 완료 (대기 중)"})
         
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception:
+        app.logger.exception("Device command request failed")
+        return jsonify({
+            "success": False,
+            "error": "명령 처리 중 오류가 발생했습니다."
+        }), 500
 
 # ----------------- Temperature Status (온도 상태 상세 비교) -----------------
 @app.route("/temp-status")
@@ -954,9 +1032,7 @@ def temp_status():
         sv_res = supabase.table("sensorvalue").select("*").order("sensorValueId", desc=True).limit(150).execute()
         sensor_values = sv_res.data or []
         
-        # Load mappings
-        s_res = supabase.table("sensor").select("sensorId, deviceId").execute()
-        sensor_device = {s["sensorId"]: s["deviceId"] for s in (s_res.data or [])}
+        sensor_map, _ = load_user_sensor_context()
         
         dev_res = supabase.table("device").select("deviceId, userId, deviceIMEI").execute()
         dev_map = {d["deviceId"]: (d["deviceIMEI"], d["userId"]) for d in (dev_res.data or [])}
@@ -969,9 +1045,6 @@ def temp_status():
                 "machineId": item["machineId"]
             }
             
-        us_res = supabase.table("usersettings").select("userMachineId, tempUpperLimitValue").execute()
-        settings_map = {item["userMachineId"]: float(item["tempUpperLimitValue"] or 30.0) for item in (us_res.data or [])}
-        
         users_res = supabase.table("users").select("userId, userName").execute()
         user_map = {u["userId"]: u["userName"] for u in (users_res.data or [])}
         
@@ -981,13 +1054,16 @@ def temp_status():
         formatted_temps = []
         for sv in sensor_values:
             sens_id = sv.get("sensorId")
+            sensor_info = sensor_map.get(sens_id, {})
+            if sensor_info.get("sensorCtgyType") != "TMP":
+                continue
             val = float(sv.get("sensorValue") or 0.0)
             
-            d_id = sensor_device.get(sens_id)
+            d_id = sensor_info.get("deviceId")
             imei = "Unknown IMEI"
             u_id = None
             model_name = "알 수 없는 기기"
-            upper_limit = 30.0
+            upper_limit = float(sensor_info.get("setTmpUpLimit") or -10.0)
             
             if d_id:
                 if d_id in dev_map:
@@ -995,7 +1071,6 @@ def temp_status():
                 dm = device_machine.get(d_id)
                 if dm:
                     model_name = machine_model.get(dm["machineId"], "알 수 없는 기기")
-                    upper_limit = settings_map.get(dm["userMachineId"], 30.0)
                     
             user_name = user_map.get(u_id, "외부인(OAuth)")
             
@@ -1015,6 +1090,7 @@ def temp_status():
                 "user_name": user_name,
                 "model_name": model_name,
                 "imei": imei,
+                "sensor_label": sensor_label(sensor_info.get("userSensorId"), sensor_info.get("sensorCtgyType")),
                 "value": val,
                 "upper_limit": upper_limit,
                 "status_ok": status_ok,
@@ -1030,9 +1106,20 @@ def temp_status():
 # ----------------- Device Temperature History (기기별 온도 추이) -----------------
 @app.route("/device-temp-history/<int:device_id>")
 def device_temp_history(device_id):
-    if not is_logged_in():
+    regular_login = is_logged_in()
+    limited_grant = None
+    if not regular_login and message_services is not None:
+        limited_grant = message_services.resolve_limited_session(
+            request.cookies.get("__Host-limited_session")
+        )
+    if not regular_login and limited_grant is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
+    if (
+        limited_grant is not None
+        and limited_grant.device_id != device_id
+    ):
+        return "", 404
         
     try:
         # 1. Fetch device data
@@ -1087,6 +1174,19 @@ def device_temp_history(device_id):
                         "workplaceAddress": w_addr,
                         "workplaceName": w_name
                     })
+
+        if limited_grant is not None:
+            workplaces = [
+                workplace
+                for workplace in workplaces
+                if workplace.get("userWorkplaceId")
+                == limited_grant.workplace_id
+            ]
+            user_machines_list = [
+                machine
+                for machine in user_machines_list
+                if machine.get("deviceId") == limited_grant.device_id
+            ]
         
         # Determine current workplace Info
         workplace_map = {w["userWorkplaceId"]: w["WorkplaceAddress"] for w in workplaces}
@@ -1107,16 +1207,30 @@ def device_temp_history(device_id):
             if m_res.data:
                 model_name = m_res.data[0].get("modelName", "알 수 없는 기기")
                 
-        # 5. Fetch upper limit value
-        upper_limit = 30.0
-        if user_machine_id:
-            us_res = supabase.table("usersettings").select("tempUpperLimitValue").eq("userMachineId", user_machine_id).execute()
-            if us_res.data:
-                upper_limit = float(us_res.data[0].get("tempUpperLimitValue") or 30.0)
-                
-        # 6. Fetch sensors for this device
-        s_res = supabase.table("sensor").select("sensorId").eq("deviceId", device_id).execute()
-        sensor_ids = [s["sensorId"] for s in (s_res.data or [])]
+        # 5–6. Fetch only temperature sensors and their live limits.
+        sensor_map, device_sensor_map = load_user_sensor_context()
+        tmp_sensors = [
+            item for item in device_sensor_map.values()
+            if item.get("deviceId") == device_id
+            and item.get("sensorCtgyType") == "TMP"
+        ]
+        sensor_ids = [s["Id"] for s in tmp_sensors]
+        upper_limit = float(
+            (
+                tmp_sensors[0].get("setTmpUpLimit")
+                if tmp_sensors
+                else None
+            )
+            or -10.0
+        )
+        if limited_grant is not None:
+            allowed_sensor_ids = set(limited_grant.sensor_ids)
+            if (
+                not allowed_sensor_ids
+                or not allowed_sensor_ids.issubset(set(sensor_ids))
+            ):
+                return "", 404
+            sensor_ids = sorted(allowed_sensor_ids)
         
         # 7. Fetch last 50 sensor values
         formatted_history = []
@@ -1141,6 +1255,12 @@ def device_temp_history(device_id):
                 formatted_history.append({
                     "id": sv.get("sensorValueId"),
                     "time": formatted_time,
+                    "sensor_label": sensor_label(
+                        sensor_map.get(
+                            sv.get("sensorId"),
+                            {},
+                        ).get("userSensorId")
+                    ),
                     "value": val,
                     "status_ok": val <= upper_limit
                 })
@@ -1195,21 +1315,18 @@ def api_national_temperatures():
     try:
         # Fetch required tables from Supabase to join details in memory
         sv_res = supabase.table("sensorvalue").select("*").order("sensorValueId", desc=True).limit(80).execute()
-        s_res = supabase.table("sensor").select("sensorId, deviceId").execute()
         d_res = supabase.table("device").select("deviceId, userId").execute()
         um_res = supabase.table("usermachine").select("deviceId, machineId").execute()
         m_res = supabase.table("machine").select("machineId, systemType").execute()
         u_res = supabase.table("users").select("userId, userName").execute()
         
         sensorvalues = sv_res.data or []
-        sensors = s_res.data or []
         devices = d_res.data or []
         usermachines = um_res.data or []
         machines = m_res.data or []
         users = u_res.data or []
         
-        # 1. Create sensor -> device mapping
-        sensor_device = {item["sensorId"]: item["deviceId"] for item in sensors}
+        sensor_map, _ = load_user_sensor_context()
         
         # 2. Create device -> user mapping
         device_user = {item["deviceId"]: item["userId"] for item in devices}
@@ -1226,7 +1343,10 @@ def api_national_temperatures():
         details = []
         for sv in sensorvalues:
             sensor_id = sv.get("sensorId")
-            device_id = sensor_device.get(sensor_id)
+            sensor_info = sensor_map.get(sensor_id, {})
+            if sensor_info.get("sensorCtgyType") != "TMP":
+                continue
+            device_id = sensor_info.get("deviceId")
             
             # User Name lookup
             user_id = device_user.get(device_id) if device_id else None
@@ -1288,14 +1408,13 @@ def api_status():
         sens_res = supabase.table("sensorvalue").select("*").gte("sensorvaluetime", sens_cutoff.strftime("%Y-%m-%dT%H:%M:%S")).execute()
         sens_data = sens_res.data or []
         
-        sensor_res = supabase.table("sensor").select("sensorId, deviceId").execute()
-        sensor_map = {s["sensorId"]: s["deviceId"] for s in (sensor_res.data or [])}
+        sensor_map, _ = load_user_sensor_context()
         
         active_device_ids = set()
         for b in boot_data:
             active_device_ids.add(b["deviceId"])
         for s in sens_data:
-            d_id = sensor_map.get(s["sensorId"])
+            d_id = sensor_map.get(s["sensorId"], {}).get("deviceId")
             if d_id:
                 active_device_ids.add(d_id)
                 
@@ -1340,8 +1459,14 @@ def api_status():
                 if ram == 0: d_score += 25
                 device_scores.append(d_score)
                 
-                s_status = blog.get("temp_sensor_status")
-                s_score = 100 if s_status == 0 else 0
+                status_fields = [
+                    blog.get("tmp1_status", blog.get("temp_sensor_status")),
+                    blog.get("tmp2_status", blog.get("temp_sensor_status")),
+                    blog.get("mic1_status"),
+                    blog.get("mic2_status")
+                ]
+                ok_count = sum(1 for value in status_fields if value == 0)
+                s_score = (ok_count / len(status_fields)) * 100
                 sensor_scores.append(s_score)
                 
                 at = blog.get("at_status")
@@ -1365,17 +1490,15 @@ def api_status():
         comm_health = round(sum(conn_scores) / len(conn_scores), 1) if conn_scores else 100.0
         
         # 4. Hourly normal operation rate trend (last 12h) using carry-forward
-        um_res = supabase.table("usermachine").select("deviceId, userMachineId").execute()
-        um_map = {um["deviceId"]: um["userMachineId"] for um in (um_res.data or [])}
-        
-        us_res = supabase.table("usersettings").select("userMachineId, tempUpperLimitValue").execute()
-        us_map = {us["userMachineId"]: float(us["tempUpperLimitValue"] or 30.0) for us in (us_res.data or [])}
-        
         device_limits = {}
         for d_id in target_device_ids:
-            um_id = um_map.get(d_id)
-            limit = us_map.get(um_id, 30.0) if um_id else 30.0
-            device_limits[d_id] = limit
+            limits = [
+                float(info.get("setTmpUpLimit") or -10.0)
+                for info in sensor_map.values()
+                if info.get("deviceId") == d_id
+                and info.get("sensorCtgyType") == "TMP"
+            ]
+            device_limits[d_id] = min(limits) if limits else -10.0
 
         all_sv_res = supabase.table("sensorvalue").select("*").execute()
         all_sv = all_sv_res.data or []
@@ -1393,7 +1516,10 @@ def api_status():
                 dev_sensors = []
                 for sv in all_sv:
                     s_id = sv["sensorId"]
-                    s_dev_id = sensor_map.get(s_id)
+                    s_info = sensor_map.get(s_id, {})
+                    if s_info.get("sensorCtgyType") != "TMP":
+                        continue
+                    s_dev_id = s_info.get("deviceId")
                     if s_dev_id == d_id:
                         sv_time = parse_to_kst(sv["sensorvaluetime"])
                         if sv_time and sv_time <= b_end:

@@ -27,7 +27,24 @@ constexpr RuntimeOwnerUrgentMessage power_button(
     const std::uint32_t correlation = 101) noexcept
 {
     return {
-        RuntimeOwnerUrgentSource::PowerButton, {}, sequence, correlation};
+        RuntimeOwnerUrgentSource::PowerButton,
+        RuntimeOwnerShutdownIntent::AutomaticByUsb,
+        {},
+        sequence,
+        correlation};
+}
+
+constexpr RuntimeOwnerUrgentMessage authenticated(
+    const RuntimeOwnerShutdownIntent intent,
+    const std::uint32_t sequence = 12,
+    const std::uint32_t correlation = 102) noexcept
+{
+    return {
+        RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand,
+        intent,
+        {},
+        sequence,
+        correlation};
 }
 
 constexpr UsbPowerObservation usb(
@@ -72,6 +89,7 @@ void test_start_validation_and_exact_context()
     RuntimeOwnerUrgentMessage copied{};
     CHECK(core.shutdown_context(copied));
     CHECK(copied.source == RuntimeOwnerUrgentSource::PowerButton);
+    CHECK(copied.intent == RuntimeOwnerShutdownIntent::AutomaticByUsb);
     CHECK(copied.producer_sequence == 11);
     CHECK(copied.incident_correlation_id == 101);
 }
@@ -216,6 +234,65 @@ void test_usb_absent_allows_gp15_only_after_poweroff_evidence()
               RuntimeOwnerShutdownCleanupStep::PowerOffModem));
 }
 
+void test_authenticated_reboot_always_commits_watchdog()
+{
+    for (const bool initial_present : {false, true}) {
+        RuntimeOwnerShutdownFinalizerCore core{};
+        CHECK(core.start(
+                  authenticated(RuntimeOwnerShutdownIntent::Reboot),
+                  usb(initial_present, 50, 11000),
+                  11000,
+                  90000) == RuntimeOwnerShutdownStartResult::Started);
+        for (const auto step : kSteps) {
+            CHECK(core.complete(
+                      step,
+                      RuntimeOwnerShutdownStepResult::Succeeded,
+                      12000) ==
+                  RuntimeOwnerShutdownCompletionResult::Accepted);
+        }
+        CHECK(core.submit_usb_recheck(
+                  usb(initial_present, 51, 12001)) ==
+              RuntimeOwnerShutdownUsbResult::WatchdogAllowed);
+        CHECK(core.next(12002).action ==
+              RuntimeOwnerShutdownFinalizeAction::CommitWatchdog);
+    }
+}
+
+void test_authenticated_power_off_preserves_usb_policy()
+{
+    RuntimeOwnerShutdownFinalizerCore absent{};
+    CHECK(absent.start(
+              authenticated(RuntimeOwnerShutdownIntent::PowerOff),
+              usb(false, 60, 13000),
+              13000,
+              90000) == RuntimeOwnerShutdownStartResult::Started);
+    for (const auto step : kSteps) {
+        CHECK(absent.complete(
+                  step,
+                  RuntimeOwnerShutdownStepResult::Succeeded,
+                  14000) ==
+              RuntimeOwnerShutdownCompletionResult::Accepted);
+    }
+    CHECK(absent.submit_usb_recheck(usb(false, 61, 14001)) ==
+          RuntimeOwnerShutdownUsbResult::Gp15Allowed);
+
+    RuntimeOwnerShutdownFinalizerCore present{};
+    CHECK(present.start(
+              authenticated(RuntimeOwnerShutdownIntent::PowerOff),
+              usb(true, 70, 15000),
+              15000,
+              90000) == RuntimeOwnerShutdownStartResult::Started);
+    for (const auto step : kSteps) {
+        CHECK(present.complete(
+                  step,
+                  RuntimeOwnerShutdownStepResult::Succeeded,
+                  16000) ==
+              RuntimeOwnerShutdownCompletionResult::Accepted);
+    }
+    CHECK(present.submit_usb_recheck(usb(true, 71, 16001)) ==
+          RuntimeOwnerShutdownUsbResult::WatchdogAllowed);
+}
+
 void test_deadline_is_inclusive_and_wrap_safe()
 {
     RuntimeOwnerShutdownFinalizerCore core{};
@@ -262,6 +339,8 @@ int main()
     test_usb_change_fails_closed();
     test_usb_present_allows_watchdog_only_after_fresh_sample();
     test_usb_absent_allows_gp15_only_after_poweroff_evidence();
+    test_authenticated_reboot_always_commits_watchdog();
+    test_authenticated_power_off_preserves_usb_policy();
     test_deadline_is_inclusive_and_wrap_safe();
     if (failures != 0) {
         std::printf(

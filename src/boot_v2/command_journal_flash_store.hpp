@@ -7,6 +7,9 @@
 
 namespace boot_v2 {
 
+[[nodiscard]] CommandJournalStorePort
+command_journal_flash_port() noexcept;
+
 [[nodiscard]] CommandJournalStoreResult command_journal_flash_load(
     CommandJournalRecord &output) noexcept;
 

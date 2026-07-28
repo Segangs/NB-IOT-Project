@@ -26,6 +26,546 @@
 
 ---
 
+## 📅 2026-07-29: [No-Hardware Closure] TEMP 알림 운영 복귀·DS18B20 초기값 차단
+
+* **개발 범주**: Supabase read-only 감사, TEMP 알림 정책, DS18B20 센서 입력, 전체 회귀, Git 추적 경계
+* **수정 파일**: `ds18b20_sample_core.hpp`, `tasks_sensor.cpp`, boot_v2 센서 테스트·CMake, TEMP 복귀 migration lifecycle, DB 계약 테스트, `.gitignore`, `README.md`, `project_history.md`
+* 운영 TEMP 임시 무제한 알림의 센서 17 incident 8 제4회 outbox·`msg_send_id=80`·provider `success`·code `1000` 종결 확인
+* 운영 trigger의 임시 상한 32,767회·20분 재알림 유지·service-role 전용 실행·TEMP 상태 및 outbox RLS 활성 상태 read-only 대조
+* 임시 migration의 운영 history `20260728083006`과 로컬 artifact `20260727232840`의 provenance 차이 기록
+* 기존 제4회 성공 이력과 확대된 제약을 보존하면서 신규 발송 판단만 센서별 `notificationFrequency` 1~3회로 복귀하는 비파괴 migration 작성
+* 복귀 migration·rollback·precheck·verification·behavior rehearsal과 계약 테스트 4/4 통과
+* 운영 migration `20260729020216_restore_configured_temperature_alert_limits` 적용과 임시 32,767회 trigger 조건 제거
+* 센서별 `v_max_notifications` 조건·기존 20분 간격·service-role 전용 실행·TEMP RLS 유지 확인
+* 기존 제4회 상태·outbox 각 1건 보존과 처리·대기 outbox 0건 확인
+* 운영 DB 사후 verification·Postgres ERROR/FATAL 0·advisor 재실행과 기존 RLS 비활성 15개 보안 부채 유지
+* DS18B20 전원 인가 직후 원시값 `0x0550`을 정확히 식별하여 기존 +5℃ 보정 전에 hardware status 6으로 차단
+* `0x054F`·`0x0551` 인접 정상값 허용과 유효 온도 범위 -55℃~125℃ 유지
+* 차단 표본의 TEMP telemetry·고온 부저·알림 판정 제외와 기존 센서 오류 표시 경로 인계
+* 신규 센서 단위 테스트 RED 재현 후 최소 구현 GREEN과 전체 boot_v2 host 41/41 통과
+* DB 계약 277/277·Flask 서버 106/106·메시지 worker 141/141·모바일 JavaScript 6/6·Python compile·Shell syntax·`git diff --check` 통과
+* fresh Pico 2 Release UF2 `/private/tmp/nb-iot-final-fw.jHus1X/nb_iot_project.uf2` 생성
+* UF2 513,024바이트·2026-07-29 02:05:00 KST·SHA-256 `649518d76acbb9b976e7f79dea7a2c745d6f6a9e87e06daf70d7814352e35a9a`
+* `.gitignore`의 Python cache·obsolete PHP callback artifact 제외와 비공개 handoff tracked 0건 확인
+* 기존 `DOCS/codex/mig` 4개 로컬 보존·Git 추적 해제와 PCB 제품자료 6개 추적 유지
+* 실제 비밀값·관리자 전화번호·IMSI 문자열 Git 대상 미검출과 `.env` 제외 확인
+* 원격 `origin/main`과 기능 브랜치 기준점 0/0 확인 후 승인된 제품 변경 전체 통합
+* Pico flash·실물 검증·서버 배포·EMQX 변경 0
+
+## 📅 2026-07-28: [Temperature Alert] 고온 알림 횟수 제한 임시 해제
+
+* **개발 범주**: Supabase PostgreSQL, TEMP Alert Trigger, 운영 migration
+* **수정 파일**: `20260727232840_temporary_unlimited_temperature_alerts` migration·rollback·precheck·verification·behavior, 계약 테스트, `README.md`, `project_history.md`
+* 부팅 후 고온 telemetry 적재에도 센서 2의 기존 incident `high_notification_count=3`으로 추가 알림이 억제된 원인 확정
+* 센서 1의 2026-07-28 00:40 KST 신규 고온 알림은 `msg_send sent`·provider `success`, 센서 2 incident 4는 3회 소진 상태 확인
+* 운영 `capture_temperature_alert_transition()`의 센서별 1~3회 설정 상한 임시 우회
+* 고온 재알림 기존 20분 간격과 sensorvalue/event 중복 방지·정상 복귀 incident 처리 유지
+* `high_notification_count`·`notification_ordinal` 제약 상한을 smallint 최대값 32,767회로 확대
+* 운영 Supabase migration 적용 성공과 사용자 요청에 따른 적용 직후 사후 검증 미실행
+* 기존 RLS·함수 ACL·설정 화면 1~3회 입력 계약·Pico 펌웨어·EMQX·Spaceship worker 변경 없음
+* 3회를 초과한 운영 데이터 생성 뒤 자동 rollback 차단과 명시적 데이터 결정 요구 계약 기록
+* Git stage·commit·push 0
+
+## 📅 2026-07-28: [Firmware] 전원 상세 로그 제거·설정 요청 20분 조정
+
+* **개발 범주**: Pico 시리얼 로그, 주기 설정 요청, Command Polling, TDD, 실기 플래시
+* **수정 파일**: `command_periodic_schedule_core.hpp`, `tasks_led.cpp`, `command_periodic_schedule_core_test.cpp`, `pcb_pinmap_contract_test.cpp`, `README.md`, `project_history.md`
+* 매초 출력되던 `POWER_ADAPTER_PROBE`·`POWER_ADAPTER_EDGE` 상세 시리얼 로그 제거
+* GP7 probe·pull-down·edge 누적·Flash 진단·전원 상태 전환·shutdown 동작 유지
+* 실제 전원 상태 전환과 종료 작업 관련 로그 유지
+* 설정값 요청 주기 `60,000ms`에서 `1,200,000ms`로 변경
+* 명령 요청 기존 `1,200,000ms` 유지와 같은 시점의 설정 우선·다음 step 명령 처리 유지
+* 1분 미요청·20분 설정 요청·설정 직후 명령 요청·상세 로그 문자열 부재 계약 추가
+* 변경 전 대상 test 4개 예상 실패 확인과 최소 구현 후 대상 2/2·전체 boot_v2 host 40/40 통과
+* fresh Pico 2 Release 빌드 완료와 UF2 513,024바이트·2026-07-28 01:08:43 KST·SHA-256 `1935413977d2e3631000a618acb489604bf8cb639bf86f675f6c040bc9ef8d71`
+* 기존 별도 Terminal 수집 중단 확인 후 검증 전용 자동 재연결 Terminal 실행
+* picotool BOOTSEL 자동 전환·flash·100% verify·application reboot 완료
+* 새 부팅 로그 `MODEM_FLOW_CFG_OK`·`TXON_CFG` 확인과 `POWER_ADAPTER_PROBE`·`POWER_ADAPTER_EDGE` 0건
+* 서버·EMQX·Supabase·Git stage·commit·push 변경 없음
+
+## 📅 2026-07-28: [Firmware] USB 전원 합성·실제 TXON·BATT MODE 보정
+
+* **개발 범주**: Pico 전원 판정, GP5 TXON, GP28 MODEM/TX, LCD 배치, Supabase read-only 추적, TDD
+* **수정 파일**: `runtime_owner_rtos.hpp/cpp`, `status_led_policy.hpp`, `runtime_owner_transmit_indicator.hpp`, `lcd_status_policy.hpp`, `tasks_boot.cpp`, `tasks_led.cpp`, `tasks_lcd.cpp`, 관련 host test·CMake
+* USB 연결 중 GP7 LOW만으로 배터리 유예에 진입하여 전원분리·종료 알림과 watchdog 재부팅이 반복된 실기 로그 원인 확정
+* GP7 어댑터 또는 USB 연결 중 하나라도 존재하면 외부전원으로 판정하는 합성 입력 적용
+* Runtime 준비 전 전원 상태 머신을 외부전원으로 유지하여 부팅 중 210초 종료 commit 선소진 차단
+* 배터리 유예는 Runtime 준비 후 GP7·USB가 모두 없을 때만 기존 1초 debounce·210초 commit·300초 종료 흐름 시작
+* GP28의 장시간 software `OpenTransport` 표시 제거와 GP5 TXON active-low falling edge 수집 적용
+* 짧은 실제 TXON pulse의 100ms 가시 유지와 GP28 평상시 HIGH·송신 중 LOW 표시 적용
+* 배터리 운전 LCD 윗줄 `BATT MODE`·아랫줄 기존 T1/T2 온도·센서 오류 표시 유지
+* 부팅 transport 제출 전 임시 `Start Owner` LCD 문구 제거와 `Check Pico`·`Boot Error` 유지
+* 실기 T2 `[2,26.8]` MQTTS `MQTT_PUB_OK`와 Supabase 센서값 26.8℃·26.9℃ 정상 적재 확인
+* T2 상한 -10℃·고온 incident 4 유지·기존 알림 3건 모두 `sent`·`high_notification_count=3`에 따른 현재 추가 알림 억제 확인
+* 신규 실패 테스트 RED 후 최소 구현 GREEN과 대상 7/7·전체 boot_v2 host 40/40 통과
+* fresh Pico 2 Release 빌드 완료와 UF2 513,536바이트·2026-07-28 00:44:54 KST·SHA-256 `4bb5cd526314b46314ccd29e223e720b4cd7a4f23525d556ec7621a3df032748`
+* Supabase 운영 데이터·스키마·서버·EMQX 변경 0, 기존 public RLS 비활성 15개 보안 부채 유지
+* Pico flash·재부팅·시리얼 실기 검증 0, Git stage·commit·push 0
+
+## 📅 2026-07-28: [Firmware] PWR/STATUS 종료 표시·MODEM/TX 점멸 복구
+
+* **개발 범주**: Pico GPIO LED, Runtime V2 MQTT 표시, Power Shutdown, TDD
+* **수정 파일**: `status_led_policy.hpp`, `runtime_owner_transmit_indicator.hpp`, `runtime_owner_device_backend.cpp`, `tasks_led.cpp`, 관련 host test·CMake
+* 2026-07-02 최초 GP28 평상시 ON·송신 중 LOW 반전과 2026-07-03 `is_transmitting` 100ms fallback 점멸 이력 재확인
+* Runtime V2 전환 중 `is_transmitting=true` 생산 경로 제거와 LED 소비 코드 잔존을 MODEM/TX 상시 점등의 직접 원인으로 확정
+* 정상 상태 GP9 초록 고정, 부팅·전원버튼 종료 latch·어댑터 battery grace 중 GP8 빨강 500ms 점멸 정책 통합
+* 어댑터 복구 확인 후 초록 복귀와 210초 종료 commit 이후 복구 불취소 기존 전원 안전 계약 유지
+* MODEM/TX GP28 평상시 ON과 MQTT 연결·구독·publish·config/command·전원 이벤트 구간의 100ms 역상 점멸 복구
+* shutdown `PublishDying` 송신 표시 포함과 scope 종료·조기 return 시 기존 indicator 값 자동 복원
+* LED 순수 정책 26/26·Runtime 송신 표시 22/22 host 검사와 touched-file `git diff --check` 통과
+* 전체 boot_v2 host suite 재구성은 비관련 기존 `tasks_debug.cpp` protected SHA 불일치로 구성 전 차단 유지
+* fresh Pico 2 Release 빌드 완료와 UF2 513,536바이트·2026-07-28 00:16:33 KST·SHA-256 `4a0c7ed1c308198e091b8cb2ea2ac94fc383be9aa846fd975338eeaf9fc17e7e`
+* `picotool` Pico flash·100% verify·application reboot 성공과 별도 Terminal `/dev/cu.usbmodem111201` 자동 재연결 확인
+* 20시간 이상 잔존한 이전 시리얼 판독기 중복 점유 정리 후 `SELFTEST OK`·`MODEM_PWR_ON`·`LCD_INIT_DONE 0x27` 정상 수신
+* 실물 PWR/STATUS·MODEM/TX LED 검증 사용자 확인 대기, 외부 서비스·DB·EMQX·서버 변경 0, Git stage·commit·push 0
+
+## 📅 2026-07-27: [Build Security] CMake 비밀값 주입 차단·RLS 보류
+
+* **개발 범주**: CMake Environment Allowlist, Firmware Build Security, Supabase Read-only Audit, TDD
+* **수정 파일**: `CMakeLists.txt`, `cmake/load_firmware_env.cmake`, `tests/contracts/test_cmake_firmware_env_contract.py`, `README.md`, `project_history.md`, 비공개 master/deferred handoff
+* Supabase `NB_IOT` read-only 재감사의 public table 24개·RLS 비활성 15개·policy 0개 확인
+* public 함수 39개 중 `SECURITY DEFINER` 37개·고정 `search_path` 미확인 16개와 legacy `public.users` 27개·`auth.users` 1개 확인
+* 현재 browser Realtime·Flask machine caller의 anon 역할 의존으로 무정책 RLS 활성화 시 운영 중단 위험 확인
+* 사용자 명시 결정에 따른 RLS live 활성화·policy·grant·함수 변경 보류와 Supabase mutation 0
+* 기존 CMake의 전체 `.env` 순회가 가짜 Supabase·Bizppurio·MQTT 비밀값을 제품과 modem diagnostic target compiler command에 함께 넣는 RED 재현
+* firmware compile-time 허용 키를 `APN_NAME`·`MQTT_BROKER_HOST`·`MQTT_BROKER_PORT` 정확히 3개로 제한
+* 허용 키의 빈 값·형식 오류·중복 오류에서 키 이름만 표시하고 원본 값 비출력
+* `nb_iot_project` target `PRIVATE` 주입과 `modem_at_console` 격리
+* `MQTT_DEVICE_ID`·`MQTT_USERNAME`·`MQTT_PASSWORD` compile 주입 차단과 기존 modem IMEI·IMSI runtime fallback 유지
+* 첫 fresh build에서 CMake target의 이중 quote escape로 실제 C++ macro compile 실패 재현
+* 기존 정상 compile command와 신규 command 비교·최소 C++ build 계약 RED 추가·단일 escape 수정 후 GREEN 전환
+* 신규 CMake 보안 계약 7/7·기존 firmware runtime 계약 68/68 통과
+* fresh Pico 2 Release configure·build 완료와 compiler warning 0·비허용 definition key 0
+* fresh UF2 513,024바이트·2026-07-27 22:51:07 KST·SHA-256 `d685a2361817d1f42199787fabb50c660c78c9517d4324fbadd09fd0dfefb07d`
+* Pico flash·재부팅·시리얼·운영 DB·EMQX·서버 변경 0
+* Git stage·commit·push 0
+
+## 📅 2026-07-27: [Dashboard] 모바일 화면·센서별 설정 구현
+
+* **개발 범주**: Flask Dashboard, 모바일 반응형 화면, 제한 링크, Supabase 설정 계약
+* **수정 파일**: 대시보드 layout·온도 이력 화면·반응형 JavaScript, 설정 service·adapter·route·template, 제한 링크·메시지 연동, Supabase migration lifecycle
+* 모든 최상위 HTML 진입점의 공통 모바일 입력 확대 방지 CSS 연결
+* 768px 이하 input·select·textarea 16px 보장과 iPhone 터치 자동 확대 방지
+* `user-scalable=no`·`maximum-scale=1.0` 미사용에 따른 사용자 수동 확대 유지
+* OAuth callback 표준 모바일 viewport 보완과 전체 템플릿 누락 자동 검사
+* JavaScript 반응형 계약 기준선 4/4·신규 전체 페이지 계약 포함 6/6 통과
+* 배포 묶음 8파일 SHA-256 `573fb599ada638f7f59e046a019bdbc244a5e7133b63af40b0768dd5cda5e0dc` 로컬·Ubuntu 일치
+* Ubuntu 기존 화면 파일 backup `/home/segang/.codex-mobile-input-zoom-backup-20260727T1232Z` 보존과 운영 경로 반영
+* `segang-flask.service` PID `53773`·active·NRestarts 0, 로컬 root·CSS·로그인·회원가입 HTTP 200 확인
+* 공개 root·CSS HTTP 200과 공개 CSS SHA-256 `892db9ed7810fb93e5c8e5616d17c1f463068ed5cdac8d1c94f9313dc1b0a839` 일치
+* 운영 템플릿 연결 7/7·확대 차단 viewport 속성 0·서비스 신규 오류 0 확인
+* 768px 이하 화면의 작은 글씨·얇은 정보 카드·상단 메뉴 버튼·바깥 클릭/ESC 닫기 적용
+* 모바일 온도 그래프 최근 10건·데스크톱 기존 50건 유지와 화면 크기 변경 시 즉시 재계산
+* 알림톡의 1회용 설정 token을 15분 HttpOnly·Secure·SameSite=Lax 제한 session으로 교환
+* 연결 기기의 TMP 센서만 조회·저장 가능한 사용자·사업장·기기·센서 소유권 범위 검증
+* 센서별 상한 온도 `-50.0..25.0℃`·`0.5℃` 단위와 최대 알림 `1..3`회 설정 화면 구현
+* 두 센서 저장의 전체 사전 검증·원자 처리·동시성 잠금과 성공 저장 후 session 즉시 폐기
+* 최대 횟수 기본 3회·재알림 20분 유지, 진행 중 incident의 횟수 감소·증가 즉시 반영
+* 운영 Supabase용 migration·precheck·verify·rollback·behavior rehearsal과 service-role 전용 RPC 완성
+* 390px 모바일·1280px 데스크톱 시각 검증과 가로 넘침·메뉴 열기/닫기·그래프 높이 확인
+* Server `106/106`·worker `141/141`·Supabase 계약 `142/142`·JavaScript `4/4`·SQL parse `5/5` 통과
+* 운영 사전검사의 TEMP 센서 10개·고온 상태 1개·처리 중 알림 큐 0개 확인
+* 운영 PostgreSQL의 `jsonb_object_length` 미지원과 반환 컬럼·`ON CONFLICT` 이름 충돌을 behavioral rehearsal로 발견
+* `jsonb_object_keys` 키 개수 검사·기본키 제약조건 직접 지정 보정과 관련 계약 테스트 선행 실패·수정 후 통과
+* 운영 Supabase table·service-role RPC·온도 알림 trigger 적용과 verify·rollback behavioral rehearsal 통과
+* Supabase migration history `20260727190000`·`device_temperature_settings` 등록과 최종 원문 MD5 `c662c324e9cee6a073e0c7dd8fb0151b` 기록
+* 최종 설정 행 0개·고온 상태 1개·처리 중 알림 큐 0개 유지와 테스트 변경 전체 rollback 확인
+* 신규 설정 table RLS 활성·anon/authenticated 권한 차단·Advisor 신규 오류 0 확인
+* 기존 Advisor의 public table RLS 비활성 15건·legacy 함수 보안 경고 54건은 별도 보안 부채 유지
+* Ubuntu 기존 파일 backup `/home/segang/.codex-device-settings-backup-20260727T1145Z` 보존과 제품 파일 12개 반영
+* `segang-flask.service` PID `53392`·재시작 0회·18180 listen·로컬/공개 root·responsive JS 200 확인
+* 잘못된 로컬/공개 설정 링크 404와 서비스 journal 신규 기동 오류 0 확인
+* worker `141/141`·전체 Supabase 계약 `262/262`·JavaScript `4/4`·운영 behavioral/verify 통과
+* 로컬 Server suite는 Flask 미설치 기본 Python으로 재실행 불가, 배포 전 Ubuntu staging `106/106`과 운영 import·HTTP smoke로 대체 확인
+* 기존 펌웨어·EMQX·Spaceship·Git stage·commit·push 변경 0
+
+## 📅 2026-07-27: [Message Delivery] 처리속도·전원 사건 순서 보장
+
+* **개발 범주**: 메시지 queue drain, Supabase atomic claim, Spaceship cron cutover
+* **수정 파일**: `msg_send` worker·설정·테스트, Spaceship 실행 스크립트, Supabase migration lifecycle
+* 기존 5분 cron과 실행당 1건 claim을 1분 cron·실행당 최대 20건 단일 순차 처리로 전환
+* 실행 시작 50초 이후 새 메시지 claim 중단과 다음 1분 실행 인계 적용
+* Bizppurio 동시 호출 1건·기존 lease fencing·retry·dedupe·provider 결과 계약 유지
+* 같은 기기·같은 `device_power_event` incident의 활성 선행 sequence 존재 시 후속 claim 차단
+* 선행 메시지의 `sent`·`failed`·`suppressed`·`cancelled` 종결 뒤 후속 진행으로 영구 정체 방지
+* `claim_msg_send(text,integer,integer)` 운영 함수 교체와 `idx_msg_send_power_incident_order` 부분 인덱스 추가
+* Supabase migration history `20260727170000`·`message_queue_throughput_ordering` 등록과 적용 원문 MD5 `6748e2551c1a704c6b7db1df5e808053` 일치
+* 적용 전 active queue 0·기존 메시지 `sent` 43·`failed` 2 확인과 migration precheck 통과
+* 첫 사후 verify의 함수 원문 줄바꿈 비교 실패를 실제 함수·인덱스 read-only 대조로 검증문 결함 확정
+* verify의 공백 정규화 보정 뒤 함수 gate·인덱스·service-role 전용 권한 운영 검증 통과
+* callback spool 미활성 운영에서 무조건 drain하던 wrapper 결함의 즉시 실행 실패와 자동 rollback 확인
+* callback apply gate가 명시적으로 `true`일 때만 drain하는 fail-closed 보정 후 재전환 성공
+* Spaceship `msg-send-20260727-throughput-01` release 생성·전체 모듈 버전 정합화·원자 symlink 전환
+* crontab backup `/home/yjijjnuzbr/tmp/msg-send-crontab-before-throughput-20260727` 보존
+* 수동 cycle `success=true`와 실제 1분 cron 자동 실행 2회·로그 498→500줄 증가 확인
+* 최종 worker healthy·연속 실패 0·provider 결과 지연 0초·active queue 0 확인
+* 실제 17:15 부팅 시험의 boot log 17:17 기록·메시지 ID 57 queue 17:17:31 생성·17:17:46 claim·17:17:48 `sent` 종결
+* 실제 queue 대기 약 15초·queue-to-terminal 약 17초로 기존 수십 분 backlog 지연 해소 확인
+* 사용자 휴대폰 17:17 실수신 확인과 부팅 시작 기준 약 2분 E2E 마감
+* 로컬 worker 141/141·전체 Supabase migration 계약 134/134·Spaceship Python 3.11 worker 141/141 통과
+* 기존 public RLS·legacy 함수 advisor 보안 부채 비변경, 신규 부분 인덱스 미사용 INFO는 첫 workload 전 정상 상태
+* Git stage·commit·push 0
+
+## 📅 2026-07-27: [Power] 전원 분리 MQTT 복구·300초 실기 검증
+
+* **개발 범주**: GP7 실측 진단, 전원 이벤트 MQTTS 복구, Pico 2 UF2 실기 검증
+* **수정 파일**: `runtime_owner_device_backend.cpp`, 전원 probe·Flash logger·debug 경로, 관련 host 계약 테스트
+* USB 없는 5V·배터리 시험의 Flash probe 기록으로 어댑터 연결 `FLAGS=0x0F`·분리 `FLAGS=0x00` 연속 판별 확인
+* 전원 분리 순간 모뎀 전압 출렁임과 첫 MQTT publish 유실 가능성, RuntimeOwner의 실패 완료 후 자동 재시도 부재 규명
+* 전원 이벤트 첫 publish 실패 시 5초 안정화·AT 최대 3회 확인·MQTT 재연결·동일 payload 1회 재전송 적용
+* 종료 준비 이벤트는 남은 시간 75초 이상인 어댑터 분리 종료에만 같은 복구 허용, 일반 boot·telemetry 경로 비변경
+* 전원 이벤트의 동일 incident·sequence 재발행을 운영 DB 중복 방지 계약으로 안전 처리
+* 대상 backend 계약 528/528·전체 host 37/37 통과
+* fresh Pico 2 Release UF2 513,024바이트·2026-07-27 15:49:56 KST·SHA-256 `bb00b3b0eb94799ecc47fc58b81287f2a8a9c539344e6c3950015b8189aa44e9`
+* 전용 macOS Terminal 자동 재연결 상태의 picotool Flash load·verify·execute 성공
+* 실제 5V 분리 16:06:40 뒤 `adapter_removed` incident `444955`를 16:07:55 운영 서버 수신
+* 같은 incident의 `power_shutdown`을 16:10:03 수신하고 약 300초 배터리 구동 뒤 실제 전원 차단 확인
+* 종료 알림톡 16:10:14·분리 알림톡 16:15:28 모두 `sent/1000` 성공
+* 분리 알림톡 약 7분 33초 지연과 종료 알림보다 늦은 발송 순서 역전은 별도 서버 대기열 후속 유지
+* Spaceship 실제 crontab의 5분 주기·worker 1회 1건 처리·종료 priority 100·분리 priority 90 조합을 순서 역전 직접 원인으로 확정
+* Bizppurio 제출 뒤 완료는 수초 이내로 확인하여 이번 7~10분 지연의 provider 원인 제외
+* 기존 Supabase public 테이블 RLS 비활성 보안 부채 비변경
+* Git stage·commit·push 0
+
+## 📅 2026-07-27: [Power] 운영 경로 활성화·Pico 플래시
+
+* **개발 범주**: Supabase Power Event, EMQX Rule·Action, Spaceship Catalog, Pico 실기 Flash
+* 운영 Supabase `device_power_event` 테이블·RLS·중복 방지와 `ingest_device_power_event` RPC 적용
+* 운영 dry-run transaction의 `adapter_removed` 이벤트·알림 큐 원자 생성과 rollback 후 잔존 행 0 확인
+* 검증 SQL `search_path` escape 오타의 실패 재현·최소 보정과 migration 계약 8/8·운영 verify 통과
+* 기존 public 테이블 RLS 비활성 15건·legacy 함수 권고를 별도 보안 부채로 유지하고 자동 수정 0
+* `emqx.zxcx.io` 앞단의 `Python-urllib/3.11` User-Agent 403 차단과 전용 식별자 요청 200 규명
+* EMQX API 공통 헤더에 `NB-IOT-EMQX-Setup/1.0` 적용 후 command·event 테스트 32/32 통과
+* 전원 이벤트 Vault 별칭 회전 전 임시 rollback backup·첫 실패 자동 원복·성공 후 backup 삭제
+* EMQX `supabase_power_event` HTTP Action과 `power_event_rule`의 disabled-first 생성·검증·명시 enable·재검증 완료
+* Spaceship 기존 온도 알림 release 복제와 전원분리·꺼짐·전원복구 카탈로그 파일 1개만 최소 교체
+* Spaceship `msg-send-20260727-power-alert-01` 원자 전환과 SHA-256 `abf5c3bf76897f09b5b27fdcb449dac89cf149ddefd57c0266453e524115dea1`
+* 메시지 worker 136/136·운영 catalog load 8종·worker healthy·1분 단일 cron 유지
+* fresh Pico 2 Release UF2 506,880바이트·2026-07-27 12:39:23 KST·SHA-256 `8d3b5ae897ef493d0be09d3cefd1949fa6112b3a88220fa9c5f0e98e2f7c2b29`
+* 기존 별도 macOS Terminal raw 115200 자동 재연결 상태의 picotool load·Flash verify·execute 성공
+* 실제 `LCD_INIT_DONE`·LTE attach·MQTTS connect/sub/config·`PERIODIC_READY`·`BOOT_DONE` 확인
+* 실제 어댑터 분리·복원·300초 종료·실알림 수신의 사용자 하드웨어 조작 대기와 300초 provisional 유지
+* Git stage·commit·push 0
+
+## 📅 2026-07-27: [Power] 어댑터 분리 300초 종료·알림 로컬 구현
+
+* **개발 범주**: GP7 전원 감지, RuntimeOwner 종료 흐름, MQTTS 전원 이벤트, Supabase·EMQX 로컬 계약
+* PCB 기준 GP7 U3 MP1584EN OUT+ 분압 입력의 pull 비활성·1초 연속 LOW debounce 적용
+* 어댑터 분리 확정 직후 `adapter_removed` 이벤트 제출과 210초 배터리 유예 시작
+* 210초 시점 `power_shutdown` 이벤트·종료 commit, 추가 90초 정리 후 총 300초 절대 종료 흐름 구현
+* 210초 이전 전원 복구의 종료 취소·`adapter_restored` 제출, commit 이후 복구 무시 계약 적용
+* 배터리 유예 중 정규 telemetry·RSSI·config·command 차단과 전원 이벤트·센서 안전 경로 허용
+* RuntimeOwner 단일 modem·shutdown 권한 유지와 USB 미연결 GP15·USB 연결 watchdog 기존 최종화 재사용
+* 80바이트 제한 이내 9개 정수 Compact JSON 전원 이벤트 payload와 topic `devices/{imei}/event` 구현
+* Supabase 전원 event 저장·중복 방지·승인 알림 3종 enqueue migration/precheck/verify/rollback 로컬 초안 구현
+* EMQX event Rule·HTTP Action의 disabled-first·명시 enable·drift 보호 로컬 도구 구현
+* Bizppurio 승인 화면 직접 대조로 전원분리·꺼짐·전원복구 본문 3종의 `7204` 유발 차이 보정
+* Host 36/36·DB/계약 245/245·메시지 worker 136/136·Flask server 86/86 통과
+* fresh Pico 2 Release UF2 506,880바이트·2026-07-27 12:39:23 KST·SHA-256 `8d3b5ae897ef493d0be09d3cefd1949fa6112b3a88220fa9c5f0e98e2f7c2b29` 생성
+* 운영 Supabase·EMQX·Spaceship 적용·실발송·Pico flash 0
+* 실제 300초 유지·GP7 전압·배터리·모뎀·부저 부하 종료시간 검증 전 provisional 유지
+* 전원 완전 소실을 넘는 incident ID 영속화와 센서이상 승인 본문 교정 별도 후속 유지
+* Git stage·commit·push 0
+
+## 📅 2026-07-27: [Message Delivery] 승인 템플릿 8종 실발송 결과 정정 감사
+
+* **개발 범주**: Bizppurio 최종 전송결과, 승인 원문 대조, provider-acceptance 상태 감사
+* 메시지 ID 18~25 전부의 Bizppurio API 접수 `1000`과 Supabase `sent/success` 기록 재확인
+* 사용자 제공 전송결과와 Bizppurio 승인 화면 대조로 실제 단말 결과 4건 성공·4건 `7204 메시지 내용이 템플릿과 일치하지 않음` 확인
+* 실패 범위: ID 22 `adapter_removed`, ID 23 `power_shutdown`, ID 24 `adapter_restored`, ID 25 `sensor_fault`
+* Google Sheets export 기반 로컬 본문과 Bizppurio 최종 승인 본문의 문장 축약·삭제 4건을 직접 원인으로 확정
+* 전화번호·두 WL 버튼·부가정보는 성공 4건과 동일하여 이번 `7204` 원인에서 제외
+* callback 보류용 `provider_acceptance` 모드가 API 접수 `1000`을 최종 전달 성공으로 기록하여 후속 `7204`를 반영하지 못하는 운영 가시성 결함 확인
+* 제품 코드·Spaceship 배포·Supabase 데이터 수정·재발송 0, 승인 원문 카탈로그 교정과 실패 4종 재시험은 사용자 승인 대기
+* Git stage·commit·push 0
+* **추가 개발 범주**: Device Boot Alert Trigger, Cooldown, Existing Message Queue Reuse
+* 운영 `device_boot_logs`의 신규 정상 부팅을 승인 템플릿 `bizp_2026071315003676625784727`로 자동 등록하는 AFTER INSERT trigger 적용
+* Flash·RAM·AT·CPIN 상태 `0`과 PostgREST `/rpc/b`·`POST` 경로 확인, 센서 채널 상태의 부팅 알림 판정 제외
+* 직접 REST 테이블 삽입·SQL 유지보수 삽입·비정상 자가진단 부팅의 메시지 생성 차단
+* device advisory transaction lock과 최근 5분 `device_boot` 조회를 통한 재부팅 루프 중복 발송 억제
+* 사업장·기기명·활성 동의 연락처·Alimtalk-only 정책 exact cardinality와 온도이력·설정변경 hash-only 링크 2건 원자 등록
+* 알림 등록 예외의 부팅 로그 저장 비차단과 민감값 없는 SQLSTATE warning 경계 적용
+* migration 적용 자체의 과거 부팅 로그 backfill·실발송 0, 기존 boot message 1·링크 2·active queue 0 유지
+* transaction rollback rehearsal의 정상 첫 건 생성·5분 내 둘째 억제·비정상 부팅 억제·직접 삽입 억제 통과
+* 신규 계약 9/9·전체 Supabase migration 117/117·메시지 worker 135/135 통과
+* 신규 advisor 0, 기존 `device_boot_logs` RLS 비활성·anon/authenticated INSERT와 legacy SECURITY DEFINER 권고 별도 승인 후속 유지
+* 펌웨어·Pico·EMQX·Spaceship 코드·Git stage·commit·push 0
+
+## 📅 2026-07-27: [Message Delivery] 승인 템플릿 8종 admin 실발송
+
+* **개발 범주**: Supabase Test Queue, Spaceship One-shot Worker, Bizppurio 승인 템플릿 실발송
+* `codex/command-message-activation` 브랜치와 현재 worktree 보존 선택
+* 승인 카탈로그 8종과 Spaceship 배포본 SHA-256 `420a7833ec4e9340064523bb15a331f6d7ffdaf78ebdeb411f0a5e1602b64468` 일치 확인
+* admin 계정 1건·활성 동의 연락처 1건·Alimtalk-only 정책 1건·발송 전 active queue/lock 0 확인
+* 온도이상·온도복귀·기기부팅·연결끊김·전원분리·꺼짐·전원복구·센서이상 템플릿 각 1건 등록
+* 전체 queue 동시 적재 없이 메시지 ID 18~25의 등록→exact one-shot→DB 결과 확인 순차 실행
+* 8건 모두 Bizppurio API 접수 `1000`·Supabase `sent/alimtalk/success`·attempt 1, SMS fallback 0 확인
+* 온도 이력·설정 변경 링크 token row 각 8건, 총 16건 생성과 raw token·admin 전화번호 비출력
+* 발송 후 active queue 0·active lock 0·Spaceship `healthy=true`·claim/send gate 재잠금 확인
+* Supabase schema·EMQX·서버 코드·펌웨어 변경 0, 테스트용 운영 데이터만 추가
+* 실제 단말 전달결과는 별도 후속 감사에서 4건 성공·4건 `7204` 실패로 정정
+* Git stage·commit·push 0
+
+## 📅 2026-07-27: [Temperature Alert] 동일 incident 최대 3회 알림 운영 마감
+
+* **개발 범주**: Supabase TEMP Incident State, 반복 Outbox, Bizppurio 실발송, Pico 실기 검증
+* 동일 고온 incident의 즉시 1회·20분 경과 후 2회·추가 20분 경과 후 3회와 최대 3회 제한 계약 확정
+* 3회 이전 정상 복귀 시 잔여 고온 알림 취소·복귀 알림 1회·재초과 시 새 incident 1회차 시작 계약 확정
+* DB clock 기준 `high_notification_count`·`last_high_notification_at`과 outbox `notification_ordinal` 1~3 원자 저장
+* `temperature_alert_outbox`의 incident/event/ordinal unique와 0~3 상태 제약 적용
+* 동일 incident의 반복 메시지를 허용하면서 동일 source event 재삽입을 차단하는 `msg_send` unique 계약 보정
+* 기존 승인 알림톡 템플릿·두 버튼·TEMP-only·SMS fallback 비활성·Pico 20분 telemetry 주기 유지
+* 운영 precheck·transaction rollback rehearsal·behavior rehearsal·migration verification 통과
+* 실제 incident 4의 1·2·3차 outbox와 Bizppurio `sent/success/1000` 3건 확인, processing outbox 0
+* 실제 Pico 20분 telemetry `[2,28.0]`와 HL7811 `+KMQTT_IND: 1,4` 확인
+* DB migration 계약 108/108·message worker 119/119·Host Debug/Release 각 34/34 통과
+* fresh Pico 2 Release UF2 503,296바이트·2026-07-27 07:16:55 KST·SHA-256 `072be3de5d681fda9a57ebb6c99a0c47bdb2047101e527aaad9dbcce1c203a77`
+* 전용 macOS Terminal 자동 재연결 로그 상태에서 실기 flash·부팅·인증서·LTE·MQTTS·config·periodic 검증
+* LCD 복구·FOTA·DS18B20 `85.0℃` hot-plug hardening 범위 제외와 Git stage·commit·push 0
+
+## 📅 2026-07-27: [Temperature Alert] 실제 Pico 자동 알림 E2E 검증
+
+* **개발 범주**: Pico 실기 센서, MQTTS Telemetry, Supabase Alert Outbox, Bizppurio 실제 발송
+* 동작 중 DS18B20 연결 직후의 전원 초기값 `85.0℃` telemetry·상태·outbox 오염 1건 확인
+* 잘못된 `85.0℃` sensorvalue·alert state·outbox를 exact ID/value precondition 단일 transaction으로 제거
+* 실제 기기 소유 사용자와 기존 admin 테스트 연락처의 user cardinality 불일치로 `contact_cardinality` retry 확인
+* 사용자 승인에 따라 동일 테스트 번호를 실제 기기 소유 사용자의 활성 integration-test contact로 1건 연결
+* 센서 연결 상태 재부팅 뒤 GP26 실제 상온 `27.5℃`·status 0 확인
+* Pico `[2,27.5]` telemetry 발행과 HL7811 `+KMQTT_IND: 1,4` 성공 확인
+* Supabase sensorvalue ID 2864·incident 4·상한 `-10℃` 초과 state·outbox 생성 확인
+* Spaceship 1분 worker의 outbox `enqueued`·Bizppurio `sent/success`·오류 0 종결 확인
+* 사용자 휴대폰의 실제 알림톡 수신 확인으로 Pico→HL7811→EMQX→Supabase→Spaceship→Bizppurio→단말 E2E 마감
+* SMS fallback 0·잘못된 `85.0℃` 오발송 0·코드/펌웨어 추가 변경 0
+* DS18B20 동작 중 연결 시 `85.0℃` 초기값 차단 hardening 후속 유지
+
+## 📅 2026-07-27: [Temperature Alert] 자동 판정·운영 worker 활성화
+
+* **개발 범주**: TEMP Edge Detection, Supabase Atomic Outbox, Spaceship Scheduled Delivery
+* LCD 복구 작업 보류와 TEMP 자동 알림 단일 범위 확정
+* 최초 정상 기준선 0건·최초 초과/정상→초과 1건·초과 지속 반복 0·초과→정상 복귀 1건·재초과 새 incident 계약 구현
+* stale·CRC fallback·fault sample의 경보 상태 변경 금지와 MIC 알림 조건 제외 유지
+* Pico 30초 fresh sample의 고온·복귀 edge만 RuntimeOwner Sensor producer normal lane으로 추가 telemetry 제출
+* 기존 `[sensorId,temperature]` Compact JSON과 20분 정규 telemetry 주기 무변경
+* ingress 거절 시 pending edge 보존·AcceptedForDelivery 뒤 확정하는 allocation-free `TemperatureAlarmPublishCore` 적용
+* Supabase `temperature_alert_state`·`temperature_alert_outbox`·incident sequence·TEMP 전용 AFTER INSERT trigger 운영 적용
+* trigger의 Bizppurio·message queue 직접 호출 0, 상태/outbox 원자 저장과 telemetry 수집 독립성 유지
+* service-role 전용 bounded drain RPC의 contact/policy/ownership exact cardinality·최대 5회 retry·고정 오류 코드 적용
+* 운영 PostgreSQL 17·Asia/Seoul·활성 동의 contact 1·Alimtalk-only policy 1·active queue 0 precheck 통과
+* 실제 운영 transaction rollback 행동 검증의 normal 0→high 1→high repeat 1→recovered 2→repeat 2→new high 3과 drain 3/3 통과
+* Spaceship release `msg-send-20260727-temperature-alert-01` 생성과 Python 3.11 worker 119/119 통과
+* `msg_send_current` 원자 전환·1분 `flock` cron 단일 설치·수동/예약 cycle success·lock 해제 확인
+* callback 보류 기준의 provider acceptance 유지·SMS fallback 비활성·Spaceship 외 Bizppurio 호출 0
+* 적용 이후 신규 TEMP 측정부터 기준선 생성, 기존 센서 데이터 소급 발송 0
+* DB contract 217/217·Host Debug/Release 각 34/34·worker 119/119·`git diff --check` 통과
+* fresh Pico 2 Release UF2 503,296바이트·2026-07-27 05:55:00 KST·SHA-256 `072be3de5d681fda9a57ebb6c99a0c47bdb2047101e527aaad9dbcce1c203a77`
+* Pico flash·실기 온도 전이 미수행, LCD 복구 보류, Git stage·commit·push 0
+* 적용 뒤 PostgreSQL/API 오류 로그 0, 신규 advisor는 의도된 RLS policy 0 INFO 2건뿐이며 기존 보안·성능 부채 별도 유지
+
+## 📅 2026-07-27: [Command] 운영 consumer·실제 Pico E2E 마감
+
+* Supabase command companion·gateway 운영 적용과 legacy claim 차단 해제
+* Ubuntu Flask command route·EMQX HTTP Actions 2개·Rules 2개 disabled-first 원자 활성화
+* synthetic no-command·request_status·accepted/final ACK·duplicate canary와 DB terminal 검증
+* 현재 Supabase `deviceId=5` identity와 Pico/모뎀 실제 identity 정합화
+* dedicated macOS Terminal raw 115200 auto-reconnect 감시와 fresh Release UF2 flash
+* `CERT_WRITE_OK`·LTE attach·MQTTS·boot/config·`PERIODIC_READY`·`BOOT_DONE` 실기 확인
+* 최초 실제 request `[1,0]`과 공백 포함 response `[1, 14, 3, 14, 85224]` 수신
+* firmware canonical Compact JSON parser와 Supabase `jsonb_build_array(...)::text` 사이 wire 불일치 규명
+* command response·ACK receipt payload의 ASCII space 제거를 TDD로 적용
+* 기존 clean-install migration·verification 교정과 운영 설치 함수 원자 보정 migration·rollback 추가
+* 운영 함수 owner·ACL 보존, definition MD5 provenance 재계산·일치 확인
+* 자동 재시도 request `[2,0]`과 Compact response `[2,14,3,14,84024]` 수신
+* accepted ACK `[14,1,1,0,0,0]`·receipt `[14,1,1,1,0]` 실기 완료
+* final ACK `[14,2,2,0,0,0]`·receipt `[14,2,2,1,0]` 실기 완료
+* 실제 `cmdId=14` `executed`, accepted `1/0`, final `2/0`, delivery attempts 2, nonterminal 0건 종결
+* EMQX request Rule/Action matched·success `5/5`, ACK Rule/Action `6/6`, failed·dropped 0 확인
+* migration contract 31/31·전체 DB contract 210/210 통과
+* fresh Pico 2 Release UF2 502,784바이트·2026-07-27 04:26:42 KST·SHA-256 `3b08f1cf35d593779ef25a295a7040a83f86ec2faf7a4f459e36ee4b10a0ce0b`
+* final receipt 뒤 Empty tombstone production 경로와 Host 계약 확인, Flash slot 직접 dump는 BOOTSEL 재부팅 방지를 위해 미수행
+* 실제 reboot·power_off·FOTA 미수행, watchdog/GP15·journal power-cut·Auth/RLS 후속 gate 유지
+* Git stage·commit·push 0
+
+## 📅 2026-07-26: [Command] RuntimeOwner persistence·주기 활성화 device-free 마감
+
+* **추가 마감**: Command `reboot`·`power_off` typed shutdown bridge와 next-boot effect recovery device-free 구현
+* 12바이트 urgent DTO에 `AutomaticByUsb`·`Reboot`·`PowerOff` intent 추가, source-intent canonical 조합 외 입력 거부
+* 인증 명령 facade를 `runtime_owner_authenticated_request_reboot`·`runtime_owner_authenticated_request_power_off`로 분리하고 RuntimeOwner 단일 물리 권한 유지
+* accepted receipt 뒤 `ExecuteMarked` Flash commit 완료 전 dispatch 0, 성공 뒤 callback 1회, same-boot `ExecuteMarked` 재진입 callback 0 계약 구현
+* `reboot` USB absent/present 모두 watchdog, `power_off` USB absent GP15·present watchdog 정책과 shutdown record planned action 일치
+* 다음 부팅의 journal state·boot sequence·shutdown reason/action·producer/correlation ID·watchdog marker를 exact match하고 불일치 시 `failed/journal` 처리
+* Debug·Release Host 각 33/33, 선택 Python 계약 103/103, 잘못된 dispatch 순서·재실행·intent·USB action·ID·marker mutant 6/6 거부
+* fresh Pico 2 Release UF2 502,784바이트·2026-07-26 23:02:49 KST·SHA-256 `77f34c1ad4c4663b06bd5f609826df1e93a4d40baecdfff707659bba5e6a3a6d`, Release ELF 핵심 symbol residency 확인
+* Pico copy·flash·serial·watchdog/GP15 실기·Supabase/EMQX live consumer 변경 0, FOTA 보류 유지
+* **개발 범주**: Command Journal Runtime Integration, Periodic Activation, Release Residency, Device-free Verification
+* actual RP2350 Command A/B Flash port를 RuntimeOwner backend 생성자에 연결하고 부팅 `prepare()`에서 journal load·복구 완료 전 prepared latch 금지 확인
+* accepted/final ACK·PUBACK·receipt·execute marker·실행 결과·Empty tombstone의 외부 동작 전 durable commit과 실패·불확정 commit 뒤 actual A/B 재판독 확인
+* blank·loaded·ExecuteMarked 재부팅 복구·이전 boot accepted expiry·read/verify/corrupt-only fail-closed·pending resume 계약 확인
+* config 1분 우선 처리 뒤 같은 loop 중복 없이 최대 20분 Command pull, runtime-ready·RecoveryPending gate와 accepted 요청 timestamp 전진 확인
+* RuntimeOwner fresh status snapshot의 canonical·health 검증 성공 뒤에만 `request_status`를 executed로 종결
+* typed bridge 이전 승인 범위에 따른 reboot·power-off·FOTA의 watchdog·GP15·updater side effect 0과 terminal failure 기준선
+* Host Debug·Release 각각 32/32, focused Command runtime 227 checks·periodic 28 checks·device backend 475 checks 통과
+* Python contract 172/172와 `msg_send` 116/116 통과
+* fresh Pico 2 Release BIN 250,272바이트·UF2 501,248바이트·2026-07-26 22:15:01 KST 생성
+* UF2 SHA-256 `58054edf1c6955e0277915ca0bcd25ca21b8a3050e58d0cbe50e1d5bdbb7150f`, Release ELF의 `CommandRuntimeCoordinator`·Command Flash read/replace·store load/commit·periodic facade symbol residency 확인
+* 추가 Flask server suite는 저장소 루트의 시스템 Python 3.9 실행에서 project import path·Flask 의존성 부재로 환경 오류, Command 검증 결과와 분리
+* Pico copy·flash·serial·power-cut·Supabase·EMQX·server 운영 변경 0, stage·commit·push 0
+* **당시 후속**: reboot·power-off typed physical dispatch와 다음 boot effect evidence 계약은 같은 날짜의 최신 추가 마감에서 완료, Command Supabase/EMQX live cutover·Pico journal power-cut E2E 유지
+
+## 📅 2026-07-26: [Message Delivery] Provider acceptance 운영 적용 1차
+
+* **개발 범주**: Supabase Live Migration, Guarded Link Backfill, Spaceship Atomic Release, Deployment Gate
+* 사용자 명시 승인으로 신규 Supabase 함수 2개, 기존 settings link 보강, Ubuntu·Spaceship·worker·필요 시 EMQX·실발송까지 단계적 운영 적용 범위 확정
+* live 재확인에서 PostgreSQL `17.6.1`, active queue 0·`accepted/waiting_result` 0·lock 0·Alimtalk-only 정책 1·`granted` 연락처 1 확인
+* 임시 상태 요약 쿼리의 존재하지 않는 `locked_at`·`channel` 가정은 각각 SQLSTATE `42703`으로 전체 read-only transaction rollback, 실제 `lock_owner`·`primary_channel` 운영 컬럼 확인 뒤 교정
+* SHA-256 `c785039de0214e67553657019d3a6b2cc4a6fb10341ba8ba4a5e9addba2442a0` migration을 Supabase MCP 단일 transaction으로 운영 적용
+* `finalize_msg_send_provider_acceptance`·`enqueue_temp_alert_msg_send` 함수 생성과 `SECURITY DEFINER`·volatile·빈 `search_path`·anon/authenticated 실행 불가·service_role 실행 허용 검증
+* 적용 뒤 message 총 5행·active queue 0·acceptance blocker 0·lock 0 유지
+* security advisor 70건·performance advisor 10건 불변, 신규 함수 대상 advisor 0과 기존 Auth/RLS·성능 별도 승인 gate 유지
+* 최신 수신 성공 메시지 ID 5의 settings token type·길이·소유권·기존 history hash 일치와 settings row 0건 guarded 확인
+* 원래 만료시각을 사용한 첫 insert는 `message_link_token_time_check`로 전체 rollback, 비쓰기 안내 전용 settings row를 30분 유효기간으로 보강
+* ID 5의 history/settings 총 2행·각 SHA-256 일치·canonical `/device-settings/1`·미소비·미폐기·유효 settings row 1건 확인
+* Spaceship 신규 release `msg-send-20260726-provider-acceptance-01` staging, 로컬과 원격 26파일 manifest SHA-256 `7d8cdf48216c8ee59bc666d441695b7a18255ca55879607291bf678d0f429fcd` 일치
+* Spaceship Python 3.11.15 `msg_send` 116/116과 locked health 통과 뒤 `.env` backup·`MSG_SEND_RESULT_MODE=provider_acceptance`·`msg_send_current` symlink 원자 전환
+* Spaceship 전환 뒤 `claim=false`·`send=false`·healthy·상시 cron/daemon 0 유지, 이전 release와 env backup 보존
+* Ubuntu `ssh.zxcx.io` Cloudflare Access가 인증 앱 6자리 OTP를 요구하여 일시 정지, 사용자 인증 완료 뒤 비밀번호 SSH로 재개
+* Ubuntu 기존 `segang-flask.service` active/enabled·PID 39453·18180 listener·`.env` 0600·환경 key-name baseline 확인
+* 첫 staging archive의 macOS AppleDouble `._*` 메타데이터로 compile 오류 발생, 제품 테스트 45/45·116/116 통과 상태에서 배포 중지
+* `COPYFILE_DISABLE=1` clean archive SHA-256 `6ce300cfc88bdcd9c3b4de963ae25b51e61f356360a720ee68e01c286fc3589a` 재생성과 AppleDouble 0 확인
+* clean staging server 45/45·worker 116/116·Python compile 통과, 운영 backup `/home/segang/project/.codex-message-web-backup-provider-acceptance-20260726T2146+0900` 보존
+* Ubuntu Flask 6개 경계 파일·`msg_send` package 교체, `.env` `MSG_SEND_RESULT_MODE=provider_acceptance`·0600 유지와 production import 통과
+* `segang-flask.service` 재시작 뒤 PID 42598·active·NRestarts 0·18180 listener·로컬/공개 HTTP 200·invalid link/callback 404·warning 0 확인
+* 실제 TEMP 근거는 약 23일 전 저장값 `-11.5℃`·상한 `-10.0℃`로 복귀 조건 충족, 새 측정으로 가장하지 않는 `manual_provider_acceptance_e2e` 1회 test event 선택
+* `enqueue_temp_alert_msg_send`로 메시지 ID 6과 이력/settings link 각 1개 원자 생성, 최초 동일 statement 후속 조회 0행은 PL/pgSQL write의 outer statement snapshot 가시성 차이로 판독하고 별도 statement에서 총 6행·신규 1행 확인
+* Spaceship exact one-shot ID 6의 Bizppurio 실제 호출 성공, Supabase `sent/alimtalk/success/1000`·attempt 1·비용 8원·SMS fallback 0·queue/acceptance blocker/lock 0 종결
+* Spaceship worker `claim=false`·`send=false`·healthy 재잠금과 provider result lag 0 확인
+* 신규 settings token의 local/public HTTP 200·안내 문구·cookie/redirect 0·`no-store/no-referrer` 확인, token 원문 미출력
+* 사용자 휴대폰의 실제 알림톡 수신과 두 버튼 직접 클릭 확인, 온도 이력 token의 `303`→이력 화면 200·정확히 1회 consume과 settings 안내 200·비소비 계약 E2E 통과
+* Supabase PostgreSQL 로그 오류 0·API 관련 응답 2xx, live `msg_send` manifest SHA-256 `7d8cdf48216c8ee59bc666d441695b7a18255ca55879607291bf678d0f429fcd`·Flask warning 0 확인
+* EMQX는 Supabase queue→Spaceship→Bizppurio 발송 경로에 관여하지 않아 변경 0
+* Git stage·commit·push 0, 비밀값·전화번호·raw token·provider ID 기록 0
+
+## 📅 2026-07-26: [Message Delivery] Supabase 재감사·PostgreSQL 실제 rehearsal
+
+* **개발 범주**: Supabase Read-only Audit, PostgreSQL 17 Rehearsal, Migration Verification, TDD
+* Supabase MCP OAuth 재연결 뒤 프로젝트 `NB_IOT`·ref `yzorfvgpmkwnjpdfyqsk`·`ACTIVE_HEALTHY`·region `ap-northeast-1`·PostgreSQL `17.6.1.127` 확인
+* canonical API URL `https://yzorfvgpmkwnjpdfyqsk.supabase.co` 확인
+* 운영 `alert_contact`·`message_policy`·`msg_send`·`message_link_token` table 존재와 RLS 활성, row 수 `1/1/5/4` 확인
+* 필수 relation 8개·`extensions.digest`·기존 waiting/result RPC 존재, 신규 acceptance/enqueue 함수 부재의 live precheck PASS
+* active queue 0·`accepted/waiting_result` 0·lock 0·호환 Alimtalk-only 정책 1·활성 동의 연락처 1 확인
+* 최근 24시간 PostgreSQL/API 오류 로그 0건
+* 기존 security advisor 70건 — message table RLS enabled/no policy 4, public RLS disabled 15, mutable search_path 16, anon/authenticated SECURITY DEFINER execute 17/16, public extension 1, leaked-password protection 1
+* 기존 performance advisor 10건 — 미인덱스 FK 7·unused index 3, 그중 message link/message contact/message policy FK 3건
+* 기존 advisor는 이번 두 함수 migration과 섞지 않고 Auth/RLS·성능 별도 승인 gate로 유지
+* Homebrew PostgreSQL 17.10 임시 설치와 `/private/tmp` 전용 isolated cluster·socket port `55432` 사용
+* 실제 catalog에서 `set search_path=''`가 `proconfig={"search_path=\"\""}`로 저장됨을 확인
+* 신규 verify의 `array['search_path=']` 단일 표현 비교가 실제 빈 search_path를 잘못 거부하는 결함 RED 재현
+* 기존 message verify와 동일한 `^search_path=(|\"\")$` catalog 검증으로 TDD 교정
+* stock PostgreSQL 17에 존재하지 않는 `pg_catalog.jsonb_object_length(jsonb)` 호출을 실제 enqueue에서 재현
+* `pg_catalog.jsonb_object_keys`와 `pg_catalog.count(*)` 기반 exact parameter 개수 검증으로 TDD 교정
+* sanitized fake user·workplace·device·TEMP/MIC sensor·contact·Alimtalk-only one-shot policy fixture 사용
+* base message precheck→migration→verify 뒤 acceptance precheck→up→verify→behavior→down→down verify→precheck 전체 PASS
+* TEMP message 1행과 history/settings link 2행 원자 생성, 동일 dedupe 동일 ID replay, priority mismatch SQLSTATE `22000` 거부 확인
+* template raw token과 link SHA-256 2/2 일치, exact one-shot claim·submission start·접수 `1000` 원자 `sent`·final cost 8.0000·lock 해제·active queue 0 확인
+* rollback 뒤 신규 함수 2개 제거와 기존 message table·waiting/result RPC·message row 보존 확인
+* 최종 `msg_send` 116/116·migration contract 172/172·Flask server 45/45·Python compile·SQL parse 4/4·`git diff --check` 통과
+* 독립 최종 리뷰 `DONE_APPROVED_WITH_LIVE_APPLY_GATE`, Critical 0·Important 0·Minor 0과 live 적용 승인 단계 진입 가능 판정
+* 임시 PostgreSQL server·cluster·rehearsal script·`postgresql@17`·자동 설치 dependency `krb5/json-c/libunistring/gettext` 제거
+* 운영 Supabase DDL·데이터·Spaceship·Ubuntu·Bizppurio·실발송 변경 0
+* Git stage·commit·push 0, 비밀값·전화번호·raw token·provider ID 기록 0
+
+## 📅 2026-07-26: [Message Delivery] API 접수 마감·원자 링크·설정 안내 로컬 구현
+
+* **개발 범주**: Provider Acceptance, Atomic TEMP Enqueue, Limited Settings Notice, Supabase Migration Draft, TDD
+* `msg_send/domain.py`·`config.py`에 기본 `callback`과 선택적 `provider_acceptance` 결과 모드 추가
+* Bizppurio Alimtalk API 접수 `code=1000`과 provider request ID 확보 시 기존 접수·결과 RPC fence를 한 트랜잭션에서 재사용하는 원자 `sent` 마감 경로 구현
+* 접수 성공 기록을 실제 callback `7000`으로 위장하지 않고 `provider_result_code=1000`·`provider_result_id=acceptance:<lease>`·승인 Alimtalk tariff로 보존
+* `provider_acceptance`와 SMS fallback 동시 활성화의 fail-fast 거부, 늦은 Alimtalk callback만 duplicate 처리하고 legacy SMS callback 경로 보존
+* `SUPABASE_URL`을 server secret 전달이 허용된 `*.supabase.co` HTTPS origin으로 제한
+* 신규 `finalize_msg_send_provider_acceptance`·`enqueue_temp_alert_msg_send` service-role 전용 SECURITY DEFINER 함수와 precheck·verify·rollback artifact 작성
+* TEMP high/recovered template 코드·필수 parameter·contact 동의·Alimtalk-only policy·기기/사업장 소유권·TEMP sensor·TTL·priority·dedupe 검증
+* contact·policy·device·workplace·TEMP sensor/category authorization row의 `FOR SHARE` 보호로 검증 후 삽입 전 병행 철회·변경 차단
+* 동일 dedupe 재실행 시 template 원문 token SHA-256과 `message_link_token.token_hash`까지 대조하는 exact replay fence 적용
+* `msg_send` 1행과 `temperature_history`·`device_settings` link 2행의 단일 트랜잭션 생성, raw token은 template params에만 보관하고 RPC 응답은 message ID만 반환
+* 유효한 settings token의 사용자·사업장·기기 소유권과 `/device-settings/<id>` canonical path 검증 뒤 비쓰기 안내 HTTP 200 구현
+* settings 안내의 token consume·limited session·cookie·redirect·식별값·DB 쓰기 0, invalid/expired/revoked/consumed 빈 404 유지
+* settings lookup의 불필요한 TEMP sensor 의존 제거와 빈 sensor scope 반환, TEMP history만 기존 TEMP sensor 증명 유지
+* 공개 message blueprint의 기존 admin inactivity middleware 우회로 관리자 cookie 보유·만료 상태의 로그인 redirect와 activity cookie 갱신 차단
+* 테스트 우선 RED 재현 뒤 독립 리뷰의 callback/SMS·secret destination·token replay·authorization TOCTOU·admin middleware·settings sensor scope 지적 보완
+* 최종 독립 리뷰 `DONE_APPROVED_WITH_DEPLOYMENT_GATE`, Critical 0·Important 0·Minor 0과 local merge-ready 승인
+* 최종 `msg_send` 116/116·migration contract 170/170·Flask server 45/45, Python compile·신규 SQL 4개 `pglast` parse·`git diff --check` 통과
+* 실제 PostgreSQL precheck→up→verify→down rehearsal 미실행, local merge-ready와 live deploy/apply gate 분리
+* 운영 Supabase·Spaceship·Ubuntu·Bizppurio 변경·실발송 0, Supabase MCP OAuth 재인증 뒤 table/log/advisor read-only 감사와 실제 SQL rehearsal·별도 승인 필요
+* Supabase MCP의 public table·PostgreSQL/API log·security/performance advisor 재감사 전 항목 `OAuth authorization required` 확인
+* 기존 수신 성공 메시지는 settings link row 생성 전 발송된 행으로 guarded `device_settings` row 1건 보강 전 기존 버튼 404 유지
+* Git stage·commit·push 0, 비밀값·전화번호·provider ID 기록 0
+
+## 📅 2026-07-26: [Message Delivery] Supabase·Spaceship·Bizppurio 운영 통합 1차
+
+* **개발 범주**: Alimtalk Delivery Queue, Supabase REST/RPC, Bizppurio v3, Spaceship Python 3.11, Atomic One-shot
+* Google Sheet와 Bizppurio 승인 화면을 대조한 8종 알림톡 템플릿 카탈로그·제목·본문·WL 버튼 2개·변수 대소문자 계약 구현
+* 잘못 등록된 `#{tempHistoryToken)}` 원본 호환 처리와 최종 `https://zxcx.io/s/<opaque-token>` 렌더링의 잔여 괄호 제거
+* Supabase `sb_secret_` 전용 server key의 `apikey`-only REST/RPC 어댑터와 Bizppurio `/v1/token`·`/v3/message`·`/v2/report` 표준 라이브러리 HTTP 경계 구현
+* 기본 `claim=false`·`send=false`·SMS fallback false·동시성 1, 전송 진입 뒤 결과 모호성의 무재발송, provider `code=1000` 정확 일치 적용
+* callback `RESULT=7000/4100` 상관관계·32자 UUID hex `refkey`·중복 결과 fencing·synthetic callback 무전송 경로 구현
+* exact ID·활성행 1건·attempt 0/1·Alimtalk·fallback 비승인을 DB 잠금 안에서 확인하는 `claim_exact_one_shot_msg_send` 원자 RPC 추가
+* PostgreSQL 17.10 격리 DB의 precheck→migration→verification, 상태 머신 행동 회귀, exact one-shot 성공·다중 활성행 무변경 거부, rollback→재적용 통과
+* `gpt-5.6-sol` max 독립 리뷰의 fallback gate·synthetic 무전송·성공 코드·one-shot TOCTOU·잠금 뒤 시각 캡처 지적 전부 수정
+* 최종 독립 판정 Critical 0·Important 0·Minor 0, local `msg_send` 102/102·migration contract 25/25·`py_compile`·`git diff --check` 통과
+* 운영 Supabase에 `alert_contact`·`message_policy`·`msg_send`·`message_link_token`과 service-role 전용 RPC 7개 적용
+* 신규 4개 테이블 RLS 활성·policy 0·anon/authenticated 권한 0·운영 verification PASS, 기존 public 테이블 15개의 RLS 비활성 권고는 별도 정책 작업으로 유지
+* Spaceship outbound Supabase 443/5432/6543·Bizppurio 443 연결 확인, Python 3.11 release 102/102 통과 뒤 `msg_send_current` symlink 원자 전환
+* Spaceship 상시 daemon·cron 미생성, 실제 health `claim=false`·`send=false`·healthy 확인
+* 운영 synthetic callback의 provider 호출 0·Supabase `sent/alimtalk/7000/unlocked` 종결 확인
+* 승인된 부팅 알림톡 1건의 Bizppurio 접수·DB `waiting_result` 등록·즉시 재잠금까지 통과
+* Bizppurio 최종 결과 `7308 전화번호 오류` 확인 — `admin` 계정 수신번호가 테스트용 값으로 저장된 원인, SMS fallback 0·비용 0·재발송 0
+* 실패 결과를 `failed/7308/final_cost=0/unlocked`로 운영 DB에 조정하고 활성 queue 0건 확인
+* `admin` 최신 전화번호와 활성 `alert_contact` 1행 동기화, 신규 `기기부팅` 원자 one-shot 1건의 Bizppurio API 접수와 즉시 worker 재잠금 확인
+* Bizppurio 전송결과 `7327 버튼/바로 연결 내용과 템플릿 불일치` 확인, callback RPC로 `failed/7327/final_cost=0/unlocked` 종결과 활성 queue 0건·SMS fallback 0·재발송 0 마감
+* Bizppurio 승인 템플릿 상세 화면에서 두 WL 버튼 각각의 Mobile·PC URL 동일 등록 확인, 실제 요청의 `url_pc` 누락을 `7327` 직접 원인으로 확정
+* 버튼 이름·순서·`WL`·`url_mobile`을 보존하고 각 `url_pc`를 동일 URL로 전송하는 최소 수정, 첫 번째 malformed marker의 최종 URL 뒤 임의 `)` 추가 금지 유지
+* 변경 전 대상 2건 RED와 변경 후 대상 2건 GREEN, local `msg_send` 108/108·Spaceship Python 3.11 release 102/102 통과
+* Spaceship `msg-send-20260726-button-parity-01` release 생성·체크섬 일치·`msg_send_current` symlink 원자 전환, 상시 worker·cron 미생성과 `claim=false`·`send=false`·healthy 유지
+* 관리자 최신 번호·수신 동의·활성 contact·Alimtalk-only·attempt 1·기존 활성 queue 0을 확인한 신규 원자 one-shot 1건의 Bizppurio `전달/7000` 성공
+* 성공 결과를 exact provider request·submission token fence로 `sent/alimtalk/7000/final_cost=8.0000/unlocked` 종결, 활성 queue 0·SMS submission 0·worker 재잠금 확인
+* 사용자 휴대폰의 실제 알림톡 수신 확인, Bizppurio API 접수·`7000` 최종 전달·단말 수신 3단계 E2E 성공 확정
+* Bizppurio 공식 PUSH 계약의 사용자 지정 인증 header 부재 확인, 기존 `X-Msg-Send-Callback-Token` 임시안을 URL-safe 비밀 경로 `/callbacks/bizppurio/<secret>`로 TDD 교정
+* 정상·중복·unknown 결과의 본문 없는 HTTP 200, malformed 400, secret 불일치 404, callback DB 처리 예외 503 계약 적용
+* provider 호출이 없는 callback 전용 runtime에서 `record_msg_send_push_result`만 수행하고 같은 요청의 SMS fallback submission 차단
+* Supabase read-only 감사의 project `ACTIVE_HEALTHY`, 운영 메시지 4개 table 존재, `message_link_token` RLS 활성·service_role 전용 `SELECT/INSERT/UPDATE` 확인
+* 운영 token 2개의 purpose가 `temperature_history`·`device_settings`, target shape가 `/history?deviceId=<id>`·`/settings?deviceId=<id>`인 실제 상태 확인
+* 두 token의 저장 SHA-256 hash와 `msg_send.template_params` opaque token 일치, target device와 source device 일치 각 1/1 확인
+* live purpose 값과 과거 로컬 enum 불일치 교정, 온도 이력 legacy target을 검증 뒤 `/device-temp-history/<id>`로 canonical redirect하는 호환 경계 구현
+* link hash lookup·message/user/device/workplace/`USER_SENSOR` 소유권 증명·현재행 조건부 UPDATE의 원자 1회 consume·15분 server-side bounded session 구현
+* `USER_SENSOR`의 TEMP·MIC 혼재에 따른 초기 broad sensor scope를 self-review에서 발견, `SENSOR_CTGY.sensorCtgyType=TMP`만 제한 세션에 포함하도록 교정
+* 사용자 확정에 따라 센서값 기반 알림 판정·온도 이력은 TEMP 전용, MIC는 알림 조건에서 제외하고 향후 Edge AI 부가 데이터로 유지
+* 제한 cookie `Secure`·`HttpOnly`·`SameSite=Lax`·`__Host-` 적용, token 제거 303 redirect·no-store·no-referrer 유지
+* 안전한 설정 변경 route와 scoped write 계약 부재에 따라 `device_settings` token 권한 발급 차단 유지
+* `MSG_SEND_WEB_ENABLED=false` 기본값과 server-only `SUPABASE_SECRET_KEY`·URL-safe callback secret·tariff fail-fast 설정 추가
+* 변경 전 callback URL 계약 5건 RED, live purpose/sensor/session 계약 RED 확인 뒤 GREEN 전환
+* 최신 기본 작업 폴더의 request-local Google OAuth PKCE·machine client 격리·`USER_SENSOR` 전환을 writable mirror의 callback·limited link 경계와 충돌 없이 통합
+* `device-temp-history`의 정상 로그인 경로 보존과 제한 세션의 사업장·기기·TEMP sensor scope 동시 적용, MIC 알림·온도 이력 제외 유지
+* 초기 read-only 검사 0건의 원인이 `bytea` 표현이 아니라 최신 메시지와 별도 link row의 잘못된 짝 비교였음을 단계별 재현으로 확정
+* 정확한 `msg_send_id` 연결 뒤 token SHA-256·DB `token_hash` 일치와 동일 REST `eq.\\x<hex>` 필터 1건 확인, 제품 bytea adapter 변경 불필요 판정
+* 최종 server 전체 36/36·`msg_send` 전체 108/108·Flask disabled/enabled import 통과
+* Ubuntu 운영 서버 `/home/segang/project`의 기존 파일 backup·clean staging checksum 대조 뒤 callback·limited-link Flask 경계 원자 배포, `segang-flask.service` active·PID·18180 listener·로컬/공개 home HTTP 200 확인
+* Ubuntu 전용 ED25519 SSH key 설치·비밀번호 인증 병행 확인, Spaceship RSA key와 역할 분리 유지
+* Spaceship의 server-only Supabase secret만 Ubuntu `.secrets`로 제한 복사하고 callback secret은 Ubuntu에서 생성, `.secrets` 0700·secret 0600·`.env` 0600 적용
+* Bizppurio 발송 ID·암호는 Ubuntu 미복사, 실제 발송 주체 Spaceship 고정과 Ubuntu callback의 non-sending·SMS fallback 차단 유지
+* Ubuntu staging server 36/36·local `msg_send` 108/108·compile·production import 통과, 잘못된 callback secret 404·malformed 400·정상 형식 unknown callback 로컬/Cloudflare 200 확인
+* 정상 형식 unknown callback 뒤 운영 `msg_send` 4건·active queue 0·lock 0 유지로 provider 호출·재발송·비용 변경 없음 확인
+* 최신 성공 알림톡의 온도 이력 opaque token에 대응하는 `message_link_token` 누락 발견, 동일 메시지·SHA-256·source device·24시간 TTL 조건으로 TEMP 이력 row 1건 복구
+* 운영 서버의 실제 repository lookup에서 사용자·사업장·기기 ownership과 TEMP sensor 2개 범위 PASS, token unconsumed·unrevoked·unexpired 유지로 사용자 실제 버튼 확인 전 소비 방지
+* Bizppurio 계정의 `리포트 수신=YES`와 `모듈연동 환경설정`에 callback URL 입력란 없음 확인, 공식 BIZAPI의 사전 URL 등록 경로가 `내 정보/API 관리` 또는 고객센터임을 대조하고 기술지원 문의 양식은 미제출 유지
+* `Restart=on-failure` unit에 직접 `SIGTERM`을 보내면 clean stop으로 재시작되지 않는 운영 특성 확인, 향후 재시작은 `systemctl restart` 사용
+* rollback 기준 `/home/segang/project/.codex-message-web-backup-20260726T140958+0900`, clean staging checksum `60099b7328e01e13029bd96f1a14700311ea35735f4760e9f2910384f3773647`
+* 사용자 결정에 따라 Bizppurio callback 등록은 보류하고 현 단계의 API 접수 성공을 임시 성공 종결 기준으로 적용
+* active queue 0·lock 0·admin 연락처 일치·Alimtalk-only·attempt 1 기준선 확인 뒤 신규 메시지와 TEMP link를 worker 정지 상태에서 순차 생성·SHA-256 대조하고 Spaceship exact one-shot 1건 실행
+* Bizppurio API 접수 뒤 callback 없이 non-sending result 경계로 수동 `sent/alimtalk/7000/final_cost=8.0000/unlocked` 종결, active queue 0·SMS submission 0 유지
+* 사용자 휴대폰 실제 알림톡 수신과 `온도 이력 확인` 버튼의 one-shot token 소비·303·제한 세션·온도 이력 화면 표시까지 E2E 성공
+* `설정 변경` 버튼은 settings token row·scoped write route 부재로 빈 404 fail-closed 동작 확인, 흰 화면을 사용자 안내 페이지 또는 실제 제한 설정 route로 교체하는 후속 필요
+* **후속**: queue 생성과 TEMP link row의 DB 원자 동시 생성, 설정 변경 전용 scope/route·안내 화면, callback 등록은 사용자 보류 해제 뒤 재개
+* Git stage·commit·push 0, 비밀값·전화번호·provider request ID 기록 0
+
 ## 📅 2026-07-25: [G2C·Flash Core] Command A/B journal storage-independent 구현
 
 * **개발 범주**: Command Journal, CRC32, A/B Recovery, Power-cut Host Test, Firmware Source Graph

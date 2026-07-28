@@ -25,9 +25,10 @@ using boot_v2::map_runtime_owner_dispatch;
 constexpr std::size_t kRuntimeOwnerEffectKindCount =
     static_cast<std::size_t>(RuntimeOwnerEffectKind::EnterRecovery) + 1;
 constexpr std::size_t kNormalIntentKindCount =
-    static_cast<std::size_t>(NormalIntentKind::PullCommand) + 1;
+    static_cast<std::size_t>(NormalIntentKind::PublishAdapterRestored) + 1;
 constexpr std::size_t kRuntimeOwnerDeviceOperationKindCount =
-    static_cast<std::size_t>(RuntimeOwnerDeviceOperationKind::PullCommand) + 1;
+    static_cast<std::size_t>(
+        RuntimeOwnerDeviceOperationKind::PublishAdapterRestored) + 1;
 constexpr std::size_t kCompletionPolicyCount =
     static_cast<std::size_t>(CompletionPolicy::NormalCompletion) + 1;
 
@@ -36,14 +37,16 @@ static_assert(
     static_cast<std::uint8_t>(RuntimeOwnerEffectKind::EnterRecovery) == 9);
 static_assert(kRuntimeOwnerEffectKindCount == 10);
 static_assert(static_cast<std::uint8_t>(NormalIntentKind::Invalid) == 0);
-static_assert(static_cast<std::uint8_t>(NormalIntentKind::PullCommand) == 4);
-static_assert(kNormalIntentKindCount == 5);
+static_assert(
+    static_cast<std::uint8_t>(
+        NormalIntentKind::PublishAdapterRestored) == 6);
+static_assert(kNormalIntentKindCount == 7);
 static_assert(
     static_cast<std::uint8_t>(RuntimeOwnerDeviceOperationKind::Invalid) == 0);
 static_assert(
     static_cast<std::uint8_t>(
-        RuntimeOwnerDeviceOperationKind::PullCommand) == 13);
-static_assert(kRuntimeOwnerDeviceOperationKindCount == 14);
+        RuntimeOwnerDeviceOperationKind::PublishAdapterRestored) == 15);
+static_assert(kRuntimeOwnerDeviceOperationKindCount == 16);
 static_assert(
     (kRuntimeOwnerEffectKindCount - 1) +
             (kNormalIntentKindCount - 1) +
@@ -246,6 +249,10 @@ void test_all_normal_intents_map_exactly()
          RuntimeOwnerDeviceOperationKind::PullConfig},
         {{NormalIntentKind::PullCommand, 0, 0, 0, 0},
          RuntimeOwnerDeviceOperationKind::PullCommand},
+        {{NormalIntentKind::PublishAdapterRemoved, 0, 0, 42, 1},
+         RuntimeOwnerDeviceOperationKind::PublishAdapterRemoved},
+        {{NormalIntentKind::PublishAdapterRestored, 0, 0, 42, 2},
+         RuntimeOwnerDeviceOperationKind::PublishAdapterRestored},
     }};
     static_assert(cases.size() + 1 == kNormalIntentKindCount);
 

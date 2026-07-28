@@ -103,6 +103,8 @@ bool command_journal_flash_replace_slot(
                timeout_ms) == 0;
 }
 
+} // namespace
+
 CommandJournalStorePort command_journal_flash_port() noexcept
 {
     return {
@@ -111,8 +113,6 @@ CommandJournalStorePort command_journal_flash_port() noexcept
         command_journal_flash_replace_slot,
     };
 }
-
-} // namespace
 
 CommandJournalStoreResult command_journal_flash_load(
     CommandJournalRecord &output) noexcept

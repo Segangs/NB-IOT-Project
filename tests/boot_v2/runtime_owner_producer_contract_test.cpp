@@ -70,7 +70,7 @@ struct AuthorizedCase {
     RuntimeOwnerProducerDecision expected{};
 };
 
-constexpr std::array<AuthorizedCase, 9> kAuthorizedCases{{
+constexpr std::array<AuthorizedCase, 12> kAuthorizedCases{{
     {RuntimeOwnerProducerKind::Boot,
      RuntimeOwnerProducerRequestKind::RequestTransportAttempt,
      {RuntimeOwnerProducerAuthorizationResult::Authorized,
@@ -135,6 +135,22 @@ constexpr std::array<AuthorizedCase, 9> kAuthorizedCases{{
       RuntimeOwnerControlKind::Invalid,
       NormalIntentKind::Invalid,
       {}}},
+    {RuntimeOwnerProducerKind::AdapterMonitor,
+     RuntimeOwnerProducerRequestKind::PublishAdapterRemoved,
+     {RuntimeOwnerProducerAuthorizationResult::Authorized,
+      RuntimeOwnerRtosLane::Normal,
+      RuntimeOwnerUrgentSource::Invalid,
+      RuntimeOwnerControlKind::Invalid,
+      NormalIntentKind::PublishAdapterRemoved,
+      {}}},
+    {RuntimeOwnerProducerKind::AdapterMonitor,
+     RuntimeOwnerProducerRequestKind::PublishAdapterRestored,
+     {RuntimeOwnerProducerAuthorizationResult::Authorized,
+      RuntimeOwnerRtosLane::Normal,
+      RuntimeOwnerUrgentSource::Invalid,
+      RuntimeOwnerControlKind::Invalid,
+      NormalIntentKind::PublishAdapterRestored,
+      {}}},
     {RuntimeOwnerProducerKind::AuthenticatedCommand,
      RuntimeOwnerProducerRequestKind::RequestShutdown,
      {RuntimeOwnerProducerAuthorizationResult::Authorized,
@@ -142,6 +158,14 @@ constexpr std::array<AuthorizedCase, 9> kAuthorizedCases{{
       RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand,
       RuntimeOwnerControlKind::Invalid,
       NormalIntentKind::Invalid,
+      {}}},
+    {RuntimeOwnerProducerKind::Sensor,
+     RuntimeOwnerProducerRequestKind::PublishTelemetry,
+     {RuntimeOwnerProducerAuthorizationResult::Authorized,
+      RuntimeOwnerRtosLane::Normal,
+      RuntimeOwnerUrgentSource::Invalid,
+      RuntimeOwnerControlKind::Invalid,
+      NormalIntentKind::PublishTelemetry,
       {}}},
 }};
 
@@ -198,6 +222,7 @@ void test_numeric_layout_and_default_contracts()
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerKind::AdapterMonitor) == 4);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerKind::AuthenticatedCommand) == 5);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerKind::LocalDebug) == 6);
+    CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerKind::Sensor) == 7);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerRequestKind::Invalid) == 0);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerRequestKind::RequestTransportAttempt) == 1);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerRequestKind::PublishTelemetry) == 2);
@@ -206,6 +231,10 @@ void test_numeric_layout_and_default_contracts()
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerRequestKind::PullCommand) == 5);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerRequestKind::RequestShutdown) == 6);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerRequestKind::RawModemCommand) == 7);
+    CHECK(static_cast<std::uint8_t>(
+              RuntimeOwnerProducerRequestKind::PublishAdapterRemoved) == 8);
+    CHECK(static_cast<std::uint8_t>(
+              RuntimeOwnerProducerRequestKind::PublishAdapterRestored) == 9);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerAuthorizationResult::RejectedInvalid) == 0);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerAuthorizationResult::RejectedPermission) == 1);
     CHECK(static_cast<std::uint8_t>(RuntimeOwnerProducerAuthorizationResult::Authorized) == 2);
@@ -244,9 +273,9 @@ void test_authorized_table_maps_exactly()
 void test_all_other_recognized_pairs_reject_permission()
 {
     std::size_t authorized_seen = 0;
-    for (std::uint8_t producer_value = 1; producer_value <= 6;
+    for (std::uint8_t producer_value = 1; producer_value <= 7;
          ++producer_value) {
-        for (std::uint8_t request_value = 1; request_value <= 7;
+        for (std::uint8_t request_value = 1; request_value <= 9;
              ++request_value) {
             const auto producer =
                 static_cast<RuntimeOwnerProducerKind>(producer_value);
@@ -272,7 +301,7 @@ void test_invalid_and_unknown_values_fail_closed()
         RuntimeOwnerProducerKind::Invalid,
         static_cast<RuntimeOwnerProducerKind>(0xff),
     }};
-    constexpr std::array<RuntimeOwnerProducerRequestKind, 9> all_requests{{
+    constexpr std::array<RuntimeOwnerProducerRequestKind, 11> all_requests{{
         RuntimeOwnerProducerRequestKind::Invalid,
         RuntimeOwnerProducerRequestKind::RequestTransportAttempt,
         RuntimeOwnerProducerRequestKind::PublishTelemetry,
@@ -281,6 +310,8 @@ void test_invalid_and_unknown_values_fail_closed()
         RuntimeOwnerProducerRequestKind::PullCommand,
         RuntimeOwnerProducerRequestKind::RequestShutdown,
         RuntimeOwnerProducerRequestKind::RawModemCommand,
+        RuntimeOwnerProducerRequestKind::PublishAdapterRemoved,
+        RuntimeOwnerProducerRequestKind::PublishAdapterRestored,
         static_cast<RuntimeOwnerProducerRequestKind>(0xff),
     }};
     for (const RuntimeOwnerProducerKind producer : invalid_producers) {
@@ -298,7 +329,7 @@ void test_invalid_and_unknown_values_fail_closed()
             RuntimeOwnerProducerRequestKind::Invalid,
             static_cast<RuntimeOwnerProducerRequestKind>(0xff),
         }};
-    for (std::uint8_t producer_value = 1; producer_value <= 6;
+    for (std::uint8_t producer_value = 1; producer_value <= 7;
          ++producer_value) {
         const auto producer =
             static_cast<RuntimeOwnerProducerKind>(producer_value);
@@ -314,7 +345,7 @@ void test_invalid_and_unknown_values_fail_closed()
 
 void test_local_debug_and_raw_modem_are_denied()
 {
-    for (std::uint8_t request_value = 1; request_value <= 7;
+    for (std::uint8_t request_value = 1; request_value <= 9;
          ++request_value) {
         const RuntimeOwnerProducerDecision decision =
             runtime_owner_authorize_producer_request(
@@ -324,7 +355,7 @@ void test_local_debug_and_raw_modem_are_denied()
               RuntimeOwnerProducerAuthorizationResult::RejectedPermission);
         CHECK(route_is_zero(decision));
     }
-    for (std::uint8_t producer_value = 1; producer_value <= 6;
+    for (std::uint8_t producer_value = 1; producer_value <= 7;
          ++producer_value) {
         const RuntimeOwnerProducerDecision decision =
             runtime_owner_authorize_producer_request(
@@ -433,6 +464,25 @@ void test_gp14_power_button_producer_is_debounced_and_runtime_ready_guarded()
     CHECK(led.find("gpio_get(POWER_INT_PIN) == 0") !=
           std::string::npos);
     CHECK(led.find("stdio_usb_connected()") == std::string::npos);
+    CHECK(led.find("runtime_owner_usb_power_present()") !=
+          std::string::npos);
+    CHECK(led.find(
+              "adapter_present || "
+              "boot_v2::runtime_owner_usb_power_present()") !=
+          std::string::npos);
+    CHECK(led.find("!runtime_ready || external_power_present") !=
+          std::string::npos);
+    CHECK(led.find(
+              "adapter_power_state.observe(\n"
+              "                power_state_present,") !=
+          std::string::npos);
+    CHECK(led.find("g_modem_tx_falling_edges") !=
+          std::string::npos);
+    CHECK(led.find("gpio == MODEM_TXON_INPUT_PIN") !=
+          std::string::npos);
+    CHECK(led.find("GPIO_IRQ_EDGE_FALL") !=
+          std::string::npos);
+    CHECK(led.find("modem_tx_active") != std::string::npos);
     CHECK(led.find(
               "runtime_owner_redacted_status().runtime_ready != 0") !=
           std::string::npos);

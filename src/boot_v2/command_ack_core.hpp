@@ -102,7 +102,10 @@ public:
     [[nodiscard]] CommandTransitionResult clear_final_receipted() noexcept;
     [[nodiscard]] CommandTransitionResult restore_after_boot(
         CommandJournalRecord record,
-        std::uint32_t current_boot_sequence) noexcept;
+        std::uint32_t current_boot_sequence,
+        bool effect_confirmed) noexcept;
+    [[nodiscard]] bool synchronize_from_journal(
+        CommandJournalRecord record) noexcept;
 
     [[nodiscard]] CommandJournalState state() const noexcept;
     [[nodiscard]] const CommandJournalRecord &record() const noexcept;

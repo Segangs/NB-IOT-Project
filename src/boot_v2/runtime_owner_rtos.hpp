@@ -42,6 +42,7 @@ runtime_owner_rtos_activate_atomic() noexcept;
 runtime_owner_redacted_status() noexcept;
 [[nodiscard]] RuntimeOwnerRtosDrainMetrics
 runtime_owner_rtos_drain_metrics() noexcept;
+[[nodiscard]] bool runtime_owner_usb_power_present() noexcept;
 
 }  // namespace boot_v2
 

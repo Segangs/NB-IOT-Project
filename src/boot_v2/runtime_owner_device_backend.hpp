@@ -3,7 +3,8 @@
 
 #include <cstdint>
 
-#include "command_ack_core.hpp"
+#include "command_runtime_coordinator.hpp"
+#include "command_status_snapshot_evaluator.hpp"
 #include "runtime_owner_physical_executor.hpp"
 #include "runtime_owner_shutdown_finalizer_core.hpp"
 
@@ -13,7 +14,7 @@ class RuntimeOwnerRtosOwnerLoop;
 
 class RuntimeOwnerDeviceBackend {
 public:
-    RuntimeOwnerDeviceBackend() noexcept = default;
+    RuntimeOwnerDeviceBackend() noexcept;
     RuntimeOwnerDeviceBackend(const RuntimeOwnerDeviceBackend &) = delete;
     RuntimeOwnerDeviceBackend &operator=(const RuntimeOwnerDeviceBackend &) =
         delete;
@@ -43,15 +44,30 @@ private:
     [[nodiscard]] RuntimeOwnerPhysicalResult verify_subscription() noexcept;
     [[nodiscard]] RuntimeOwnerPhysicalResult pull_config() noexcept;
     [[nodiscard]] RuntimeOwnerPhysicalResult pull_command() noexcept;
+    [[nodiscard]] static bool
+    validate_fresh_command_status_snapshot(void *context) noexcept;
+    [[nodiscard]] static bool sample_fresh_command_status_snapshot(
+        void *context,
+        CommandStatusSnapshotSample &output) noexcept;
+    [[nodiscard]] static CommandShutdownDispatchResult
+    dispatch_authenticated_shutdown(
+        void *context,
+        CommandOpcode opcode,
+        std::uint32_t cmd_id) noexcept;
+    void synchronize_last_command_from_runtime() noexcept;
     [[nodiscard]] RuntimeOwnerPhysicalResult freeze_snapshot(
         RuntimeOwnerExecutorCommand command) noexcept;
     [[nodiscard]] RuntimeOwnerPhysicalResult publish_telemetry(
+        RuntimeOwnerExecutorCommand command) noexcept;
+    [[nodiscard]] RuntimeOwnerPhysicalResult publish_power_event(
         RuntimeOwnerExecutorCommand command) noexcept;
 
     std::uint32_t config_commit_sequence_{0};
     std::uint32_t command_request_sequence_{0};
     std::uint32_t deferred_config_commit_sequence_{0};
-    CommandAckCore command_core_{};
+    CommandRuntimeCoordinator command_core_;
+    CommandStatusSnapshotEvaluator command_status_snapshot_;
+    RuntimeOwnerLastCommandState last_command_;
     std::uint8_t prepared_{0};
     std::uint8_t modem_initialized_{0};
     std::uint8_t subscription_ready_{0};

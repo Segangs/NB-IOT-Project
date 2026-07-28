@@ -5,6 +5,7 @@
 #include <cstring>
 #include <limits>
 
+#include "hardware/watchdog.h"
 #include "pico/stdlib.h"
 
 #include "../config.h"
@@ -14,7 +15,12 @@
 #include "../tasks/app_context.hpp"
 #include "../tasks/tasks_modem.hpp"
 #include "../tasks/tasks_sensor_reader.hpp"
+#include "command_journal_flash_store.hpp"
+#include "mqtt_power_event_codec.hpp"
+#include "runtime_owner_producer_facade.hpp"
+#include "runtime_owner_rtos.hpp"
 #include "runtime_owner_shutdown_record_store.hpp"
+#include "runtime_owner_transmit_indicator.hpp"
 #include "sensor_quality_core.hpp"
 
 extern nb_iot modem;
@@ -31,9 +37,13 @@ constexpr std::uint32_t kDiagnosticPublish = 1006;
 constexpr std::uint32_t kDiagnosticPoll = 1007;
 constexpr std::uint32_t kDiagnosticCounter = 1008;
 constexpr std::uint32_t kDiagnosticInvalidCommand = 1009;
+constexpr std::uint32_t kDiagnosticJournal = 1010;
 constexpr std::uint32_t kCommandWaitMs = 6000;
 constexpr std::uint32_t kCommandPollSliceMs = 100;
-constexpr std::uint32_t kCommandBootSequence = 1;
+constexpr std::uint32_t kPowerEventRecoverySettleMs = 5000;
+constexpr std::uint32_t kPowerEventAtProbeRetryMs = 3000;
+constexpr std::uint8_t kPowerEventAtProbeAttempts = 3;
+constexpr std::uint32_t kPowerEventShutdownRecoveryBudgetMs = 75000;
 
 const char *configured_or(
     const char *configured,
@@ -57,6 +67,64 @@ const char *mqtt_username() noexcept
 const char *mqtt_password() noexcept
 {
     return configured_or(MQTT_PASSWORD, modem.get_cimi());
+}
+
+bool recover_power_event_transport() noexcept
+{
+    LOG("POWER_EVENT_RECOVERY_START\n");
+    modem_sleep(kPowerEventRecoverySettleMs);
+
+    bool at_alive = false;
+    for (std::uint8_t attempt = 0;
+         attempt < kPowerEventAtProbeAttempts;
+         ++attempt) {
+        LOG(
+            "POWER_EVENT_AT_PROBE %u\n",
+            static_cast<unsigned>(attempt + 1));
+        if (modem.check_at_alive()) {
+            at_alive = true;
+            break;
+        }
+        if (attempt + 1 < kPowerEventAtProbeAttempts) {
+            modem_sleep(kPowerEventAtProbeRetryMs);
+        }
+    }
+    if (!at_alive) {
+        LOG("POWER_EVENT_AT_UNAVAILABLE\n");
+        return false;
+    }
+
+    const bool connected = modem.modem_MqttOpen(
+        MQTT_BROKER_HOST,
+        MQTT_BROKER_PORT,
+        mqtt_device_id(),
+        mqtt_username(),
+        mqtt_password());
+    LOG(
+        connected
+            ? "POWER_EVENT_RECOVERY_OK\n"
+            : "POWER_EVENT_RECOVERY_FAIL\n");
+    return connected;
+}
+
+bool publish_power_payload_with_recovery(
+    const char *topic,
+    const char *payload,
+    const bool allow_recovery) noexcept
+{
+    if (modem.modem_MqttPublish(topic, payload)) {
+        return true;
+    }
+    LOG("POWER_EVENT_PUBLISH_RETRY\n");
+    if (!allow_recovery || !recover_power_event_transport()) {
+        return false;
+    }
+    const bool published = modem.modem_MqttPublish(topic, payload);
+    LOG(
+        published
+            ? "POWER_EVENT_RETRY_OK\n"
+            : "POWER_EVENT_RETRY_FAIL\n");
+    return published;
 }
 
 RuntimeOwnerPhysicalResult succeeded() noexcept
@@ -130,8 +198,59 @@ std::uint8_t shutdown_reason(
 
 } // namespace
 
+RuntimeOwnerDeviceBackend::RuntimeOwnerDeviceBackend() noexcept
+    : command_core_(command_journal_flash_port()),
+      command_status_snapshot_(
+          {this, sample_fresh_command_status_snapshot})
+{
+}
+
 bool RuntimeOwnerDeviceBackend::prepare() noexcept
 {
+    CommandBootEffectEvidence evidence{};
+    const RuntimeOwnerShutdownRecordV1 *const shutdown_record =
+        runtime_owner_shutdown_record_current();
+    if (shutdown_record != nullptr) {
+        evidence.shutdown_record_present = 1;
+        evidence.shutdown_record = *shutdown_record;
+    }
+    evidence.watchdog_marker_present =
+        watchdog_hw->scratch[2] == COMMAND_WATCHDOG_SCRATCH_MAGIC
+            ? 1
+            : 0;
+    evidence.watchdog_cmd_id = watchdog_hw->scratch[3];
+
+    const CommandRuntimePrepareResult command_prepare =
+        command_core_.prepare(evidence);
+    watchdog_hw->scratch[2] = 0;
+    watchdog_hw->scratch[3] = 0;
+    if (command_prepare == CommandRuntimePrepareResult::FailedClosed) {
+        return false;
+    }
+
+    const CommandJournalRecord &prepared_command = command_core_.record();
+    const bool recovered_success =
+        command_prepare == CommandRuntimePrepareResult::ReadyRecovered &&
+        prepared_command.state == CommandJournalState::Executed &&
+        prepared_command.result == CommandResult::Executed &&
+        prepared_command.error == CommandError::None;
+    if (recovered_success &&
+        (prepared_command.opcode == CommandOpcode::Reboot ||
+         prepared_command.opcode == CommandOpcode::PowerOff)) {
+        g_boot_reason_code =
+            prepared_command.opcode == CommandOpcode::Reboot ? 1 : 3;
+        g_boot_cmd_id = static_cast<int>(prepared_command.cmd_id);
+    }
+
+    const std::uint32_t boot_command_id =
+        g_boot_cmd_id > 0
+            ? static_cast<std::uint32_t>(g_boot_cmd_id)
+            : 0;
+    last_command_.reset_for_boot(
+        boot_command_id,
+        (g_boot_reason_code == 1 || g_boot_reason_code == 3) &&
+            boot_command_id != 0);
+    synchronize_last_command_from_runtime();
     gpio_init(MODEM_WAKEUP_PIN);
     gpio_set_dir(MODEM_WAKEUP_PIN, GPIO_OUT);
     gpio_put(MODEM_WAKEUP_PIN, 1);
@@ -159,6 +278,93 @@ std::uint32_t RuntimeOwnerDeviceBackend::pending_config_commit_sequence()
 void RuntimeOwnerDeviceBackend::clear_pending_config_commit() noexcept
 {
     deferred_config_commit_sequence_ = 0;
+}
+
+CommandShutdownDispatchResult
+RuntimeOwnerDeviceBackend::dispatch_authenticated_shutdown(
+    void *const context,
+    const CommandOpcode opcode,
+    const std::uint32_t cmd_id) noexcept
+{
+    if (context == nullptr || cmd_id == 0) {
+        return CommandShutdownDispatchResult::Rejected;
+    }
+    (void)static_cast<RuntimeOwnerDeviceBackend *>(context);
+
+    RuntimeOwnerIngressResult ingress =
+        RuntimeOwnerIngressResult::RejectedInvalid;
+    if (opcode == CommandOpcode::Reboot) {
+        ingress = runtime_owner_authenticated_request_reboot(
+            cmd_id, cmd_id);
+    } else if (opcode == CommandOpcode::PowerOff) {
+        ingress = runtime_owner_authenticated_request_power_off(
+            cmd_id, cmd_id);
+    } else {
+        return CommandShutdownDispatchResult::Rejected;
+    }
+    return ingress == RuntimeOwnerIngressResult::AcceptedForDelivery
+               ? CommandShutdownDispatchResult::Accepted
+               : CommandShutdownDispatchResult::Rejected;
+}
+
+void RuntimeOwnerDeviceBackend::synchronize_last_command_from_runtime()
+    noexcept
+{
+    const CommandRuntimeTerminalCommand terminal =
+        command_core_.last_terminal_command();
+    if (terminal.cmd_id != 0) {
+        (void)last_command_.observe_terminal(
+            terminal.cmd_id,
+            terminal.result,
+            terminal.error);
+    }
+}
+
+bool RuntimeOwnerDeviceBackend::validate_fresh_command_status_snapshot(
+    void *const context) noexcept
+{
+    if (context == nullptr) {
+        return false;
+    }
+    auto &backend =
+        *static_cast<RuntimeOwnerDeviceBackend *>(context);
+    RuntimeStatusSnapshotV1 snapshot{};
+    return backend.command_status_snapshot_.validate_fresh(snapshot);
+}
+
+bool RuntimeOwnerDeviceBackend::sample_fresh_command_status_snapshot(
+    void *const context,
+    CommandStatusSnapshotSample &output) noexcept
+{
+    if (context == nullptr) {
+        return false;
+    }
+    const auto &backend =
+        *static_cast<RuntimeOwnerDeviceBackend *>(context);
+    CommandStatusSnapshotSample sample{};
+    sample.owner = runtime_owner_redacted_status();
+    sample.metrics = runtime_owner_rtos_drain_metrics();
+    sample.network_connected = modem.is_connected() ? 1 : 0;
+    sample.battery_mode = lcd_params.is_battery_mode ? 1 : 0;
+    sample.alarm_active =
+        g_buzzer_trigger || g_buzzer_active ? 1 : 0;
+    for (std::size_t index = 0; index < sample.sensors.size(); ++index) {
+        if (!copy_sensor_quality_snapshot(
+                static_cast<std::uint32_t>(index),
+                sample.sensors[index])) {
+            sample.sensors[index].health = SnapshotHealth::Failed;
+            sample.sensors[index].stale = 1;
+        }
+    }
+    sample.config_version =
+        backend.config_commit_sequence_ == 0
+            ? 1
+            : backend.config_commit_sequence_;
+    const RuntimeOwnerLastCommand last_command = backend.last_command_.value();
+    sample.last_command_id = last_command.command_id;
+    sample.last_command_result = last_command.result;
+    output = sample;
+    return true;
 }
 
 RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::open_transport(
@@ -408,6 +614,9 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_config() noexcept
 
 RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_command() noexcept
 {
+    if (!command_core_.ready()) {
+        return failed(kDiagnosticJournal);
+    }
     if (!modem.is_connected()) {
         return failed(kDiagnosticMqtt);
     }
@@ -444,9 +653,7 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_command() noexcept
         }
         ++command_request_sequence_;
         const std::uint32_t last_cmd_id =
-            g_boot_cmd_id > 0
-                ? static_cast<std::uint32_t>(g_boot_cmd_id)
-                : command_core_.last_completed_cmd_id();
+            last_command_.value().command_id;
         if (!command_core_.begin_poll(
                 command_request_sequence_, last_cmd_id)) {
             return failed(kDiagnosticInvalidCommand);
@@ -497,8 +704,8 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_command() noexcept
         const CommandAcceptResult accepted =
             command_core_.accept_response(
                 response,
-                to_ms_since_boot(get_absolute_time()) / 1000,
-                kCommandBootSequence);
+                to_ms_since_boot(get_absolute_time()) / 1000);
+        synchronize_last_command_from_runtime();
         if (accepted == CommandAcceptResult::NoCommand) {
             return succeeded();
         }
@@ -568,32 +775,24 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_command() noexcept
     }
 
     if (command_core_.state() ==
-        CommandJournalState::AcceptedReceipted) {
-        const CommandExecutionDecision decision =
-            command_core_.mark_execute(
-                to_ms_since_boot(get_absolute_time()) / 1000);
-        if (decision == CommandExecutionDecision::Rejected) {
-            return failed(kDiagnosticInvalidCommand);
+            CommandJournalState::AcceptedReceipted ||
+        command_core_.state() == CommandJournalState::ExecuteMarked) {
+        const CommandRuntimeExecutionResult execution =
+            command_core_.execute_pending(
+                to_ms_since_boot(get_absolute_time()) / 1000,
+                {this,
+                 validate_fresh_command_status_snapshot},
+                {this, dispatch_authenticated_shutdown});
+        synchronize_last_command_from_runtime();
+        if (execution ==
+                CommandRuntimeExecutionResult::ShutdownDispatched ||
+            execution ==
+                CommandRuntimeExecutionResult::AwaitingBootEffect) {
+            return succeeded();
         }
-        if (decision == CommandExecutionDecision::Dispatch) {
-            const bool status_only =
-                command_core_.record().opcode ==
-                CommandOpcode::RequestStatus;
-            if (command_core_.complete_execution(
-                    status_only,
-                    status_only ? CommandError::None
-                                : CommandError::Execution) !=
-                CommandTransitionResult::Accepted) {
-                return failed(kDiagnosticInvalidCommand);
-            }
-        }
-    }
-
-    if (command_core_.state() == CommandJournalState::ExecuteMarked) {
-        if (command_core_.complete_execution(
-                false, CommandError::Journal) !=
-            CommandTransitionResult::Accepted) {
-            return failed(kDiagnosticInvalidCommand);
+        if (execution == CommandRuntimeExecutionResult::Rejected ||
+            execution == CommandRuntimeExecutionResult::Deferred) {
+            return failed(kDiagnosticJournal);
         }
     }
 
@@ -614,6 +813,7 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_command() noexcept
         CommandTransitionResult::Accepted) {
         return failed(kDiagnosticInvalidCommand);
     }
+    synchronize_last_command_from_runtime();
     g_boot_cmd_id = static_cast<int>(completed_cmd_id);
     return succeeded();
 }
@@ -687,12 +887,49 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::publish_telemetry(
                : failed(kDiagnosticPublish);
 }
 
+RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::publish_power_event(
+    const RuntimeOwnerExecutorCommand command) noexcept
+{
+    const NormalIntent intent = command.source.normal_intent;
+    MqttPowerEvent event{};
+    event.incident_id = intent.subject_id;
+    event.sequence = intent.snapshot_revision;
+    switch (command.kind) {
+    case RuntimeOwnerDeviceOperationKind::PublishAdapterRemoved:
+        event.event_type = 4;
+        event.state_code = 1;
+        event.value0 = 0;
+        break;
+    case RuntimeOwnerDeviceOperationKind::PublishAdapterRestored:
+        event.event_type = 5;
+        event.state_code = 0;
+        event.value0 = 1;
+        break;
+    default:
+        return failed(kDiagnosticInvalidCommand);
+    }
+
+    char topic[64]{};
+    char payload[81]{};
+    std::snprintf(
+        topic, sizeof(topic), "devices/%s/event", mqtt_device_id());
+    if (!mqtt_power_event_build(event, payload, sizeof(payload))) {
+        return failed(kDiagnosticInvalidCommand);
+    }
+    return publish_power_payload_with_recovery(topic, payload, true)
+               ? succeeded()
+               : failed(kDiagnosticPublish);
+}
+
 RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::execute(
     const RuntimeOwnerExecutorCommand command) noexcept
 {
     if (prepared_ == 0) {
         return failed(kDiagnosticNotPrepared);
     }
+    const RuntimeOwnerTransmitIndicatorScope transmit_indicator(
+        lcd_params.is_transmitting,
+        runtime_owner_operation_uses_transmit_indicator(command.kind));
     lcd_params.is_modem_busy = true;
     RuntimeOwnerPhysicalResult result{};
     switch (command.kind) {
@@ -737,6 +974,10 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::execute(
         break;
     case RuntimeOwnerDeviceOperationKind::PublishTelemetry:
         result = publish_telemetry(command);
+        break;
+    case RuntimeOwnerDeviceOperationKind::PublishAdapterRemoved:
+    case RuntimeOwnerDeviceOperationKind::PublishAdapterRestored:
+        result = publish_power_event(command);
         break;
     case RuntimeOwnerDeviceOperationKind::RefreshRssi: {
         const int csq = modem.check_rssi_csq();
@@ -793,22 +1034,45 @@ RuntimeOwnerDeviceBackend::execute_shutdown_cleanup(
         return RuntimeOwnerShutdownStepResult::Succeeded;
 
     case RuntimeOwnerShutdownCleanupStep::PublishDying: {
-        if (!modem.is_connected()) {
-            return RuntimeOwnerShutdownStepResult::Skipped;
-        }
         if (remaining_ms < 17000) {
             return RuntimeOwnerShutdownStepResult::TimedOut;
         }
+        const RuntimeOwnerTransmitIndicatorScope transmit_indicator(
+            lcd_params.is_transmitting, true);
         char topic[64]{};
-        char payload[16]{};
-        std::snprintf(
-            topic, sizeof(topic), "devices/%s/status", mqtt_device_id());
-        std::snprintf(
-            payload,
-            sizeof(payload),
-            "[0,%u]",
-            static_cast<unsigned>(shutdown_reason(context.source)));
-        return modem.modem_MqttPublish(topic, payload)
+        char payload[81]{};
+        if (context.source ==
+            RuntimeOwnerUrgentSource::AdapterLossCommitted) {
+            std::snprintf(
+                topic, sizeof(topic), "devices/%s/event", mqtt_device_id());
+            const MqttPowerEvent event{
+                6,
+                context.incident_correlation_id,
+                context.producer_sequence,
+                2,
+                210,
+                90,
+                0,
+                0};
+            if (!mqtt_power_event_build(
+                    event, payload, sizeof(payload))) {
+                return RuntimeOwnerShutdownStepResult::Failed;
+            }
+        } else {
+            std::snprintf(
+                topic, sizeof(topic), "devices/%s/status", mqtt_device_id());
+            std::snprintf(
+                payload,
+                sizeof(payload),
+                "[0,%u]",
+                static_cast<unsigned>(shutdown_reason(context.source)));
+        }
+        const bool allow_recovery =
+            context.source ==
+                RuntimeOwnerUrgentSource::AdapterLossCommitted &&
+            remaining_ms >= kPowerEventShutdownRecoveryBudgetMs;
+        return publish_power_payload_with_recovery(
+                   topic, payload, allow_recovery)
                    ? RuntimeOwnerShutdownStepResult::Succeeded
                    : RuntimeOwnerShutdownStepResult::Failed;
     }
@@ -895,7 +1159,8 @@ RuntimeOwnerDeviceBackend::execute_shutdown_cleanup(
         record_input.initial_usb_present =
             directive.initial_usb_present;
         record_input.planned_action =
-            directive.initial_usb_present != 0
+            (context.intent == RuntimeOwnerShutdownIntent::Reboot ||
+             directive.initial_usb_present != 0)
                 ? RuntimeOwnerShutdownPlannedAction::WatchdogReboot
                 : RuntimeOwnerShutdownPlannedAction::Gp15Kill;
         record_input.hard_deadline_reached = directive.hard_deadline;

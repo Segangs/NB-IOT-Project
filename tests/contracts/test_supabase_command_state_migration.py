@@ -17,6 +17,37 @@ def sql(path: Path) -> str:
 
 
 class SupabaseCommandStateMigrationContractTest(unittest.TestCase):
+    def _assert_normalization_safety_contract(
+        self,
+        up_source: str,
+        down_source: str,
+    ):
+        lowered = up_source.lower()
+        compact = re.sub(r"\s+", " ", lowered)
+        normalization = compact[: compact.index("create table public.device_command_state")]
+
+        self.assertTrue(lowered.lstrip().startswith("begin;"))
+        self.assertIn("do $normalize_legacy_reboot$", normalization)
+        self.assertLess(
+            normalization.index("update public.sensorvalue"),
+            normalization.index('update public."devicecmds"'),
+        )
+        self.assertIn("get diagnostics v_sensor_rows = row_count", normalization)
+        self.assertIn("get diagnostics v_command_rows = row_count", normalization)
+        self.assertIn(
+            "if v_sensor_rows <> 11 or v_command_rows <> 11 then",
+            normalization,
+        )
+        self.assertIn(
+            "if v_normalized_command_count <> 11 "
+            "or v_normalized_sensor_count <> 11 then",
+            normalization,
+        )
+        self.assertNotRegex(
+            down_source.lower(),
+            r'update\s+public\.(?:"devicecmds"|sensorvalue)',
+        )
+
     def test_all_review_artifacts_exist(self):
         for path in (UP, DOWN, PRECHECK, VERIFY, EXPECTED):
             with self.subTest(path=path):
@@ -30,6 +61,133 @@ class SupabaseCommandStateMigrationContractTest(unittest.TestCase):
         self.assertIn("create trigger trg_sync_device_command_state", lowered)
         self.assertNotRegex(lowered, r"drop\s+(table|trigger|function).*(devicecmds|assign_device_command)")
         self.assertNotRegex(lowered, r"alter\s+table\s+public\.\"devicecmds\"\s+rename")
+
+    def test_exact_legacy_reboot_normalization_is_guarded_and_atomic(self):
+        source = UP.read_text(encoding="utf-8")
+        self.assertIn("cmd = 10", source)
+        self.assertIn("status = 1", source)
+        self.assertIn("get diagnostics", source.lower())
+        self.assertIn("expected 11 legacy reboot rows", source.lower())
+        self.assertIn("update public.sensorvalue", source.lower())
+        self.assertIn('update public."deviceCmds"', source)
+        self.assertLess(
+            source.lower().index("update public.sensorvalue"),
+            source.lower().index("insert into public.device_command_state"),
+        )
+
+    def test_existing_normalized_command_pair_is_rejected_before_updates(self):
+        for path in (PRECHECK, UP):
+            source = sql(path).lower()
+            compact = re.sub(r"\s+", " ", source)
+            with self.subTest(path=path):
+                self.assertIn(
+                    'from public."devicecmds" as c '
+                    "where c.cmd = 1 and c.status = 1",
+                    compact,
+                )
+                self.assertIn(
+                    "if v_existing_normalized_command_count <> 0 then",
+                    compact,
+                )
+                self.assertIn(
+                    "existing normalized command rows are not allowed",
+                    compact,
+                )
+                if path == UP:
+                    self.assertLess(
+                        compact.index(
+                            "if v_existing_normalized_command_count <> 0 then"
+                        ),
+                        compact.index("update public.sensorvalue"),
+                    )
+
+    def test_extra_normalized_sensor_for_legacy_target_is_rejected_before_updates(self):
+        for path in (PRECHECK, UP):
+            source = sql(path).lower()
+            compact = re.sub(r"\s+", " ", source)
+            with self.subTest(path=path):
+                self.assertIn(
+                    "from public.sensorvalue as s "
+                    'join public."devicecmds" as c '
+                    'on c."cmdid" = s."cmdid" '
+                    'where s."cmd" = 1 and c.cmd = 10 and c.status = 1',
+                    compact,
+                )
+                self.assertIn(
+                    "if v_existing_normalized_sensor_count <> 0 then",
+                    compact,
+                )
+                self.assertIn(
+                    "legacy reboot targets already have normalized sensor rows",
+                    compact,
+                )
+                if path == UP:
+                    self.assertLess(
+                        compact.index(
+                            "if v_existing_normalized_sensor_count <> 0 then"
+                        ),
+                        compact.index("update public.sensorvalue"),
+                    )
+
+    def test_normalization_locks_in_legacy_trigger_access_order(self):
+        source = sql(UP).lower()
+        sensor_lock = (
+            "lock table public.sensorvalue in share row exclusive mode;"
+        )
+        command_lock = (
+            'lock table public."devicecmds" in share row exclusive mode;'
+        )
+        self.assertLess(source.index(sensor_lock), source.index(command_lock))
+        self.assertLess(
+            source.index(command_lock),
+            source.index("do $normalize_legacy_reboot$"),
+        )
+
+    def test_normalization_safety_contract_rejects_realistic_mutants(self):
+        up_source = sql(UP)
+        down_source = sql(DOWN)
+        self._assert_normalization_safety_contract(up_source, down_source)
+
+        row_count_mutant = re.sub(
+            r"if v_sensor_rows <> 11 or v_command_rows <> 11 then"
+            r".*?end if;",
+            "",
+            up_source,
+            count=1,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        postcondition_mutant = re.sub(
+            r"if v_normalized_command_count <> 11"
+            r"\s+or v_normalized_sensor_count <> 11 then"
+            r".*?end if;",
+            "",
+            up_source,
+            count=1,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        rollback_reverse_mutant = down_source.replace(
+            "commit;",
+            'update public.sensorvalue set "cmd" = 10 where "cmd" = 1;\n'
+            'update public."deviceCmds" set cmd = 10 where cmd = 1;\n\n'
+            "commit;",
+            1,
+        )
+
+        self.assertNotEqual(row_count_mutant, up_source)
+        self.assertNotEqual(postcondition_mutant, up_source)
+        self.assertNotEqual(rollback_reverse_mutant, down_source)
+
+        for name, mutated_up, mutated_down in (
+            ("row count guard removed", row_count_mutant, down_source),
+            ("exact postcondition removed", postcondition_mutant, down_source),
+            ("rollback reverses normalization", up_source, rollback_reverse_mutant),
+        ):
+            with self.subTest(name=name):
+                with self.assertRaises(AssertionError):
+                    self._assert_normalization_safety_contract(
+                        mutated_up,
+                        mutated_down,
+                    )
 
     def test_claim_is_single_row_locked_and_bounded(self):
         source = sql(UP).lower()
@@ -180,6 +338,25 @@ class SupabaseCommandStateMigrationContractTest(unittest.TestCase):
         self.assertNotIn("has_function_privilege('public'", verify)
         self.assertIn("raise exception", verify)
 
+    def test_precheck_allows_only_the_exact_legacy_reboot_baseline(self):
+        source = sql(PRECHECK).lower()
+        compact = re.sub(r"\s+", " ", source)
+        self.assertIn("where c.cmd = 10 and c.status = 1", compact)
+        self.assertIn("if v_legacy_reboot_count <> 11 then", compact)
+        self.assertIn("expected 11 legacy reboot rows", source)
+        self.assertIn("where c.status = 0", compact)
+        self.assertIn("c.cmd not between 1 and 4 and c.cmd <> 10", compact)
+
+    def test_verify_requires_exact_normalized_reboot_backfill(self):
+        source = sql(VERIFY).lower()
+        compact = re.sub(r"\s+", " ", source)
+        self.assertIn("where c.cmd = 10", compact)
+        self.assertIn("legacy cmd=10 rows remain after normalization", source)
+        self.assertIn("where c.cmd = 1 and c.status = 1", compact)
+        self.assertIn("expected 11 normalized reboot rows", source)
+        self.assertIn("s.opcode = 1", compact)
+        self.assertIn("expected 11 normalized reboot companion rows", source)
+
     def test_backfill_uses_one_stable_statement_timestamp(self):
         source = sql(UP).lower()
         backfill = source[
@@ -215,6 +392,7 @@ class SupabaseCommandStateMigrationContractTest(unittest.TestCase):
         self.assertIn("live apply: 0", source)
         self.assertIn("기존 `deviceCmds` 행 보존", source)
         self.assertIn("신규 companion 상태 이력 삭제", source)
+        self.assertIn("`10 → 1` 정규화를 되돌리지 않", source)
         self.assertIn("별도 승인", source)
 
 

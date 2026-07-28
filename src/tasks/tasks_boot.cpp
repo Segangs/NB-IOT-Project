@@ -55,10 +55,6 @@ void vBootTask(void *)
     LOG("SELFTEST %s\n",
         (vsys_stable && chip_temp_ok && flash_ok) ? "OK" : "WARN");
 
-    std::strncpy(
-        lcd_params.status_text,
-        "Start Owner",
-        sizeof(lcd_params.status_text) - 1);
     if (!submit_transport_request()) {
         LOG("BOOT_OWNER_SUBMIT_FAIL\n");
         std::strncpy(

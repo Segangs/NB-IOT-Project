@@ -1032,7 +1032,9 @@ bool RuntimeOwnerAdapterCore::normal_intents_have_same_key(
     if (left.kind != right.kind) {
         return false;
     }
-    return left.kind != NormalIntentKind::PublishTelemetry ||
+    return (left.kind != NormalIntentKind::PublishTelemetry &&
+            left.kind != NormalIntentKind::PublishAdapterRemoved &&
+            left.kind != NormalIntentKind::PublishAdapterRestored) ||
            left.subject_id == right.subject_id;
 }
 

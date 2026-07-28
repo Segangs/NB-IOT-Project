@@ -339,7 +339,8 @@ CommandTransitionResult CommandAckCore::clear_final_receipted() noexcept
 
 CommandTransitionResult CommandAckCore::restore_after_boot(
     CommandJournalRecord record,
-    const std::uint32_t current_boot_sequence) noexcept
+    const std::uint32_t current_boot_sequence,
+    const bool effect_confirmed) noexcept
 {
     if (!command_journal_record_is_canonical(record) ||
         record.state == CommandJournalState::Empty ||
@@ -349,8 +350,12 @@ CommandTransitionResult CommandAckCore::restore_after_boot(
     if (record.state == CommandJournalState::ExecuteMarked) {
         record.state = CommandJournalState::Executed;
         record.phase = CommandAckPhase::Final;
-        record.result = CommandResult::Failed;
-        record.error = CommandError::Journal;
+        record.result = effect_confirmed
+                            ? CommandResult::Executed
+                            : CommandResult::Failed;
+        record.error = effect_confirmed
+                           ? CommandError::None
+                           : CommandError::Journal;
     } else if (record.state <= CommandJournalState::AcceptedReceipted &&
                current_boot_sequence !=
                    record.boot_sequence_before_execute) {
@@ -361,6 +366,17 @@ CommandTransitionResult CommandAckCore::restore_after_boot(
     }
     record_ = record;
     return CommandTransitionResult::Accepted;
+}
+
+bool CommandAckCore::synchronize_from_journal(
+    const CommandJournalRecord record) noexcept
+{
+    if (!command_journal_record_is_canonical(record)) {
+        return false;
+    }
+    pending_request_id_ = 0;
+    record_ = record;
+    return true;
 }
 
 CommandJournalState CommandAckCore::state() const noexcept

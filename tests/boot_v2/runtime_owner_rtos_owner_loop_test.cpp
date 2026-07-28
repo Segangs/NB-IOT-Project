@@ -26,10 +26,11 @@ std::size_t failures = 0;
 
 constexpr RuntimeOwnerUrgentMessage urgent_message(
     const RuntimeOwnerUrgentSource source,
+    const RuntimeOwnerShutdownIntent intent,
     const std::uint32_t sequence,
     const std::uint32_t correlation) noexcept
 {
-    return {source, {}, sequence, correlation};
+    return {source, intent, {}, sequence, correlation};
 }
 
 constexpr NormalIntent valid_normal() noexcept
@@ -48,7 +49,10 @@ void test_power_mapping()
     RuntimeOwnerTaskCoreTestPeer::fixture_activate(core);
     RuntimeOwnerRtosOwnerLoop loop{core};
     CHECK(loop.consume_urgent(urgent_message(
-              RuntimeOwnerUrgentSource::PowerButton, 11, 101)) ==
+              RuntimeOwnerUrgentSource::PowerButton,
+              RuntimeOwnerShutdownIntent::AutomaticByUsb,
+              11,
+              101)) ==
           RuntimeOwnerDrainConsumeResult::Processed);
     CHECK(RuntimeOwnerTaskCoreTestPeer::power_button_shutdown_port(core)
               .request(11, 101) ==
@@ -67,7 +71,10 @@ void test_adapter_loss_mapping()
     RuntimeOwnerTaskCoreTestPeer::fixture_activate(core);
     RuntimeOwnerRtosOwnerLoop loop{core};
     CHECK(loop.consume_urgent(urgent_message(
-              RuntimeOwnerUrgentSource::AdapterLossCommitted, 12, 102)) ==
+              RuntimeOwnerUrgentSource::AdapterLossCommitted,
+              RuntimeOwnerShutdownIntent::AutomaticByUsb,
+              12,
+              102)) ==
           RuntimeOwnerDrainConsumeResult::Processed);
     CHECK(RuntimeOwnerTaskCoreTestPeer::adapter_loss_shutdown_port(core)
               .request(12, 102) ==
@@ -82,22 +89,34 @@ void test_adapter_loss_mapping()
 
 void test_authenticated_mapping()
 {
-    RuntimeOwnerTaskCore core{};
-    RuntimeOwnerTaskCoreTestPeer::fixture_activate(core);
-    RuntimeOwnerRtosOwnerLoop loop{core};
-    CHECK(loop.consume_urgent(urgent_message(
-              RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand,
-              13,
-              103)) == RuntimeOwnerDrainConsumeResult::Processed);
-    CHECK(RuntimeOwnerTaskCoreTestPeer::authenticated_command_shutdown_port(core)
-              .request(13, 103) ==
-          RuntimeOwnerShutdownRequestResult::AcceptedDuplicate);
-    CHECK(RuntimeOwnerTaskCoreTestPeer::power_button_shutdown_port(core)
-              .request(13, 103) ==
-          RuntimeOwnerShutdownRequestResult::RejectedTerminal);
-    CHECK(RuntimeOwnerTaskCoreTestPeer::adapter_loss_shutdown_port(core)
-              .request(13, 103) ==
-          RuntimeOwnerShutdownRequestResult::RejectedTerminal);
+    constexpr RuntimeOwnerShutdownIntent intents[] = {
+        RuntimeOwnerShutdownIntent::Reboot,
+        RuntimeOwnerShutdownIntent::PowerOff,
+    };
+    for (const RuntimeOwnerShutdownIntent intent : intents) {
+        RuntimeOwnerTaskCore core{};
+        RuntimeOwnerTaskCoreTestPeer::fixture_activate(core);
+        RuntimeOwnerRtosOwnerLoop loop{core};
+        const RuntimeOwnerUrgentMessage accepted = urgent_message(
+            RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand,
+            intent,
+            13,
+            103);
+        CHECK(loop.consume_urgent(accepted) ==
+              RuntimeOwnerDrainConsumeResult::Processed);
+        CHECK(RuntimeOwnerTaskCoreTestPeer::authenticated_command_shutdown_port(
+                  core).request(13, 103) ==
+              RuntimeOwnerShutdownRequestResult::AcceptedDuplicate);
+        RuntimeOwnerUrgentMessage copied{};
+        CHECK(loop.copy_shutdown_context(copied));
+        CHECK(copied.intent == intent);
+        CHECK(RuntimeOwnerTaskCoreTestPeer::power_button_shutdown_port(core)
+                  .request(13, 103) ==
+              RuntimeOwnerShutdownRequestResult::RejectedTerminal);
+        CHECK(RuntimeOwnerTaskCoreTestPeer::adapter_loss_shutdown_port(core)
+                  .request(13, 103) ==
+              RuntimeOwnerShutdownRequestResult::RejectedTerminal);
+    }
 }
 
 void test_only_accepted_shutdown_context_is_preserved()
@@ -109,17 +128,24 @@ void test_only_accepted_shutdown_context_is_preserved()
     CHECK(!loop.copy_shutdown_context(copied));
 
     const RuntimeOwnerUrgentMessage accepted = urgent_message(
-        RuntimeOwnerUrgentSource::PowerButton, 21, 201);
+        RuntimeOwnerUrgentSource::PowerButton,
+        RuntimeOwnerShutdownIntent::AutomaticByUsb,
+        21,
+        201);
     CHECK(loop.consume_urgent(accepted) ==
           RuntimeOwnerDrainConsumeResult::Processed);
     CHECK(loop.copy_shutdown_context(copied));
     CHECK(copied.source == accepted.source);
+    CHECK(copied.intent == accepted.intent);
     CHECK(copied.producer_sequence == accepted.producer_sequence);
     CHECK(copied.incident_correlation_id ==
           accepted.incident_correlation_id);
 
     const RuntimeOwnerUrgentMessage rejected_terminal = urgent_message(
-        RuntimeOwnerUrgentSource::AdapterLossCommitted, 22, 202);
+        RuntimeOwnerUrgentSource::AdapterLossCommitted,
+        RuntimeOwnerShutdownIntent::AutomaticByUsb,
+        22,
+        202);
     CHECK(loop.consume_urgent(rejected_terminal) ==
           RuntimeOwnerDrainConsumeResult::Processed);
     CHECK(loop.copy_shutdown_context(copied));
@@ -140,7 +166,10 @@ void test_only_accepted_shutdown_context_is_preserved()
 void test_invalid_urgent_does_not_reach_a_port_or_cycle()
 {
     const RuntimeOwnerUrgentMessage message = urgent_message(
-        RuntimeOwnerUrgentSource::Invalid, 14, 104);
+        RuntimeOwnerUrgentSource::Invalid,
+        RuntimeOwnerShutdownIntent::AutomaticByUsb,
+        14,
+        104);
 
     RuntimeOwnerTaskCore cycle_core{};
     RuntimeOwnerTaskCoreTestPeer::fixture_activate(cycle_core);

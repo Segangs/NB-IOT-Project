@@ -134,7 +134,7 @@ UsbPowerObservation sample_usb_power(
 {
     increment_nonzero(g_usb_sample_sequence);
     UsbPowerObservation observation{};
-    observation.present = stdio_usb_connected() ? 1 : 0;
+    observation.present = runtime_owner_usb_power_present() ? 1 : 0;
     observation.cleanup_skipped_mask = cleanup_skipped_mask;
     observation.cleanup_timed_out_mask = cleanup_timed_out_mask;
     observation.hard_deadline_reached = hard_deadline_reached;
@@ -226,7 +226,8 @@ void drive_owner_until_idle() noexcept
             break;
         }
         case RuntimeOwnerShutdownFinalizeAction::CommitWatchdog:
-            watchdog_hw->scratch[2] = 0x12345678;
+            watchdog_hw->scratch[2] =
+                COMMAND_WATCHDOG_SCRATCH_MAGIC;
             watchdog_hw->scratch[3] =
                 context.incident_correlation_id;
             LOG("SHUTDOWN_WATCHDOG_COMMIT\n");
@@ -344,6 +345,11 @@ RuntimeOwnerIngressResult try_submit(
 }
 
 } // namespace
+
+bool runtime_owner_usb_power_present() noexcept
+{
+    return stdio_usb_connected();
+}
 
 RuntimeOwnerStartResult runtime_owner_rtos_start() noexcept
 {

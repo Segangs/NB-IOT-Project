@@ -1,4 +1,5 @@
 #include "tasks_lcd.hpp"
+#include "../boot_v2/lcd_status_policy.hpp"
 #include "../config.h"
 #include "../lib/log.hpp"
 #include "FreeRTOS.h"
@@ -135,9 +136,7 @@ void vLcdTask(void *pvParameters)
         } else {
             // Normal operational layout
             char temp_str[16];
-            if (params->is_battery_mode) {
-                snprintf(temp_str, sizeof(temp_str), "BAT MODE");
-            } else if (params->is_unauthenticated) {
+            if (params->is_unauthenticated) {
                 // MQTT 인증 실패 시 온도를 표시하는 하단 줄에 "Unauth" 고정 출력
                 snprintf(temp_str, sizeof(temp_str), "Unauth");
             } else {
@@ -160,8 +159,12 @@ void vLcdTask(void *pvParameters)
                     snprintf(temp_str, sizeof(temp_str), "T1/T2: %s", err_name);
                 }
             }
-            
-            lcd_display_print(lcd, params->status_text, temp_str);
+
+            const char *const status_line =
+                boot_v2::lcd_normal_status_line(
+                    params->is_battery_mode,
+                    params->status_text);
+            lcd_display_print(lcd, status_line, temp_str);
         }
         
         // 3. Network RSSI status / animation (Row 0, Chars 13-15)

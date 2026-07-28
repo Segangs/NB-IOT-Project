@@ -1,6 +1,7 @@
 #include "tasks_sensor.hpp"
 #include "../config.h"
 #include "tasks_lcd.hpp"
+#include "../boot_v2/ds18b20_sample_core.hpp"
 #include "../lib/log.hpp"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
@@ -291,12 +292,20 @@ static bool ds18b20_read_temperature(uint pin, float &temperature, int &status)
         return false;
     }
 
-    int16_t raw = (int16_t)((scratchpad[1] << 8) | scratchpad[0]);
-    temperature = (float)raw / 16.0f;
-    if (temperature < DS18B20_TEMP_MIN || temperature > DS18B20_TEMP_MAX) {
+    const int16_t raw =
+        (int16_t)((scratchpad[1] << 8) | scratchpad[0]);
+    const auto decoded = boot_v2::decode_ds18b20_raw_sample(raw);
+    if (decoded.status ==
+        boot_v2::Ds18b20RawSampleStatus::PowerOnSentinel) {
+        status = 6; // DS18B20 power-on scratchpad value, not a conversion
+        return false;
+    }
+    if (decoded.status ==
+        boot_v2::Ds18b20RawSampleStatus::OutOfRange) {
         status = 3; // Out of DS18B20 range
         return false;
     }
+    temperature = decoded.temperature_celsius;
 
     return true;
 #endif

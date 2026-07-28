@@ -81,8 +81,17 @@ void test_legacy_producers_are_facade_only() noexcept
               config_pull,
               config_pull_position + config_pull.size()) ==
               std::string::npos);
-    CHECK(periodic.find("runtime_owner_periodic_pull_command()") ==
-          std::string::npos);
+    const std::string command_pull =
+        "runtime_owner_periodic_pull_command()";
+    const std::size_t command_pull_position =
+        periodic.find(command_pull);
+    CHECK(command_pull_position != std::string::npos);
+    CHECK(command_pull_position != std::string::npos &&
+          periodic.find(
+              command_pull,
+              command_pull_position + command_pull.size()) ==
+              std::string::npos);
+    CHECK(config_pull_position < command_pull_position);
     CHECK(debug.find("DEBUG_DISABLED") != std::string::npos);
 }
 
@@ -101,6 +110,25 @@ void test_public_context_no_longer_exposes_modem_or_command_side_effect() noexce
     CHECK(backend.find("extern nb_iot modem;") != std::string::npos);
     CHECK(backend.find("runtime_owner_authenticated_request_shutdown") ==
           std::string::npos);
+    CHECK(backend.find("runtime_owner_authenticated_request_reboot") !=
+          std::string::npos);
+    CHECK(backend.find("runtime_owner_authenticated_request_power_off") !=
+          std::string::npos);
+
+    constexpr std::array<const char *, 4> legacy_files{{
+        "/src/tasks/tasks_boot.cpp",
+        "/src/tasks/tasks_periodic_modem.cpp",
+        "/src/tasks/tasks_debug.cpp",
+        "/src/tasks/app_context.cpp",
+    }};
+    for (const char *relative : legacy_files) {
+        const std::string legacy =
+            read_file((std::string(NB_IOT_SOURCE_ROOT) + relative).c_str());
+        CHECK(legacy.find("runtime_owner_authenticated_request_reboot") ==
+              std::string::npos);
+        CHECK(legacy.find("runtime_owner_authenticated_request_power_off") ==
+              std::string::npos);
+    }
 }
 
 } // namespace

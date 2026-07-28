@@ -16,6 +16,7 @@ enum class RuntimeOwnerProducerKind : std::uint8_t {
     AdapterMonitor = 4,
     AuthenticatedCommand = 5,
     LocalDebug = 6,
+    Sensor = 7,
 };
 
 enum class RuntimeOwnerProducerRequestKind : std::uint8_t {
@@ -27,6 +28,8 @@ enum class RuntimeOwnerProducerRequestKind : std::uint8_t {
     PullCommand = 5,
     RequestShutdown = 6,
     RawModemCommand = 7,
+    PublishAdapterRemoved = 8,
+    PublishAdapterRestored = 9,
 };
 
 enum class RuntimeOwnerProducerAuthorizationResult : std::uint8_t {
@@ -87,11 +90,11 @@ runtime_owner_authorize_producer_request(
     constexpr std::uint8_t kFirstProducer =
         static_cast<std::uint8_t>(RuntimeOwnerProducerKind::Boot);
     constexpr std::uint8_t kLastProducer =
-        static_cast<std::uint8_t>(RuntimeOwnerProducerKind::LocalDebug);
+        static_cast<std::uint8_t>(RuntimeOwnerProducerKind::Sensor);
     constexpr std::uint8_t kFirstRequest = static_cast<std::uint8_t>(
         RuntimeOwnerProducerRequestKind::RequestTransportAttempt);
     constexpr std::uint8_t kLastRequest = static_cast<std::uint8_t>(
-        RuntimeOwnerProducerRequestKind::RawModemCommand);
+        RuntimeOwnerProducerRequestKind::PublishAdapterRestored);
     const std::uint8_t producer_value =
         static_cast<std::uint8_t>(producer);
     const std::uint8_t request_value =
@@ -144,6 +147,35 @@ runtime_owner_authorize_producer_request(
                     RuntimeOwnerUrgentSource::Invalid,
                     RuntimeOwnerControlKind::Invalid,
                     NormalIntentKind::PullCommand,
+                    {}};
+        }
+    }
+    if (producer == RuntimeOwnerProducerKind::Sensor &&
+        request == RuntimeOwnerProducerRequestKind::PublishTelemetry) {
+        return {RuntimeOwnerProducerAuthorizationResult::Authorized,
+                RuntimeOwnerRtosLane::Normal,
+                RuntimeOwnerUrgentSource::Invalid,
+                RuntimeOwnerControlKind::Invalid,
+                NormalIntentKind::PublishTelemetry,
+                {}};
+    }
+    if (producer == RuntimeOwnerProducerKind::AdapterMonitor) {
+        if (request ==
+            RuntimeOwnerProducerRequestKind::PublishAdapterRemoved) {
+            return {RuntimeOwnerProducerAuthorizationResult::Authorized,
+                    RuntimeOwnerRtosLane::Normal,
+                    RuntimeOwnerUrgentSource::Invalid,
+                    RuntimeOwnerControlKind::Invalid,
+                    NormalIntentKind::PublishAdapterRemoved,
+                    {}};
+        }
+        if (request ==
+            RuntimeOwnerProducerRequestKind::PublishAdapterRestored) {
+            return {RuntimeOwnerProducerAuthorizationResult::Authorized,
+                    RuntimeOwnerRtosLane::Normal,
+                    RuntimeOwnerUrgentSource::Invalid,
+                    RuntimeOwnerControlKind::Invalid,
+                    NormalIntentKind::PublishAdapterRestored,
                     {}};
         }
     }

@@ -186,6 +186,9 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
     CHECK(source.find("g_status.ingress_enabled = 0") !=
           std::string::npos);
     CHECK(source.find("stdio_usb_connected()") != std::string::npos);
+    CHECK(source.find("runtime_owner_usb_power_present() noexcept") !=
+          std::string::npos);
+    CHECK(count(source, "stdio_usb_connected()") == 1);
     CHECK(source.find("SHUTDOWN_HARD_DEADLINE_MS") !=
           std::string::npos);
     CHECK(source.find("g_owner_loop.execute_shutdown_cleanup(") !=
@@ -198,7 +201,9 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
     const std::size_t watchdog_branch = source.find(
         "case RuntimeOwnerShutdownFinalizeAction::CommitWatchdog:");
     const std::size_t scratch_magic =
-        source.find("watchdog_hw->scratch[2] = 0x12345678", watchdog_branch);
+        source.find(
+            "COMMAND_WATCHDOG_SCRATCH_MAGIC",
+            watchdog_branch);
     const std::size_t scratch_context =
         source.find("watchdog_hw->scratch[3] =", scratch_magic);
     const std::size_t commit_log =
@@ -255,6 +260,8 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
           std::string::npos);
 
     CHECK(producer.find("stdio_usb_connected()") == std::string::npos);
+    CHECK(producer.find("runtime_owner_usb_power_present()") !=
+          std::string::npos);
     CHECK(producer.find(
               "runtime_owner_redacted_status().runtime_ready != 0") !=
           std::string::npos);
@@ -270,6 +277,9 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
     CHECK(selftest != std::string::npos);
     CHECK(usb_attach_delay < last_shutdown);
     CHECK(last_shutdown < selftest);
+    CHECK(boot_source.find("\"Start Owner\"") == std::string::npos);
+    CHECK(boot_source.find("\"Check Pico\"") != std::string::npos);
+    CHECK(boot_source.find("\"Boot Error\"") != std::string::npos);
 }
 
 } // namespace

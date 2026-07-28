@@ -7,6 +7,9 @@ declare
     v_legacy_count bigint;
     v_state_count bigint;
     v_invalid_count bigint;
+    v_normalized_reboot_count bigint;
+    v_normalized_sensor_count bigint;
+    v_normalized_state_count bigint;
     v_assign_md5 text;
 begin
     if to_regclass('public.device_command_state') is null then
@@ -47,6 +50,66 @@ begin
        or not has_table_privilege('service_role', 'public.device_command_state', 'UPDATE')
        or not has_table_privilege('service_role', 'public.device_command_state', 'DELETE') then
         raise exception 'service_role lacks companion table privilege';
+    end if;
+
+    select count(*)
+    into v_invalid_count
+    from public."deviceCmds" as c
+    where c.cmd = 10;
+
+    if v_invalid_count <> 0 then
+        raise exception 'legacy cmd=10 rows remain after normalization: %',
+            v_invalid_count;
+    end if;
+
+    select count(*)
+    into v_invalid_count
+    from public.sensorvalue as s
+    where s."cmd" = 10;
+
+    if v_invalid_count <> 0 then
+        raise exception 'legacy sensor cmd=10 rows remain after normalization: %',
+            v_invalid_count;
+    end if;
+
+    select count(*)
+    into v_normalized_reboot_count
+    from public."deviceCmds" as c
+    where c.cmd = 1
+      and c.status = 1;
+
+    if v_normalized_reboot_count <> 11 then
+        raise exception 'expected 11 normalized reboot rows, got %',
+            v_normalized_reboot_count;
+    end if;
+
+    select count(*)
+    into v_normalized_sensor_count
+    from public.sensorvalue as sensor
+    join public."deviceCmds" as c
+      on c."cmdId" = sensor."cmdId"
+    where sensor."cmd" = 1
+      and c.cmd = 1
+      and c.status = 1;
+
+    if v_normalized_sensor_count <> 11 then
+        raise exception 'expected 11 normalized reboot sensor rows, got %',
+            v_normalized_sensor_count;
+    end if;
+
+    select count(*)
+    into v_normalized_state_count
+    from public.device_command_state as s
+    join public."deviceCmds" as c
+      on c."cmdId" = s.cmd_id
+    where c.cmd = 1
+      and c.status = 1
+      and s.opcode = 1
+      and s.legacy_status = 1;
+
+    if v_normalized_state_count <> 11 then
+        raise exception 'expected 11 normalized reboot companion rows, got %',
+            v_normalized_state_count;
     end if;
 
     select count(*) into v_legacy_count from public."deviceCmds";

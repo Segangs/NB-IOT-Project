@@ -240,9 +240,11 @@ bool dedicated_command_contract_accepts(
         "command_core_.prepare_ack",
         "command_core_.record_puback",
         "command_core_.record_receipt",
-        "command_core_.mark_execute",
-        "command_core_.complete_execution",
+        "command_core_.execute_pending",
         "command_core_.clear_final_receipted",
+        "dispatch_authenticated_shutdown",
+        "CommandRuntimeExecutionResult::ShutdownDispatched",
+        "CommandRuntimeExecutionResult::AwaitingBootEffect",
     };
     for (const char *needle : required) {
         if (pull_command.find(needle) == std::string::npos) {
@@ -292,6 +294,83 @@ void test_single_firmware_backend_graph() noexcept
               "src/boot_v2/runtime_owner_shutdown_record_store.cpp") == 1);
     CHECK(count(root, "src/boot_v2/mqtt_command_codec.cpp") == 1);
     CHECK(count(root, "src/boot_v2/command_ack_core.cpp") == 1);
+    CHECK(count(
+              root,
+              "src/boot_v2/command_runtime_coordinator.cpp") == 1);
+    CHECK(count(root, "src/boot_v2/command_boot_effect_core.cpp") == 1);
+    const std::string header = read_file(
+        NB_IOT_SOURCE_ROOT
+        "/src/boot_v2/runtime_owner_device_backend.hpp");
+    CHECK(header.find("CommandRuntimeCoordinator command_core_") !=
+          std::string::npos);
+    CHECK(source.find(
+              "command_core_(command_journal_flash_port())") !=
+          std::string::npos);
+    const std::string prepare = section(
+        source,
+        "bool RuntimeOwnerDeviceBackend::prepare()",
+        "bool RuntimeOwnerDeviceBackend::prepared()");
+    CHECK(!prepare.empty());
+    const std::size_t shutdown_record =
+        prepare.find("runtime_owner_shutdown_record_current()");
+    const std::size_t scratch_capture =
+        prepare.find("watchdog_hw->scratch[2]");
+    const std::size_t journal_prepare =
+        prepare.find("command_core_.prepare(evidence)");
+    const std::size_t scratch_clear =
+        prepare.find("watchdog_hw->scratch[2] = 0");
+    const std::size_t last_command_reset =
+        prepare.find("last_command_.reset_for_boot(");
+    const std::size_t prepared_latch =
+        prepare.find("prepared_ = 1");
+    CHECK(shutdown_record != std::string::npos);
+    CHECK(scratch_capture != std::string::npos);
+    CHECK(journal_prepare != std::string::npos);
+    CHECK(scratch_clear != std::string::npos);
+    CHECK(last_command_reset != std::string::npos);
+    CHECK(prepared_latch != std::string::npos);
+    CHECK(shutdown_record < journal_prepare);
+    CHECK(scratch_capture < journal_prepare);
+    CHECK(journal_prepare < scratch_clear);
+    CHECK(scratch_clear < last_command_reset);
+    CHECK(last_command_reset < prepared_latch);
+    CHECK(source.find("kCommandBootSequence") == std::string::npos);
+    CHECK(header.find(
+              "validate_fresh_command_status_snapshot") !=
+          std::string::npos);
+    CHECK(header.find(
+              "CommandStatusSnapshotEvaluator command_status_snapshot_") !=
+          std::string::npos);
+    CHECK(header.find(
+              "RuntimeOwnerLastCommandState last_command_") !=
+          std::string::npos);
+    CHECK(header.find(
+              "synchronize_last_command_from_runtime") !=
+          std::string::npos);
+    CHECK(header.find("sample_fresh_command_status_snapshot") !=
+          std::string::npos);
+    CHECK(source.find(
+              "command_status_snapshot_.validate_fresh(snapshot)") !=
+          std::string::npos);
+    CHECK(prepare.find("last_command_.reset_for_boot(") !=
+          std::string::npos);
+    CHECK(prepare.find("synchronize_last_command_from_runtime()") !=
+          std::string::npos);
+    const std::string status_sample = section(
+        source,
+        "bool RuntimeOwnerDeviceBackend::sample_fresh_command_status_snapshot(",
+        "RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::open_transport(");
+    CHECK(!status_sample.empty());
+    CHECK(status_sample.find(
+              "const RuntimeOwnerLastCommand last_command = "
+              "backend.last_command_.value()") != std::string::npos);
+    CHECK(status_sample.find(
+              "sample.last_command_id = last_command.command_id") !=
+          std::string::npos);
+    CHECK(status_sample.find(
+              "sample.last_command_result = last_command.result") !=
+          std::string::npos);
+    CHECK(status_sample.find("g_boot_cmd_id > 0") == std::string::npos);
     CHECK(source.find("modem.") != std::string::npos);
     CHECK(source.find("modem_MqttOpen") != std::string::npos);
     CHECK(source.find("modem_MqttPublish") != std::string::npos);
@@ -308,6 +387,63 @@ void test_single_firmware_backend_graph() noexcept
           std::string::npos);
     CHECK(source.find("runtime_owner_authenticated_request_shutdown") ==
           std::string::npos);
+    CHECK(count(
+              source,
+              "runtime_owner_authenticated_request_reboot(") == 1);
+    CHECK(count(
+              source,
+              "runtime_owner_authenticated_request_power_off(") == 1);
+}
+
+void test_typed_command_shutdown_bridge_has_no_direct_power_authority() noexcept
+{
+    const std::string source = read_file(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_device_backend.cpp");
+    const std::string header = read_file(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_device_backend.hpp");
+    const std::string callback = section(
+        source,
+        "RuntimeOwnerDeviceBackend::dispatch_authenticated_shutdown",
+        "RuntimeOwnerDeviceBackend::synchronize_last_command_from_runtime");
+    const std::string pull_command = section(
+        source,
+        "RuntimeOwnerDeviceBackend::pull_command",
+        "RuntimeOwnerDeviceBackend::freeze_snapshot");
+    CHECK(!callback.empty());
+    CHECK(!pull_command.empty());
+    CHECK(header.find("dispatch_authenticated_shutdown") !=
+          std::string::npos);
+    CHECK(callback.find("CommandOpcode::Reboot") != std::string::npos);
+    CHECK(callback.find("CommandOpcode::PowerOff") != std::string::npos);
+    CHECK(callback.find("runtime_owner_authenticated_request_reboot(") !=
+          std::string::npos);
+    CHECK(callback.find("runtime_owner_authenticated_request_power_off(") !=
+          std::string::npos);
+    CHECK(callback.find(
+              "RuntimeOwnerIngressResult::AcceptedForDelivery") !=
+          std::string::npos);
+    CHECK(callback.find("watchdog_reboot") == std::string::npos);
+    CHECK(callback.find("gpio_put(POWER_KILL_PIN") == std::string::npos);
+
+    const std::size_t execute =
+        pull_command.find("command_core_.execute_pending(");
+    const std::size_t dispatched = pull_command.find(
+        "CommandRuntimeExecutionResult::ShutdownDispatched", execute);
+    const std::size_t awaiting = pull_command.find(
+        "CommandRuntimeExecutionResult::AwaitingBootEffect", dispatched);
+    const std::size_t early_success =
+        pull_command.find("return succeeded();", awaiting);
+    const std::size_t final_ack =
+        pull_command.find("CommandAckPhase::Final", early_success);
+    CHECK(execute != std::string::npos);
+    CHECK(dispatched != std::string::npos);
+    CHECK(awaiting != std::string::npos);
+    CHECK(early_success != std::string::npos);
+    CHECK(final_ack != std::string::npos);
+    CHECK(execute < dispatched);
+    CHECK(dispatched < awaiting);
+    CHECK(awaiting < early_success);
+    CHECK(early_success < final_ack);
 }
 
 void test_mqtt_poll_drains_uart_before_fifo_can_overflow() noexcept
@@ -1390,6 +1526,14 @@ void test_shutdown_cleanup_is_private_bounded_and_ordered() noexcept
     CHECK(cleanup.find("remaining_ms < 17000") != std::string::npos);
     CHECK(cleanup.find("devices/%s/status") != std::string::npos);
     CHECK(cleanup.find("\"[0,%u]\"") != std::string::npos);
+    CHECK(cleanup.find("devices/%s/event") != std::string::npos);
+    CHECK(cleanup.find(
+              "RuntimeOwnerUrgentSource::AdapterLossCommitted") !=
+          std::string::npos);
+    CHECK(cleanup.find("const MqttPowerEvent event{") !=
+          std::string::npos);
+    CHECK(cleanup.find("mqtt_power_event_build(") !=
+          std::string::npos);
     CHECK(cleanup.find("for (int session_id = 1; session_id <= 6;") !=
           std::string::npos);
     CHECK(cleanup.find("\"AT+KMQTTCLOSE=%d\"") !=
@@ -1455,12 +1599,71 @@ void test_shutdown_cleanup_is_private_bounded_and_ordered() noexcept
     CHECK(store.find("std::memcmp(") != std::string::npos);
 }
 
+void test_power_event_publish_recovers_transport_before_one_retry() noexcept
+{
+    const std::string source = read_file(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_device_backend.cpp");
+    const std::string recovery = section(
+        source,
+        "bool recover_power_event_transport() noexcept",
+        "bool publish_power_payload_with_recovery(");
+    const std::string retry = section(
+        source,
+        "bool publish_power_payload_with_recovery(",
+        "RuntimeOwnerPhysicalResult succeeded()");
+    const std::string publish = section(
+        source,
+        "RuntimeOwnerDeviceBackend::publish_power_event",
+        "RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::execute(");
+    const std::string cleanup = section(
+        source,
+        "RuntimeOwnerDeviceBackend::execute_shutdown_cleanup",
+        "} // namespace boot_v2");
+
+    CHECK(!recovery.empty());
+    CHECK(!retry.empty());
+    CHECK(!publish.empty());
+    CHECK(!cleanup.empty());
+    CHECK(source.find(
+              "kPowerEventRecoverySettleMs = 5000") !=
+          std::string::npos);
+    CHECK(source.find(
+              "kPowerEventAtProbeAttempts = 3") !=
+          std::string::npos);
+    CHECK(source.find(
+              "kPowerEventShutdownRecoveryBudgetMs = 75000") !=
+          std::string::npos);
+    CHECK(recovery.find("modem_sleep(kPowerEventRecoverySettleMs)") !=
+          std::string::npos);
+    CHECK(recovery.find("modem.check_at_alive()") !=
+          std::string::npos);
+    CHECK(recovery.find("modem.modem_MqttOpen(") !=
+          std::string::npos);
+    CHECK(recovery.find("MQTT_BROKER_HOST") != std::string::npos);
+    CHECK(recovery.find("mqtt_username()") != std::string::npos);
+    CHECK(recovery.find("mqtt_password()") != std::string::npos);
+    CHECK(count(retry, "modem.modem_MqttPublish(topic, payload)") == 2);
+    CHECK(retry.find("POWER_EVENT_PUBLISH_RETRY") != std::string::npos);
+    CHECK(retry.find("recover_power_event_transport()") !=
+          std::string::npos);
+    CHECK(publish.find(
+              "publish_power_payload_with_recovery(topic, payload, true)") !=
+          std::string::npos);
+    CHECK(cleanup.find(
+              "remaining_ms >= kPowerEventShutdownRecoveryBudgetMs") !=
+          std::string::npos);
+    CHECK(cleanup.find(
+              "publish_power_payload_with_recovery(") !=
+          std::string::npos);
+}
+
 } // namespace
 
 int main()
 {
     test_header_contract();
     test_single_firmware_backend_graph();
+    test_typed_command_shutdown_bridge_has_no_direct_power_authority();
     test_mqtt_poll_drains_uart_before_fifo_can_overflow();
     test_mqtt_publish_drains_uart_during_command_and_puback_waits();
     test_mqtt_publish_failure_reports_redacted_modem_reason();
@@ -1483,6 +1686,7 @@ int main()
     test_mqtt_session_cleanup_is_boot_only_and_recovery_is_targeted();
     test_manual_at_console_remains_available_but_product_build_is_automatic();
     test_shutdown_cleanup_is_private_bounded_and_ordered();
+    test_power_event_publish_recovers_transport_before_one_retry();
     if (g_failures != 0) {
         std::fprintf(stderr,
                      "runtime_owner_device_backend_contract_test: %zu/%zu failed\n",

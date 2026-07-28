@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "revision": "2026-07-27",
+  "source": {
+    "kind": "google_sheets_export",
+    "filename": "nb_iot_template_rows.json",
+    "file_sha256": "551dbda50547c9ee88c9170e574437da3e642d2cc0f269066a0533b6da69225c",
+    "rows_canonical_sha256": "03dcd14579bc5b33a652035ce2908e65cfbde886aca07c509418dca3bdd7cd10",
+    "captured_at": "2026-07-26",
+    "row_count": 8,
+    "columns": [
+      "classification",
+      "template_code",
+      "name",
+      "emphasis_auxiliary",
+      "emphasis_title",
+      "body",
+      "supplementary_text",
+      "buttons",
+      "condition"
+    ]
+  },
+  "catalog_checksum_sha256": "78aa93da6bce94522290cf4ceca2e5a0bc55edc4250d98b00ae5d3b28f89b2bd",
+  "templates": [
+    {
+      "event_key": "temperature_high",
+      "classification": "온도",
+      "template_code": "bizp_2026070914231016762370714",
+      "name": "[알림] 온도이상",
+      "emphasis_auxiliary": "이상온도 감지 알림",
+      "emphasis_title": "현재 온도 #{sensorValue}℃",
+      "body": "냉장/냉동고의 온도가 설정온도를 초과하여 지속적으로 올라가고 있습니다.\n\n- 사업장명 : #{WorkplaceName} \n- 기기명 : #{userMachineName}\n\n- 현재온도 : #{sensorValue}℃\n- 설정온도 : #{setTmpUpLimit}℃\n- 측정시각 : #{sensorvaluetime}\n\n전원 상태, 문 닫힘 상태, 주변 온도, 냉각기 작동 여부를 확인해 주시기 바랍니다.\n\n기기에 이상이 없거나 원인 확인이 어려운 경우, 주양냉동으로 연락해 주십시오.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "- 온도가 설정온도를 넘었을 때\n-",
+      "variables": [
+        "sensorValue",
+        "WorkplaceName",
+        "userMachineName",
+        "setTmpUpLimit",
+        "sensorvaluetime",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "temperature_recovered",
+      "classification": "온도",
+      "template_code": "bizp_2026071314514616762878062",
+      "name": "[알림] 온도복귀",
+      "emphasis_auxiliary": "이상온도 복귀 알림",
+      "emphasis_title": "온도 복귀 #{sensorValue}℃",
+      "body": "냉장/냉동고의 온도가 설정온도 범위 이내로 복귀했습니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n\n- 현재온도 : #{sensorValue}℃\n- 설정온도 : #{setTmpUpLimit}℃\n\n기기에 이상이 없는데 온도 이탈과 복귀가 반복되는 경우, 아래 '설정변경'을 눌러 알림 온도를 조정해 주십시오.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "- 직전(20분전) 설정온도 초과로 사용자에게 메세지를 보냈고, 현재 설정온도 이내로 돌아왔을 때",
+      "variables": [
+        "sensorValue",
+        "workplaceName",
+        "userMachineName",
+        "setTmpUpLimit",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "device_boot",
+      "classification": "전원",
+      "template_code": "bizp_2026071315003676625784727",
+      "name": "[전원] 기기부팅",
+      "emphasis_auxiliary": "기기 알림",
+      "emphasis_title": "기기 켜짐 알림",
+      "body": "기기가 정상적으로 서버와 연결을 시작했습니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n- 부팅시간 : #{eventTime}",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "DB에 해당 기기의 부팅 로그가 들어왔을 때",
+      "variables": [
+        "workplaceName",
+        "userMachineName",
+        "eventTime",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "device_disconnected",
+      "classification": "전원",
+      "template_code": "bizp_2026071315185116762787563",
+      "name": "[전원] 연결끊김",
+      "emphasis_auxiliary": "기기 알림",
+      "emphasis_title": "기기 통신 오류",
+      "body": "기기의 센서값이 30분 이상 확인되지 않고 있습니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n- 마지막 수신 : #{lastSeenAt}\n\n기기 전원, 통신 상태를 확인해 주십시오. 기기가 켜져 있는데 이 메세지를 받으신 경우, 기기의 전원을 껐다 켜 주십시오.\n\n관련 증상이 반복되면 주양냉동으로 문의해 주시기 바랍니다.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "DB에 기기 정상 종료 등록이 되지 않았고, 센서값이 30분이상 들어오지 않을 때",
+      "variables": [
+        "workplaceName",
+        "userMachineName",
+        "lastSeenAt",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "adapter_removed",
+      "classification": "전원",
+      "template_code": "bizp_2026071315030116762724896",
+      "name": "[전원] 전원분리 및 꺼짐예고",
+      "emphasis_auxiliary": "기기 알림",
+      "emphasis_title": "기기 꺼짐(예정) 알림",
+      "body": "기기의 전원 어댑터가 분리되어 곧 전원이 꺼집니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n\n- 감지시간 : #{eventTime}\n- 예상종료 : 약 5분 이내\n\n사업장 전체 전원, 기기 주변 콘센트, 어댑터 연결 상태를 확인해 주시기 바랍니다.\n\n전원이 꺼지기 전에 어댑터를 신속히 다시 연결해 주십시오.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "- 전원 어댑터가 분리되어 배터리 전원으로 구동 중일 때\n- 기기 정상 종료일때는 발송하지 않음",
+      "variables": [
+        "workplaceName",
+        "userMachineName",
+        "eventTime",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "power_shutdown",
+      "classification": "전원",
+      "template_code": "bizp_2026071315073916762730996",
+      "name": "[전원] 꺼짐알림",
+      "emphasis_auxiliary": "기기 알림",
+      "emphasis_title": "기기 꺼짐 알림",
+      "body": "어댑터 분리 후 5분이 경과하여 기기가 꺼집니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n- 종료시간 : #{eventTime}\n\n전원 연결 후 기기 하단의 전원 버튼을 눌러 기기를 다시 켜 주십시오.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "- 어댑터 분리 후 210초 경과 시(전원 종료 루틴 동작 시작시)",
+      "variables": [
+        "workplaceName",
+        "userMachineName",
+        "eventTime",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "adapter_restored",
+      "classification": "전원",
+      "template_code": "bizp_2026071315101276625891453",
+      "name": "[전원] 전원복구",
+      "emphasis_auxiliary": "기기 알림",
+      "emphasis_title": "전원 복구 알림",
+      "body": "분리되었던 전원 어댑터가 다시 연결되어 기기가 정상 구동 중입니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n- 복구시간 : #{eventTime}\n\n냉장/냉동고의 온도와 기기 상태가 정상적으로 유지되는지 확인해 주시기 바랍니다.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "- 어댑터 분리 후, 전원종료 루틴 동작 시작하기 전에 어댑터가 재연결되었다면 메세지 전송",
+      "variables": [
+        "workplaceName",
+        "userMachineName",
+        "eventTime",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    },
+    {
+      "event_key": "sensor_fault",
+      "classification": "센서",
+      "template_code": "bizp_2026071315135276625976752",
+      "name": "[센서] 센서이상",
+      "emphasis_auxiliary": "센서 알림",
+      "emphasis_title": "센서 이상 알림",
+      "body": "기기에서 센서값을 정상적으로 읽지 못하는 상태가 감지되었습니다.\n\n- 사업장명 : #{workplaceName}\n- 기기명 : #{userMachineName}\n\n- 센서명 : #{sensorName}\n- 이상상태 : #{sensorStatus}\n- 감지시간 : #{eventTime}\n\n센서 케이블, 커넥터, 단선 여부와 기기 주변 상태를 확인해 주시기 바랍니다.\n\n센서 이상이 계속되면 온도 감지가 정확하지 않을 수 있으므로, 관련 증상이 반복되면 주양냉동으로 문의해 주시기 바랍니다.",
+      "supplementary_text": "이 알림은 주양냉동 '이상온도 감지 알림서비스' 가입자에게 발송됩니다.",
+      "buttons_source": "온도 이력 확인 https://zxcx.io/s/#{tempHistoryToken)}\n설정 변경 https://zxcx.io/s/#{SettingsToken}",
+      "condition": "",
+      "variables": [
+        "workplaceName",
+        "userMachineName",
+        "sensorName",
+        "sensorStatus",
+        "eventTime",
+        "tempHistoryToken",
+        "SettingsToken"
+      ]
+    }
+  ]
+}

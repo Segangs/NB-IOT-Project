@@ -422,7 +422,10 @@
                 <div class="form-group">
                     <label class="form-label">제어 명령 선택</label>
                     <select id="modalCmdSelect" class="form-select">
-                        <option value="10">코드 10: 시스템 재부팅 (Reboot)</option>
+                        <option value="1">시스템 재부팅</option>
+                        <option value="2">전원 종료</option>
+                        <option value="3">현재 상태 확인</option>
+                        <option value="4">FOTA 준비(현재 보류)</option>
                     </select>
                 </div>
                 <input type="hidden" id="modalDeviceId">
@@ -453,11 +456,11 @@
         }
 
         function submitCommand() {
-            const deviceId = document.getElementById('modalDeviceId').value;
-            const cmd = document.getElementById('modalCmdSelect').value;
+            const deviceId = Number(document.getElementById('modalDeviceId').value);
+            const cmd = Number(document.getElementById('modalCmdSelect').value);
             const imei = document.getElementById('modalImei').value;
 
-            if (!deviceId || !cmd) {
+            if (!Number.isInteger(deviceId) || !Number.isInteger(cmd)) {
                 alert('파라미터가 유효하지 않습니다.');
                 return;
             }
@@ -475,7 +478,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert(`[${imei}] 명령이 성공적으로 대기열에 추가되었습니다.\n단말이 다음 온도 전송(최대 20분) 시 명령을 가져와서 재부팅합니다.`);
+                    alert(`[${imei}] 명령이 성공적으로 대기열에 추가되었습니다.\n단말이 다음 통신 시 명령을 가져와 처리합니다.`);
                     closeCmdModal();
                 } else {
                     alert('에러: ' + (data.error || '명령 전송 실패'));

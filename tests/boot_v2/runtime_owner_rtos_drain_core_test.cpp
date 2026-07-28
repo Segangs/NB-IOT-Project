@@ -26,6 +26,7 @@ using boot_v2::RuntimeOwnerRtosDrainMetrics;
 using boot_v2::RuntimeOwnerRtosLane;
 using boot_v2::RuntimeOwnerStopFacts;
 using boot_v2::RuntimeOwnerStopPreflightResult;
+using boot_v2::RuntimeOwnerShutdownIntent;
 using boot_v2::RuntimeOwnerUrgentMessage;
 using boot_v2::RuntimeOwnerUrgentSource;
 using boot_v2::runtime_owner_activation_preflight;
@@ -149,7 +150,11 @@ struct FakeSink {
 constexpr RuntimeOwnerUrgentMessage urgent_message(
     const std::uint32_t sequence) noexcept
 {
-    return {RuntimeOwnerUrgentSource::PowerButton, {}, sequence, 91};
+    return {RuntimeOwnerUrgentSource::PowerButton,
+            RuntimeOwnerShutdownIntent::AutomaticByUsb,
+            {},
+            sequence,
+            91};
 }
 
 constexpr RuntimeOwnerControlMessage control_message() noexcept
@@ -337,6 +342,12 @@ bool test_numeric_layout_and_default_contracts()
                RuntimeOwnerUrgentSource::AdapterLossCommitted) == 2 &&
            static_cast<std::uint8_t>(
                RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand) == 3 &&
+           static_cast<std::uint8_t>(RuntimeOwnerShutdownIntent::Invalid) == 0 &&
+           static_cast<std::uint8_t>(
+               RuntimeOwnerShutdownIntent::AutomaticByUsb) == 1 &&
+           static_cast<std::uint8_t>(RuntimeOwnerShutdownIntent::Reboot) == 2 &&
+           static_cast<std::uint8_t>(
+               RuntimeOwnerShutdownIntent::PowerOff) == 3 &&
            sizeof(RuntimeOwnerUrgentMessage) == 12 &&
            alignof(RuntimeOwnerUrgentMessage) == 4 &&
            sizeof(RuntimeOwnerDrainStep) == 4 &&
@@ -569,6 +580,13 @@ bool test_invalid_urgent_variants_drop()
 {
     auto source = urgent_message(1);
     source.source = RuntimeOwnerUrgentSource::Invalid;
+    auto intent = urgent_message(1);
+    intent.intent = RuntimeOwnerShutdownIntent::Invalid;
+    auto local_reboot = urgent_message(1);
+    local_reboot.intent = RuntimeOwnerShutdownIntent::Reboot;
+    auto authenticated_automatic = urgent_message(1);
+    authenticated_automatic.source =
+        RuntimeOwnerUrgentSource::AuthenticatedRemoteCommand;
     auto sequence = urgent_message(1);
     sequence.producer_sequence = 0;
     auto correlation = urgent_message(1);
@@ -577,11 +595,12 @@ bool test_invalid_urgent_variants_drop()
     reserved0.reserved[0] = 1;
     auto reserved1 = urgent_message(1);
     reserved1.reserved[1] = 1;
-    auto reserved2 = urgent_message(1);
-    reserved2.reserved[2] = 1;
-    return urgent_drops(source) && urgent_drops(sequence) &&
+    return urgent_drops(source) && urgent_drops(intent) &&
+           urgent_drops(local_reboot) &&
+           urgent_drops(authenticated_automatic) &&
+           urgent_drops(sequence) &&
            urgent_drops(correlation) && urgent_drops(reserved0) &&
-           urgent_drops(reserved1) && urgent_drops(reserved2);
+           urgent_drops(reserved1);
 }
 
 bool control_drops(const RuntimeOwnerControlMessage input)

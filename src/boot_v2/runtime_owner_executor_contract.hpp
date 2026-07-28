@@ -30,6 +30,8 @@ enum class RuntimeOwnerDeviceOperationKind : std::uint8_t {
     RefreshRssi = 11,
     PullConfig = 12,
     PullCommand = 13,
+    PublishAdapterRemoved = 14,
+    PublishAdapterRestored = 15,
 };
 
 enum class RuntimeOwnerExecutorMapResult : std::uint8_t {

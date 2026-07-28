@@ -415,7 +415,7 @@ void test_persisted_execute_marked_never_reexecutes() noexcept
     CHECK(command_journal_record_decode(persistent, decoded));
 
     CommandAckCore recovered;
-    CHECK(recovered.restore_after_boot(decoded, 8) ==
+    CHECK(recovered.restore_after_boot(decoded, 8, false) ==
           CommandTransitionResult::Accepted);
     CHECK(recovered.state() == CommandJournalState::Executed);
     CHECK(recovered.record().result == CommandResult::Failed);

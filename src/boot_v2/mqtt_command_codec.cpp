@@ -134,9 +134,9 @@ bool valid_receipt(const CommandAckReceipt receipt) noexcept
     case CommandAckReceiptCode::Ingested:
         return receipt.error == 0;
     case CommandAckReceiptCode::Rejected:
-        return receipt.error == 1;
+        return receipt.error >= 1 && receipt.error <= 2;
     case CommandAckReceiptCode::Mismatch:
-        return receipt.error >= 2 && receipt.error <= 4;
+        return receipt.error >= 3 && receipt.error <= 4;
     case CommandAckReceiptCode::Invalid:
     default:
         return false;

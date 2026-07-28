@@ -7,6 +7,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "../boot_v2/command_periodic_schedule_core.hpp"
 #include "../boot_v2/runtime_owner_producer_facade.hpp"
 #include "../boot_v2/runtime_owner_rtos.hpp"
 #include "../config.h"
@@ -26,6 +27,18 @@ void increment_nonzero(std::uint32_t &value) noexcept
     }
 }
 
+bool pull_periodic_config(void *) noexcept
+{
+    return boot_v2::runtime_owner_periodic_pull_config() ==
+           boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery;
+}
+
+bool pull_periodic_command(void *) noexcept
+{
+    return boot_v2::runtime_owner_periodic_pull_command() ==
+           boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery;
+}
+
 } // namespace
 
 void vPeriodicModemTask(void *)
@@ -40,10 +53,13 @@ void vPeriodicModemTask(void *)
         to_ms_since_boot(get_absolute_time());
     std::uint32_t last_rssi_ms = periodic_ready_ms;
     std::uint32_t last_telemetry_ms = last_rssi_ms;
-    std::uint32_t last_config_ms = last_rssi_ms;
     std::uint32_t last_reconnect_ms = last_rssi_ms;
     std::uint32_t telemetry_revision = 0;
     bool first_telemetry_pending = true;
+    boot_v2::CommandPeriodicStepper command_stepper{
+        periodic_ready_ms};
+    const boot_v2::CommandPeriodicStepPort command_port{
+        nullptr, pull_periodic_config, pull_periodic_command};
 
     for (;;) {
         const std::uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -85,10 +101,14 @@ void vPeriodicModemTask(void *)
             last_telemetry_ms = now;
         }
 
-        if (status.runtime_ready != 0 && now - last_config_ms >= 60000) {
-            (void)boot_v2::runtime_owner_periodic_pull_config();
-            last_config_ms = now;
-        }
+        (void)command_stepper.step(
+            {now,
+             status.runtime_ready,
+             static_cast<std::uint8_t>(
+                 status.phase ==
+                 boot_v2::RuntimeOwnerPhase::RecoveryPending),
+             {}},
+            command_port);
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
