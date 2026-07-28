@@ -26,6 +26,30 @@
 
 ---
 
+## 📅 2026-07-29: [Main Closeout] clean 통합·worker 운영 복구·비밀값 정리
+
+* **개발 범주**: Git clean integration, Spaceship worker, Supabase read-only 감사, Flask 보안 정리, 전체 회귀
+* **수정 파일**: `main.py`, `.env.example`, `test_main_runtime.py`, `README.md`, `project_history.md`
+* 사용자 변경 64건이 남은 기존 `main` 작업 폴더의 checkout·reset·stage·merge 미수행과 전체 보존
+* `origin/main` 기준 별도 `codex/main-integration-20260729` clean worktree 생성과 승인 제품 변경 fast-forward 통합
+* Spaceship staging과 `msg_send`·`ops/spaceship` 소스의 checksum 차이 0 확인
+* cron wrapper가 호출하는 release 최상위 `run_msg_send.sh` 누락 발견과 검증된 원본 보완
+* Spaceship Python 3.11 worker 141/141·shell syntax·AppleDouble 0건 확인 후 `msg-send-20260729-main-closeout-01` 원자 전환
+* 기존 5분 cron을 승인된 1분 단일 `flock` cron으로 교체하고 자동 cycle 연속 `success=true`·lock free 확인
+* 전환 전 crontab backup `/home/yjijjnuzbr/tmp/msg-send-crontab-before-main-closeout-20260729` 보존
+* 운영 Supabase의 active `msg_send` 0건·미완료 `device_command_state` 0건 확인
+* public table RLS 비활성 15개·`SECURITY DEFINER` 함수 37개 기존 보안 부채 read-only 재확인과 사용자 결정에 따른 비변경
+* 기존 `main.py`의 DuckDNS token literal을 사용자 환경변수 `DUCKDNS_TOKEN`·`DUCKDNS_DOMAIN`으로 이동
+* token 미설정 외부 요청 0건과 설정 시 domain·token·IP 조합 회귀 테스트의 RED→GREEN 확인
+* 현재 Git tip의 비공개 handoff 0건·`DOCS/codex` 0건·PCB 제품자료 6건 추적 확인
+* 과거 Git history의 `DOCS/codex/mig` 4개 object 잔존 확인과 강제 history rewrite 미수행
+* 유효하지 않은 `.DS_Store`·`nb-iot-g2a-stage3-runtime-cutover` worktree 등록만 prune하고 사용자·host 소유 worktree 유지
+* Host 41/41·DB 계약 277/277·Flask 서버 108/108·메시지 worker 141/141·모바일 JavaScript 6/6 통과
+* Python compileall·Shell syntax·`git diff --check` 통과
+* fresh Pico 2 Release UF2 `/private/tmp/nb-iot-closeout-fw-019f7017/nb_iot_project.uf2` 생성
+* UF2 513,024바이트·2026-07-29 02:45:08 KST·SHA-256 `649518d76acbb9b976e7f79dea7a2c745d6f6a9e87e06daf70d7814352e35a9a`
+* Pico flash·실물 조작·RLS·Bizppurio callback·FOTA·PPT·Edge AI 변경 없음
+
 ## 📅 2026-07-29: [No-Hardware Closure] TEMP 알림 운영 복귀·DS18B20 초기값 차단
 
 * **개발 범주**: Supabase read-only 감사, TEMP 알림 정책, DS18B20 센서 입력, 전체 회귀, Git 추적 경계

@@ -34,9 +34,13 @@ def get_interface_ip(interface_name="enp3s0"):
 def update_duckdns():
     """Update DuckDNS with the server's current public IP address."""
     try:
+        token = os.environ.get("DUCKDNS_TOKEN")
+        if not token:
+            print("⚠️ [DuckDNS] DUCKDNS_TOKEN is not configured; update skipped.")
+            return
+        domain = os.environ.get("DUCKDNS_DOMAIN", "segang")
         ip = get_interface_ip("enp3s0")
-        token = "32f6ebb7-1538-4548-8c8d-4fc1b0caed12"
-        url = f"https://www.duckdns.org/update?domains=segang&token={token}"
+        url = f"https://www.duckdns.org/update?domains={domain}&token={token}"
         if ip:
             url += f"&ip={ip}"
             print(f"🔄 [DuckDNS] Updating with explicit IP: {ip}")

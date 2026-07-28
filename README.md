@@ -28,6 +28,16 @@
 
 ## 📅 2026-07-29
 
+* 사용자 변경 64건이 남은 기존 `main` 작업 폴더 보존과 별도 clean integration worktree의 원격 기준 통합
+* Spaceship worker `msg-send-20260729-main-closeout-01` release 전환과 누락된 최상위 runner 보완
+* 메시지 worker 1분 단일 `flock` cron 복구와 자동 cycle 연속 `success=true` 확인
+* 운영 Supabase의 처리 중 메시지 0건·미완료 명령 0건·RLS 비활성 15개·`SECURITY DEFINER` 37개 read-only 확인
+* `main.py` DuckDNS token 하드코딩 제거와 서버 전용 환경변수·회귀 테스트 적용
+* Host 41/41·DB 계약 277/277·Flask 서버 108/108·메시지 worker 141/141·모바일 JavaScript 6/6 재통과
+* fresh Pico 2 UF2 513,024바이트·2026-07-29 02:45:08 KST·SHA-256 `649518d76acbb9b976e7f79dea7a2c745d6f6a9e87e06daf70d7814352e35a9a`
+* 비공개 handoff·Codex 작업물 현재 Git 추적 0건과 PCB 제품자료 6개 유지
+* 유효하지 않은 worktree 등록 2건 정리와 사용자·host 소유 worktree 보존
+* Pico flash·실물 조작·RLS·Bizppurio callback·FOTA·PPT·Edge AI 변경 0
 * 운영 TEMP 임시 무제한 알림의 4회째 발송·Bizppurio 성공 코드 `1000` read-only 확인
 * 20분 재알림·service-role 전용 실행·RLS 유지·32,767회 임시 제약 상태 대조 완료
 * 기존 4회째 이력 보존형 센서별 1~3회 설정 복귀 migration·rollback·precheck·verification·behavior 작성
