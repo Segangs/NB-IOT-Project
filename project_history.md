@@ -65,6 +65,11 @@
 * pre-merge fresh Release Host 47/47·Flask unittest 127/127·모바일 JavaScript 8/8·Python compile 통과
 * fresh Pico 2 Release UF2 524,800바이트·2026-07-29 23:04:09 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`
 * 작업 worktree 임시 `.env` 제거·추가 비밀값 literal 0건·private handoff Git 제외 유지
+* 제품 commit `363daf4`와 수치 보정 commit의 충돌 없는 GitHub `main` fast-forward 통합
+* 기존 root `main` dirty 파일의 checkout·reset·merge·삭제 0과 비공개 정리 원장 작성
+* Ubuntu 기존 `app.py` backup 보존 후 SHA-256 `d5e1e28d55b8b3a83670666595917d6f0cb2c636505a9912a600593480295425` 권한 보강본 원자 배포
+* 운영 Flask PID 66045·`active`·NRestarts 0·18180 listen·로컬 root 200·dashboard 302·API 401·공개 root 200 확인
+* 배포 후 최근 journal traceback 0과 rollback 원본 `/home/segang/.codex-flask-backup-20260729-c0c6005/app.py` 보존
 
 ## 📅 2026-07-29: [Operations Closeout] Ubuntu·EMQX·UI 정합성 마감
 

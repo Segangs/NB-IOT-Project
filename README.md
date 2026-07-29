@@ -47,6 +47,10 @@
 * pre-merge fresh Host 47/47·Flask 127/127·모바일 JavaScript 8/8·Python compile·Pico 2 Release build 통과
 * pre-merge UF2 524,800바이트·2026-07-29 23:04:09 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`
 * 비공개 `.env` 임시 연결 후 제거·추가 비밀값 literal 0건·private handoff Git 제외 유지
+* 검증 제품 commit `363daf4`와 기록 보정 commit의 GitHub `main` fast-forward 통합
+* 사용자 변경이 남은 root `main` 작업 폴더의 checkout·reset·merge·cleanup 0과 보존 원장 작성
+* Ubuntu `/home/segang/project/app.py` 권한 보강본 원자 배포와 기존본 `/home/segang/.codex-flask-backup-20260729-c0c6005/app.py` 보존
+* 운영 Flask `active`·NRestarts 0·18180 listen·로컬/공개 root 200·비로그인 dashboard 302·`/api/status` 401 확인
 * Ubuntu 운영 Flask의 검증된 `main.py`·EMQX 관리 도구 4개 원자 반영과 기존 파일 backup 보존
 * 운영 Python 3.12 Flask suite 108/108·서비스 `active`·NRestarts 0·로컬/공개 HTTP 200 확인
 * EMQX command request·ACK Action/Rule 4개와 power-event Action/Rule 2개 활성·정의 일치
