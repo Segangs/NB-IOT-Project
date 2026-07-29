@@ -42,7 +42,7 @@
 * USB 연결 최신 판정에 따른 `SHUTDOWN_WATCHDOG_COMMIT`·1초 내 USB 재연결·새 부팅 확인
 * 종료 대기 중 PWR/STATUS LED 빨간색 점멸 실물 확인
 * watchdog 재부팅 뒤 `MQTT_PUB_OK`·`CONFIG_FRAME_COMPLETE`·`PERIODIC_READY`·`BOOT_DONE` 재확인
-* 통합 후보 77개 파일의 private DOCS·build/cache·비밀값 제외와 변경 추가분 민감정보 패턴 0건 확인
+* 통합 후보 78개 파일의 private DOCS·build/cache·비밀값 제외와 변경 추가분 민감정보 패턴 0건 확인
 * 하위 경로 `.env`의 Git 제외 보강과 `.env.example` 추적 가능 상태 유지
 * pre-merge fresh Host 47/47·Flask 127/127·모바일 JavaScript 8/8·Python compile·Pico 2 Release build 통과
 * pre-merge UF2 524,800바이트·2026-07-29 23:04:09 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`

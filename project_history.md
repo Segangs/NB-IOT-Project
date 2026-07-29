@@ -59,7 +59,7 @@
 * 최신 USB 연결 판정 기반 `SHUTDOWN_WATCHDOG_COMMIT`·시리얼 1초 내 재연결·새 부팅 성공
 * 종료 대기 중 PWR/STATUS LED 빨간색 점멸 사용자 실물 확인
 * watchdog 재부팅 뒤 `MQTT_PUB_OK`·`CONFIG_FRAME_COMPLETE`·`CONFIG_LIMIT_OK`·`PERIODIC_READY`·`BOOT_DONE` 재확인
-* 통합 후보 수정 54개·신규 23개 전수 privacy 범위 감사와 private handoff·build/cache·환경파일 후보 0건 확인
+* 통합 후보 수정 55개·신규 23개, 총 78개 전수 privacy 범위 감사와 private handoff·build/cache·환경파일 후보 0건 확인
 * 변경 추가분 PEM·AWS·OpenAI·JWT·Supabase token·credential assignment 패턴 0건 확인
 * `**/.env` Git 제외 보강과 `Segang/project/.env` 제외·`.env.example` 비제외 계약 확인
 * pre-merge fresh Release Host 47/47·Flask unittest 127/127·모바일 JavaScript 8/8·Python compile 통과
