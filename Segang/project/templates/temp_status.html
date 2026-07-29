@@ -143,6 +143,7 @@
                     <th>이름</th>
                     <th>기기 모델</th>
                     <th>단말 IMEI 식별코드</th>
+                    <th>센서</th>
                     <th>현재 온도</th>
                     <th>설정 상한 온도</th>
                     <th style="text-align: center; width: 150px;">관제 상태</th>
@@ -166,6 +167,7 @@
                             </td>
                             <td>{{ item.model_name }}</td>
                             <td style="font-family: monospace; color: var(--text-muted);">{{ item.imei }}</td>
+                            <td><span class="limit-value">{{ item.sensor_label }}</span></td>
                             
                             <!-- Current Temperature -->
                             <td style="font-family: monospace; font-weight: 600; font-size: 1rem; {% if item.status_ok %}color: var(--success);{% else %}color: var(--danger);{% endif %}">
@@ -193,7 +195,7 @@
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 4rem;">
+                        <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 4rem;">
                             온도 비교 데이터가 존재하지 않습니다.
                         </td>
                     </tr>

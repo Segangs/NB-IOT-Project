@@ -26,6 +26,30 @@
 
 ---
 
+## 📅 2026-07-29: [Operations Closeout] Ubuntu·EMQX·UI 정합성 마감
+
+* **개발 범주**: Ubuntu Flask deployment, EMQX read-only verify, 운영 UI parity, TDD
+* **수정 파일**: `dashboard.html`, `temp_status.html`, `test_dashboard_responsive.mjs`, `README.md`, `project_history.md`
+* Cloudflare Access 재인증과 Ubuntu 전용 ED25519 key 기반 비밀번호 비노출 접속 복구
+* 배포 전 `segang-flask.service` active·PID 53773·NRestarts 0·18180 listen·로컬 root HTTP 200 확인
+* 통합 서버 제품 파일 25개 중 기존 운영본과 checksum 차이 4개만 staging 반영
+* `main.py` DuckDNS token literal 제거와 `emqx_command_setup.py`·`emqx_event_setup.py`·`emqx_setup.sh` 최신 관리 도구 반영
+* 기존부터 운영 서버에 없던 `emqx_config_republish.py` 보조 도구 추가
+* 기존 파일 backup `/home/segang/.codex-main-closeout-backup-20260729` 보존과 임시 staging·testrepo 제거
+* Ubuntu Python 3.12의 저장소 package 경로 재현 후 Flask suite 108/108 통과
+* `segang-flask.service` PID 59899 재시작·active·NRestarts 0·로컬/공개 root HTTP 200 확인
+* 첫 재시작 직후 active 선확인과 Flask listen 약 4초 지연에 따른 일시적 curl 실패, 후속 port·journal·HTTP 정상 확인
+* EMQX `supabase_command_request`·`supabase_command_ack` Action과 request·ACK Rule 4개 enabled·정의 일치
+* EMQX `supabase_power_event` Action과 `power_event_rule` 2개 enabled·정의 일치
+* EMQX live secret의 외부 출력 없이 현재 Action definition 기반 power-event verify 수행과 EMQX mutation 0
+* 비운영 `download_fonts.py`·`network_configuration.md` 제외 Ubuntu 제품 파일 checksum drift 0
+* 운영 `dashboard.html`·`temp_status.html`이 사용자 dirty main 작업본과 SHA-256 exact 일치하고 clean integration보다 최신인 상태 발견
+* dashboard Realtime 대상 `usersettings`를 현재 schema `USER_SENSOR`로 보정하고 raw DB field 문구 제거
+* 온도 현황에 `sensor_label` 열을 추가하고 empty-state table colspan 9 정렬
+* 신규 UI 계약 2건의 변경 전 RED·최소 반영 후 GREEN과 전체 모바일·UI JavaScript 8/8 통과
+* 기존 사용자 작업 폴더 64건 비변경과 두 검증 UI 수정만 clean integration에 선별 반영
+* Supabase schema·RLS·EMQX Rule/Action·Spaceship worker·Pico firmware 변경 없음
+
 ## 📅 2026-07-29: [Main Closeout] clean 통합·worker 운영 복구·비밀값 정리
 
 * **개발 범주**: Git clean integration, Spaceship worker, Supabase read-only 감사, Flask 보안 정리, 전체 회귀

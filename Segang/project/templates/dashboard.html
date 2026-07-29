@@ -511,7 +511,7 @@
                 <div class="card-header">
                     <div>
                         <h2 class="card-title"><i class="fa-solid fa-clock-rotate-left" style="color: var(--danger);"></i>실시간 온도 이상 감지 목록</h2>
-                        <div class="card-subtitle">지정된 임계 상한 온도(tempUpperLimitValue)를 초과한 기기 목록입니다.</div>
+                        <div class="card-subtitle">지정된 임계 상한 온도를 초과한 기기 목록입니다.</div>
                     </div>
                 </div>
                 <div class="anomaly-table-wrapper" style="overflow: auto; max-height: 250px;">
@@ -803,9 +803,9 @@
                 )
                 .on(
                     'postgres_changes',
-                    { event: '*', schema: 'public', table: 'usersettings' },
+                    { event: '*', schema: 'public', table: 'USER_SENSOR' },
                     (payload) => {
-                        console.log('Realtime usersettings update:', payload);
+                        console.log('Realtime USER_SENSOR update:', payload);
                         updateDashboard();
                     }
                 )

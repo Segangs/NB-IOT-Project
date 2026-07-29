@@ -28,6 +28,11 @@
 
 ## 📅 2026-07-29
 
+* Ubuntu 운영 Flask의 검증된 `main.py`·EMQX 관리 도구 4개 원자 반영과 기존 파일 backup 보존
+* 운영 Python 3.12 Flask suite 108/108·서비스 `active`·NRestarts 0·로컬/공개 HTTP 200 확인
+* EMQX command request·ACK Action/Rule 4개와 power-event Action/Rule 2개 활성·정의 일치
+* 운영본·사용자 작업본의 대시보드 `USER_SENSOR` Realtime 대상과 온도 현황 센서 구분 표시 Git 통합
+* 모바일·UI JavaScript 계약 8/8 통과와 비운영 문서·폰트 도구 제외 서버 제품 파일 checksum drift 0
 * 사용자 변경 64건이 남은 기존 `main` 작업 폴더 보존과 별도 clean integration worktree의 원격 기준 통합
 * Spaceship worker `msg-send-20260729-main-closeout-01` release 전환과 누락된 최상위 runner 보완
 * 메시지 worker 1분 단일 `flock` cron 복구와 자동 cycle 연속 `success=true` 확인

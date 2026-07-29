@@ -222,3 +222,23 @@ test("mobile zoom guard uses 16px controls without disabling user zoom", () => {
         );
     }
 });
+
+
+test("dashboard realtime follows the current USER_SENSOR settings table", () => {
+    const html = readProjectFile("templates", "dashboard.html");
+
+    assert.match(
+        html,
+        /\{\s*event:\s*['"]\*['"],\s*schema:\s*['"]public['"],\s*table:\s*['"]USER_SENSOR['"]\s*\}/,
+    );
+    assert.doesNotMatch(html, /table:\s*['"]usersettings['"]/);
+});
+
+
+test("temperature status identifies each sensor and keeps the empty row aligned", () => {
+    const html = readProjectFile("templates", "temp_status.html");
+
+    assert.match(html, /<th>센서<\/th>/);
+    assert.match(html, /\{\{\s*item\.sensor_label\s*\}\}/);
+    assert.match(html, /<td\s+colspan=["']9["']/);
+});
