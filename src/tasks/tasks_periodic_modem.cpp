@@ -1,5 +1,6 @@
 #include "tasks_periodic_modem.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -10,8 +11,10 @@
 #include "../boot_v2/command_periodic_schedule_core.hpp"
 #include "../boot_v2/runtime_owner_producer_facade.hpp"
 #include "../boot_v2/runtime_owner_rtos.hpp"
+#include "../boot_v2/sensor_quality_core.hpp"
 #include "../config.h"
 #include "../lib/log.hpp"
+#include "tasks_sensor_reader.hpp"
 
 namespace {
 
@@ -25,6 +28,25 @@ void increment_nonzero(std::uint32_t &value) noexcept
             value = 1;
         }
     }
+}
+
+bool publish_periodic_sensor_snapshot(
+    const std::uint32_t sensor_id,
+    const std::size_t channel,
+    std::uint32_t &telemetry_revision) noexcept
+{
+    boot_v2::SensorQualitySnapshotV1 snapshot{};
+    if (!copy_sensor_quality_snapshot(channel, snapshot) ||
+        !boot_v2::sensor_quality_allows_telemetry(snapshot)) {
+        return false;
+    }
+
+    increment_nonzero(telemetry_revision);
+    return boot_v2::runtime_owner_periodic_publish_telemetry(
+               sensor_id,
+               telemetry_revision,
+               snapshot.value_deci_celsius) ==
+           boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery;
 }
 
 bool pull_periodic_config(void *) noexcept
@@ -84,20 +106,17 @@ void vPeriodicModemTask(void *)
             now - periodic_ready_ms >= kPostConfigFirstTelemetryDelayMs;
         if (status.runtime_ready != 0 && first_telemetry_due) {
             LOG("PERIODIC_FIRST_TELEMETRY\n");
-            increment_nonzero(telemetry_revision);
-            (void)boot_v2::runtime_owner_periodic_publish_telemetry(
-                1, telemetry_revision);
+            (void)publish_periodic_sensor_snapshot(
+                1, 0, telemetry_revision);
             first_telemetry_pending = false;
             last_telemetry_ms = now;
         } else if (status.runtime_ready != 0 && !first_telemetry_pending &&
                    now - last_telemetry_ms >=
                        SENSOR_TEMP_CHECK_INTERVAL_MIN * 60u * 1000u) {
-            increment_nonzero(telemetry_revision);
-            (void)boot_v2::runtime_owner_periodic_publish_telemetry(
-                1, telemetry_revision);
-            increment_nonzero(telemetry_revision);
-            (void)boot_v2::runtime_owner_periodic_publish_telemetry(
-                2, telemetry_revision);
+            (void)publish_periodic_sensor_snapshot(
+                1, 0, telemetry_revision);
+            (void)publish_periodic_sensor_snapshot(
+                2, 1, telemetry_revision);
             last_telemetry_ms = now;
         }
 

@@ -50,6 +50,19 @@ std::string read_file(const char *path)
             std::istreambuf_iterator<char>()};
 }
 
+std::size_t count_occurrences(
+    const std::string &source,
+    const std::string &needle) noexcept
+{
+    std::size_t count = 0;
+    std::size_t position = 0;
+    while ((position = source.find(needle, position)) != std::string::npos) {
+        ++count;
+        position += needle.size();
+    }
+    return count;
+}
+
 boot_v2::SensorQualitySnapshotV1 sensor(const std::int16_t deci_celsius)
 {
     boot_v2::SensorQualitySnapshotV1 value{};
@@ -292,7 +305,36 @@ void test_periodic_first_publish_contract()
     CHECK(periodic.find("kPostConfigFirstTelemetryDelayMs = 30000") !=
           std::string::npos);
     CHECK(periodic.find("PERIODIC_FIRST_TELEMETRY") != std::string::npos);
-    CHECK(periodic.find("runtime_owner_periodic_publish_telemetry(\n                1, telemetry_revision)") != std::string::npos);
+    const std::size_t copy =
+        periodic.find("copy_sensor_quality_snapshot(");
+    const std::size_t quality =
+        periodic.find("sensor_quality_allows_telemetry(", copy);
+    const std::size_t publish =
+        periodic.find("runtime_owner_periodic_publish_telemetry(", quality);
+    const std::size_t frozen_value =
+        periodic.find(".value_deci_celsius", publish);
+    CHECK(periodic.find("\"tasks_sensor_reader.hpp\"") != std::string::npos);
+    CHECK(periodic.find("\"../boot_v2/sensor_quality_core.hpp\"") !=
+          std::string::npos);
+    CHECK(copy != std::string::npos);
+    CHECK(quality != std::string::npos);
+    CHECK(publish != std::string::npos);
+    CHECK(frozen_value != std::string::npos);
+    CHECK(copy < quality);
+    CHECK(quality < publish);
+    CHECK(publish < frozen_value);
+    CHECK(count_occurrences(
+              periodic, "runtime_owner_periodic_publish_telemetry(") == 1);
+    CHECK(count_occurrences(
+              periodic, "publish_periodic_sensor_snapshot(") == 4);
+    CHECK(count_occurrences(
+              periodic,
+              "publish_periodic_sensor_snapshot(\n"
+              "                1, 0, telemetry_revision)") == 2);
+    CHECK(count_occurrences(
+              periodic,
+              "publish_periodic_sensor_snapshot(\n"
+              "                2, 1, telemetry_revision)") == 1);
     CHECK(backend.find("ConfigAppliedHandoff") != std::string::npos);
     CHECK(backend.find("snapshot.post_config_liveness = 0") !=
           std::string::npos);

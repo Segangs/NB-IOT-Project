@@ -233,11 +233,11 @@ bool adapter_contract_holds(const std::string &source)
         code, "boolcommand_journal_flash_slot_offset(");
     const std::string read_body = braced_body_after(
         code, "boolcommand_journal_flash_read_slot(");
-    const std::string callback_anchor =
-        "void__no_inline_not_in_flash_func("
-        "command_journal_flash_write_callback)(void*parameter)";
-    const std::string callback_body =
-        braced_body_after(code, callback_anchor);
+    const std::string transaction_anchor =
+        "FlashOperationResult"
+        "command_journal_flash_replace_transaction(";
+    const std::string transaction_body =
+        braced_body_after(code, transaction_anchor);
     const std::string replace_body = braced_body_after(
         code, "boolcommand_journal_flash_replace_slot(");
     const std::string port_body = braced_body_after(
@@ -247,7 +247,7 @@ bool adapter_contract_holds(const std::string &source)
     const std::string commit_body = braced_body_after(
         code, "CommandJournalStoreResultcommand_journal_flash_commit(");
     if (slot_body.empty() || read_body.empty() ||
-        callback_body.empty() || replace_body.empty() ||
+        transaction_body.empty() || replace_body.empty() ||
         port_body.empty() || load_body.empty() ||
         commit_body.empty()) {
         return false;
@@ -276,32 +276,40 @@ bool adapter_contract_holds(const std::string &source)
         count_occurrences(slot_none, "returnfalse;") == 1 &&
         slot_body.find("}returnfalse;") != std::string::npos;
 
-    const std::string erase_call =
-        "flash_range_erase(write->offset,"
-        "flash_partition::command_journal_slot_size);";
-    const std::string program_call =
-        "flash_range_program(write->offset,write->page,"
-        "flash_partition::page_size);";
-    const std::size_t erase_position =
-        callback_body.find(erase_call);
-    const std::size_t program_position =
-        callback_body.find(program_call);
-    const bool callback_holds =
-        count_occurrences(code, callback_anchor) == 1 &&
-        count_occurrences(callback_body, erase_call) == 1 &&
-        count_occurrences(callback_body, program_call) == 1 &&
-        erase_position != std::string::npos &&
-        program_position != std::string::npos &&
-        erase_position < program_position;
+    const bool transaction_holds =
+        count_occurrences(code, transaction_anchor) == 1 &&
+        count_occurrences(
+            transaction_body,
+            "if(write==nullptr)"
+            "{returnFlashOperationCode::InvalidArgument;}") == 1 &&
+        count_occurrences(
+            transaction_body,
+            "constFlashOperationResultresult="
+            "transaction.replace_sector("
+            "write->offset,write->offset,write->page,"
+            "flash_partition::page_size);") == 1 &&
+        count_occurrences(
+            transaction_body, "transaction.replace_sector(") == 1 &&
+        count_occurrences(
+            transaction_body, "transaction.read(") == 1 &&
+        count_occurrences(
+            transaction_body,
+            "write->verification_attempted=true;") == 1 &&
+        count_occurrences(
+            transaction_body, "write->verified=") == 1 &&
+        count_occurrences(
+            transaction_body,
+            "FlashMutationDisposition::NotAttempted") == 1;
 
     const std::string page_validation =
         "if(page==nullptr||"
         "page_size!=flash_partition::page_size||"
         "reinterpret_cast<std::uintptr_t>(page)%"
         "flash_partition::page_size!=0u){returnfalse;}";
-    const std::string safe_execute =
-        "returnflash_safe_execute("
-        "command_journal_flash_write_callback,&write,timeout_ms)==0;";
+    const std::string service_execute =
+        "constFlashOperationResultresult=flash_operation_execute("
+        "command_journal_flash_replace_transaction,"
+        "&write,timeout_ms);";
     const bool replace_holds =
         count_occurrences(replace_body, page_validation) == 1 &&
         count_occurrences(
@@ -311,9 +319,22 @@ bool adapter_contract_holds(const std::string &source)
         count_occurrences(
             replace_body,
             "CommandJournalFlashWritewrite{offset,page};") == 1 &&
-        count_occurrences(replace_body, safe_execute) == 1 &&
+        count_occurrences(replace_body, service_execute) == 1 &&
         count_occurrences(
-            replace_body, "flash_safe_execute(") == 1;
+            replace_body, "flash_operation_execute(") == 1 &&
+        count_occurrences(
+            replace_body,
+            "FlashMutationDisposition::NotAttempted") == 1 &&
+        count_occurrences(
+            replace_body,
+            "returnwrite.verification_attempted&&"
+            "write.verified;") == 1 &&
+        count_occurrences(
+            replace_body,
+            "result==FlashOperationCode::Succeeded") == 0 &&
+        count_occurrences(
+            replace_body,
+            "FlashMutationDisposition::Applied") == 0;
 
     const bool read_holds =
         count_occurrences(
@@ -354,9 +375,15 @@ bool adapter_contract_holds(const std::string &source)
         code.find("command_journal_record_encode(") ==
             std::string::npos &&
         code.find("command_journal_next_sequence(") ==
+            std::string::npos &&
+        code.find("flash_safe_execute(") ==
+            std::string::npos &&
+        code.find("flash_range_erase(") ==
+            std::string::npos &&
+        code.find("flash_range_program(") ==
             std::string::npos;
 
-    return slot_mapping_holds && read_holds && callback_holds &&
+    return slot_mapping_holds && read_holds && transaction_holds &&
            replace_holds && wrappers_hold &&
            central_contract_holds;
 }
@@ -457,9 +484,15 @@ void test_adapter_uses_central_rp2350_flash_contract()
         "src/boot_v2/command_journal_flash_store.cpp");
     CHECK(adapter_contract_holds(source));
     CHECK(!source.empty());
-    CHECK(source.find("flash_safe_execute(") != std::string::npos);
-    CHECK(source.find("flash_range_erase(") != std::string::npos);
-    CHECK(source.find("flash_range_program(") != std::string::npos);
+    CHECK(source.find("flash_safe_execute(") == std::string::npos);
+    CHECK(source.find("flash_range_erase(") == std::string::npos);
+    CHECK(source.find("flash_range_program(") == std::string::npos);
+    CHECK(
+        source.find("flash_operation_execute(") !=
+        std::string::npos);
+    CHECK(
+        source.find("transaction.replace_sector(") !=
+        std::string::npos);
     CHECK(
         source.find("flash_partition::command_journal_a_offset") !=
         std::string::npos);
@@ -519,65 +552,70 @@ void test_adapter_structure_mutants_are_rejected()
             "std::memcpy(&output, source, sizeof(output));",
             "std::memcpy(&output, source, 1u);"));
 
-    const std::string erase_call =
-        "flash_range_erase(\n"
+    const std::string replace_call =
+        "transaction.replace_sector(\n"
         "        write->offset,\n"
-        "        flash_partition::command_journal_slot_size);";
-    const std::string program_call =
-        "flash_range_program(\n"
         "        write->offset,\n"
         "        write->page,\n"
         "        flash_partition::page_size);";
     CHECK_MUTANT_REJECTED(
-        "wrong erase offset",
+        "wrong replace-sector erase offset",
         replace_once(
             source,
-            erase_call,
-            "flash_range_erase(\n"
+            replace_call,
+            "transaction.replace_sector(\n"
             "        flash_partition::command_journal_a_offset,\n"
-            "        flash_partition::command_journal_slot_size);"));
-    CHECK_MUTANT_REJECTED(
-        "wrong erase size",
-        replace_once(
-            source,
-            erase_call,
-            "flash_range_erase(\n"
             "        write->offset,\n"
+            "        write->page,\n"
             "        flash_partition::page_size);"));
     CHECK_MUTANT_REJECTED(
-        "wrong program offset",
+        "wrong replace-sector page offset",
         replace_once(
             source,
-            program_call,
-            "flash_range_program(\n"
+            replace_call,
+            "transaction.replace_sector(\n"
+            "        write->offset,\n"
             "        flash_partition::command_journal_b_offset,\n"
             "        write->page,\n"
             "        flash_partition::page_size);"));
     CHECK_MUTANT_REJECTED(
-        "wrong program size",
+        "wrong replace-sector page size",
         replace_once(
             source,
-            program_call,
-            "flash_range_program(\n"
+            replace_call,
+            "transaction.replace_sector(\n"
+            "        write->offset,\n"
             "        write->offset,\n"
             "        write->page,\n"
             "        flash_partition::command_journal_slot_size);"));
     CHECK_MUTANT_REJECTED(
-        "program before erase",
-        swap_once(source, erase_call, program_call));
-    CHECK_MUTANT_REJECTED(
-        "missing RAM callback annotation",
+        "missing transaction result propagation",
         replace_once(
             source,
-            "__no_inline_not_in_flash_func("
-            "command_journal_flash_write_callback)",
-            "command_journal_flash_write_callback"));
+            replace_call,
+            "FlashOperationCode::Succeeded;"));
     CHECK_MUTANT_REJECTED(
-        "inverted flash_safe_execute result",
+        "missing null transaction context rejection",
         replace_once(
             source,
-            "timeout_ms) == 0;",
-            "timeout_ms) != 0;"));
+            "if (write == nullptr) {\n"
+            "        return FlashOperationCode::InvalidArgument;\n"
+            "    }\n",
+            ""));
+    CHECK_MUTANT_REJECTED(
+        "bypassed serialized verification",
+        replace_once(
+            source,
+            "return write.verification_attempted &&\n"
+            "           write.verified;",
+            "return true;"));
+    CHECK_MUTANT_REJECTED(
+        "missing serialized readback",
+        replace_once(
+            source,
+            "const FlashOperationResult read_result = transaction.read(",
+            "const FlashOperationResult read_result = "
+            "FlashOperationCode::Succeeded; // transaction.read("));
     CHECK_MUTANT_REJECTED(
         "missing exact page-size rejection",
         replace_once(

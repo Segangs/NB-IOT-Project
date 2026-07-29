@@ -48,11 +48,20 @@ bool command_boot_effect_matches(
         journal.expected_effect != CommandExpectedEffect::PowerOff) {
         return false;
     }
-    if (evidence.shutdown_record.initial_usb_present != 0) {
-        return watchdog_evidence_matches(journal, evidence);
+    const bool backend_canonical_record =
+        (evidence.shutdown_record.initial_usb_present == 0 &&
+         evidence.shutdown_record.planned_action ==
+             RuntimeOwnerShutdownPlannedAction::Gp15Kill) ||
+        (evidence.shutdown_record.initial_usb_present == 1 &&
+         evidence.shutdown_record.planned_action ==
+             RuntimeOwnerShutdownPlannedAction::WatchdogReboot);
+    if (!backend_canonical_record) {
+        return false;
     }
-    return evidence.shutdown_record.planned_action ==
-           RuntimeOwnerShutdownPlannedAction::Gp15Kill;
+    if (evidence.watchdog_marker_present == 1) {
+        return evidence.watchdog_cmd_id == journal.cmd_id;
+    }
+    return true;
 }
 
 } // namespace boot_v2

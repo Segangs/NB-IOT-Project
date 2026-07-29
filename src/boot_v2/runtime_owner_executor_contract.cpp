@@ -20,7 +20,7 @@ constexpr bool effect_is_zero(const RuntimeOwnerEffect effect) noexcept
 constexpr bool normal_intent_is_zero(const NormalIntent intent) noexcept
 {
     return intent.kind == NormalIntentKind::Invalid && intent.flags == 0 &&
-           intent.reserved == 0 && intent.subject_id == 0 &&
+           intent.value_deci_celsius == 0 && intent.subject_id == 0 &&
            intent.snapshot_revision == 0;
 }
 

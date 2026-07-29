@@ -74,6 +74,19 @@ public:
         return core_.process_cycle(RuntimeOwnerTaskCycleInput{});
     }
 
+    [[nodiscard]] TemperatureAlarmDeliveryPopResult
+        try_pop_alarm_delivery(
+            TemperatureAlarmDeliveryEvent &event) noexcept
+    {
+        return core_.try_pop_alarm_delivery(event);
+    }
+
+    [[nodiscard]] bool
+        take_alarm_delivery_overflow_log_pending() noexcept
+    {
+        return core_.take_alarm_delivery_overflow_log_pending();
+    }
+
     template <typename Backend>
     [[nodiscard]] RuntimeOwnerPhysicalStepResult execute_one(
         Backend &backend) noexcept

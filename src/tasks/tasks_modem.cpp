@@ -393,7 +393,15 @@ bool nb_iot::modem_SendCmdWaitResponse(const char *cmd, const char *expected_res
 
 bool nb_iot::modem_SendCmdWaitOK(const char *cmd, uint32_t timeout_ms, uint32_t post_delay_ms)
 {
-    return this->modem_SendCmdWaitResponse(cmd, "OK", nullptr, timeout_ms);
+    if (!this->modem_SendCmdWaitResponse(cmd, "OK", nullptr, timeout_ms))
+    {
+        return false;
+    }
+    if (post_delay_ms != 0)
+    {
+        modem_sleep(post_delay_ms);
+    }
+    return true;
 }
 
 void nb_iot::modem_hw_power_on()
@@ -551,7 +559,12 @@ bool nb_iot::modem_init(int &at_status, int &cpin_status)
 
     // Step 3: Turn on full modem capabilities and wait 30s as specified
     LOG("MODEM_CFUN\n");
-    modem_SendCmdWaitOK("AT+CFUN=1", 5000, 30000);
+    if (!modem_SendCmdWaitOK("AT+CFUN=1", 5000, 30000))
+    {
+        LOG("MODEM_CFUN_FAIL\n");
+        cpin_status = 1;
+        return false;
+    }
 
     // Step 4: Validate SIM card status & wait 2s
     cpin_status = check_sim_status();

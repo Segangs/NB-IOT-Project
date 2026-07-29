@@ -112,29 +112,49 @@ RuntimeOwnerIngressResult runtime_owner_periodic_request_transport() noexcept
 
 RuntimeOwnerIngressResult runtime_owner_periodic_publish_telemetry(
     const std::uint32_t sensor_id,
-    const std::uint32_t snapshot_revision) noexcept
+    const std::uint32_t snapshot_revision,
+    const std::int16_t value_deci_celsius) noexcept
 {
-    if (power_state_battery_grace_active()) {
+    if (power_state_battery_grace_active() ||
+        sensor_id < 1 || sensor_id > 2 ||
+        snapshot_revision == 0) {
         return RuntimeOwnerIngressResult::RejectedInvalid;
     }
     return submit_normal_for(
         RuntimeOwnerProducerKind::Periodic,
         RuntimeOwnerProducerRequestKind::PublishTelemetry,
-        {NormalIntentKind::PublishTelemetry, 0, 0, sensor_id,
+        {NormalIntentKind::PublishTelemetry,
+         kNormalIntentFlagFrozenValue,
+         value_deci_celsius,
+         sensor_id,
          snapshot_revision});
 }
 
-RuntimeOwnerIngressResult runtime_owner_sensor_publish_telemetry(
+RuntimeOwnerIngressResult runtime_owner_sensor_publish_alarm(
     const std::uint32_t sensor_id,
-    const std::uint32_t snapshot_revision) noexcept
+    const std::uint32_t snapshot_revision,
+    const std::int16_t value_deci_celsius,
+    const TemperatureAlarmEdge edge) noexcept
 {
-    if (sensor_id < 1 || sensor_id > 2 || snapshot_revision == 0) {
+    if (sensor_id < 1 || sensor_id > 2 || snapshot_revision == 0 ||
+        (edge != TemperatureAlarmEdge::Clear &&
+         edge != TemperatureAlarmEdge::High)) {
         return RuntimeOwnerIngressResult::RejectedInvalid;
     }
+    const std::uint8_t flags =
+        static_cast<std::uint8_t>(
+            kNormalIntentFlagFrozenValue |
+            kNormalIntentFlagAlarmEdge |
+            (edge == TemperatureAlarmEdge::High
+                 ? kNormalIntentFlagAlarmHigh
+                 : 0u));
     return submit_normal_for(
         RuntimeOwnerProducerKind::Sensor,
         RuntimeOwnerProducerRequestKind::PublishTelemetry,
-        {NormalIntentKind::PublishTelemetry, 0, 0, sensor_id,
+        {NormalIntentKind::PublishTelemetry,
+         flags,
+         value_deci_celsius,
+         sensor_id,
          snapshot_revision});
 }
 

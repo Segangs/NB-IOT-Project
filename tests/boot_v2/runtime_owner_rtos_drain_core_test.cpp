@@ -166,6 +166,9 @@ constexpr NormalIntent normal_message(const std::uint32_t subject) noexcept
 {
     NormalIntent value{};
     value.kind = NormalIntentKind::PublishTelemetry;
+    value.flags = 0x01;
+    value.value_deci_celsius =
+        static_cast<std::int16_t>(subject);
     value.subject_id = subject;
     value.snapshot_revision = subject;
     return value;
@@ -224,6 +227,448 @@ std::size_t count_occurrences(
         position += needle.size();
     }
     return count;
+}
+
+std::string replace_once_copy(
+    const std::string &source,
+    const std::string &from,
+    const std::string &to)
+{
+    std::string result = source;
+    const std::size_t position = result.find(from);
+    if (position != std::string::npos) {
+        result.replace(position, from.size(), to);
+    }
+    return result;
+}
+
+struct SourceSpan {
+    std::size_t begin{std::string::npos};
+    std::size_t end{std::string::npos};
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return begin != std::string::npos &&
+               end != std::string::npos &&
+               begin < end;
+    }
+};
+
+SourceSpan function_span(
+    const std::string &source,
+    const std::string &signature)
+{
+    const std::size_t begin = source.find(signature);
+    if (begin == std::string::npos) {
+        return {};
+    }
+    const std::size_t opening = source.find('{', begin + signature.size());
+    if (opening == std::string::npos) {
+        return {};
+    }
+
+    enum class LexicalState {
+        Code,
+        StringLiteral,
+        CharacterLiteral,
+        LineComment,
+        BlockComment,
+    };
+
+    std::size_t depth = 0;
+    LexicalState state = LexicalState::Code;
+    for (std::size_t position = opening; position < source.size();
+         ++position) {
+        const char current = source[position];
+        const char next =
+            position + 1 < source.size() ? source[position + 1] : '\0';
+        switch (state) {
+        case LexicalState::Code:
+            if (current == '"') {
+                state = LexicalState::StringLiteral;
+            } else if (current == '\'') {
+                state = LexicalState::CharacterLiteral;
+            } else if (current == '/' && next == '/') {
+                state = LexicalState::LineComment;
+                ++position;
+            } else if (current == '/' && next == '*') {
+                state = LexicalState::BlockComment;
+                ++position;
+            } else if (current == '{') {
+                ++depth;
+            } else if (current == '}') {
+                --depth;
+                if (depth == 0) {
+                    return {begin, position + 1};
+                }
+            }
+            break;
+        case LexicalState::StringLiteral:
+            if (current == '\\' && next != '\0') {
+                ++position;
+            } else if (current == '"') {
+                state = LexicalState::Code;
+            }
+            break;
+        case LexicalState::CharacterLiteral:
+            if (current == '\\' && next != '\0') {
+                ++position;
+            } else if (current == '\'') {
+                state = LexicalState::Code;
+            }
+            break;
+        case LexicalState::LineComment:
+            if (current == '\n') {
+                state = LexicalState::Code;
+            }
+            break;
+        case LexicalState::BlockComment:
+            if (current == '*' && next == '/') {
+                state = LexicalState::Code;
+                ++position;
+            }
+            break;
+        }
+    }
+    return {};
+}
+
+std::string function_definition(
+    const std::string &source,
+    const std::string &signature)
+{
+    const SourceSpan span = function_span(source, signature);
+    return span.valid()
+               ? source.substr(span.begin, span.end - span.begin)
+               : std::string{};
+}
+
+std::string move_function_before_copy(
+    const std::string &source,
+    const std::string &moved_signature,
+    const std::string &anchor_signature)
+{
+    const SourceSpan moved = function_span(source, moved_signature);
+    const SourceSpan anchor = function_span(source, anchor_signature);
+    if (!moved.valid() || !anchor.valid() || moved.begin <= anchor.begin) {
+        return source;
+    }
+
+    const std::string moved_definition =
+        source.substr(moved.begin, moved.end - moved.begin);
+    std::string result = source;
+    result.erase(moved.begin, moved.end - moved.begin);
+    result.insert(anchor.begin, moved_definition + "\n\n");
+    return result;
+}
+
+bool critical_sections_exclude(
+    const std::string &source,
+    const std::string &needle)
+{
+    std::size_t search = 0;
+    while (true) {
+        const std::size_t enter =
+            source.find("taskENTER_CRITICAL();", search);
+        if (enter == std::string::npos) {
+            return true;
+        }
+        const std::size_t exit =
+            source.find("taskEXIT_CRITICAL();", enter);
+        if (exit == std::string::npos) {
+            return false;
+        }
+        const std::size_t forbidden = source.find(needle, enter);
+        if (forbidden != std::string::npos && forbidden < exit) {
+            return false;
+        }
+        search = exit + 1;
+    }
+}
+
+bool redacted_status_cache_contract_accepts(const std::string &source)
+{
+    constexpr const char *publish_name =
+        "publish_redacted_status_cache";
+    constexpr const char *publish_call =
+        "publish_redacted_status_cache();";
+    const std::string publisher = function_definition(
+        source, "void publish_redacted_status_cache() noexcept");
+    const std::string drive = function_definition(
+        source, "void drive_owner_until_idle() noexcept");
+    const std::string shutdown_finalizer = function_definition(
+        source,
+        "[[noreturn]] void run_shutdown_finalizer(\n"
+        "    const RuntimeOwnerUrgentMessage context) noexcept");
+    const std::string task_entry = function_definition(
+        source, "void runtime_owner_task_entry(void *) noexcept");
+    const std::string activation = function_definition(
+        source,
+        "RuntimeOwnerAtomicCutoverResult "
+        "runtime_owner_rtos_activate_atomic() noexcept");
+    const std::string reader = function_definition(
+        source,
+        "RuntimeOwnerRedactedStatus runtime_owner_redacted_status() noexcept");
+    if (publisher.empty() || drive.empty() || task_entry.empty() ||
+        shutdown_finalizer.empty() || activation.empty() || reader.empty()) {
+        return false;
+    }
+
+    const std::size_t snapshot =
+        publisher.find("g_task_core.redacted_status()");
+    const std::size_t publish_enter =
+        publisher.find("taskENTER_CRITICAL();", snapshot);
+    const std::size_t publish_copy =
+        publisher.find("g_redacted_status_cache = snapshot;", publish_enter);
+    const std::size_t publish_exit =
+        publisher.find("taskEXIT_CRITICAL();", publish_copy);
+
+    const std::size_t reader_enter =
+        reader.find("taskENTER_CRITICAL();");
+    const std::size_t reader_copy =
+        reader.find("status = g_redacted_status_cache;", reader_enter);
+    const std::size_t reader_exit =
+        reader.find("taskEXIT_CRITICAL();", reader_copy);
+    const std::size_t reader_return =
+        reader.find("return status;", reader_exit);
+
+    const std::size_t activation_guard =
+        activation.find("if (activation !=");
+    const std::size_t activation_failure_return = activation.find(
+        "return RuntimeOwnerAtomicCutoverResult::RejectedNotReady;",
+        activation_guard);
+    const std::size_t activation_publish =
+        activation.find(publish_call, activation_failure_return);
+    const std::size_t activation_commit =
+        activation.find("g_cutover_core.commit(", activation_publish);
+
+    const std::size_t drain =
+        task_entry.find("runtime_owner_drain_once(");
+    const std::size_t drain_publish =
+        task_entry.find(publish_call, drain);
+    const std::size_t drain_metrics =
+        task_entry.find("runtime_owner_record_drain_step(", drain_publish);
+    const std::size_t drive_call =
+        task_entry.find("drive_owner_until_idle();");
+    const std::size_t drive_publish =
+        task_entry.find(publish_call, drive_call);
+    const std::size_t shutdown_guard =
+        task_entry.find("if (shutdown_received)", drive_publish);
+    const std::size_t final_publish =
+        task_entry.find(publish_call, shutdown_guard);
+    const std::size_t finalizer_call =
+        task_entry.find("run_shutdown_finalizer(shutdown_context);",
+                        final_publish);
+
+    return source.find("RuntimeOwnerRedactedStatus "
+                       "g_redacted_status_cache{};") != std::string::npos &&
+           count_occurrences(
+               source, "g_task_core.redacted_status()") == 1 &&
+           count_occurrences(
+               source, "g_redacted_status_cache =") == 1 &&
+           count_occurrences(source, publish_call) == 4 &&
+           count_occurrences(publisher, publish_name) == 1 &&
+           snapshot != std::string::npos &&
+           publish_enter != std::string::npos &&
+           publish_copy != std::string::npos &&
+           publish_exit != std::string::npos &&
+           snapshot < publish_enter &&
+           publish_enter < publish_copy &&
+           publish_copy < publish_exit &&
+           publisher.find("g_device_backend") == std::string::npos &&
+           publisher.find("g_owner_loop") == std::string::npos &&
+           publisher.find("modem") == std::string::npos &&
+           reader.find("g_task_core") == std::string::npos &&
+           count_occurrences(reader, "taskENTER_CRITICAL();") == 1 &&
+           count_occurrences(reader, "taskEXIT_CRITICAL();") == 1 &&
+           count_occurrences(
+               reader, "status = g_redacted_status_cache;") == 1 &&
+           reader_enter != std::string::npos &&
+           reader_copy != std::string::npos &&
+           reader_exit != std::string::npos &&
+           reader_return != std::string::npos &&
+           reader_enter < reader_copy &&
+           reader_copy < reader_exit &&
+           reader_exit < reader_return &&
+           activation_guard != std::string::npos &&
+           activation_failure_return != std::string::npos &&
+           activation_publish != std::string::npos &&
+           activation_commit != std::string::npos &&
+           activation_guard < activation_failure_return &&
+           activation_failure_return < activation_publish &&
+           activation_publish < activation_commit &&
+           drain != std::string::npos &&
+           drain_publish != std::string::npos &&
+           drain_metrics != std::string::npos &&
+           drain < drain_publish &&
+           drain_publish < drain_metrics &&
+           drive_call != std::string::npos &&
+           drive_publish != std::string::npos &&
+           shutdown_guard != std::string::npos &&
+           final_publish != std::string::npos &&
+           finalizer_call != std::string::npos &&
+           drive_call < drive_publish &&
+           drive_publish < shutdown_guard &&
+           shutdown_guard < final_publish &&
+           final_publish < finalizer_call &&
+           critical_sections_exclude(drive, "g_owner_loop.advance()") &&
+           critical_sections_exclude(
+               drive, "g_owner_loop.submit_deferred_config(") &&
+           critical_sections_exclude(
+               drive, "g_owner_loop.execute_one(") &&
+           critical_sections_exclude(
+               shutdown_finalizer,
+               "g_owner_loop.execute_shutdown_cleanup(") &&
+           critical_sections_exclude(
+               task_entry, "run_shutdown_finalizer(") &&
+           count_occurrences(task_entry, publish_call) == 3 &&
+           count_occurrences(activation, publish_call) == 1;
+}
+
+bool test_redacted_status_cache_contract_and_publish_point_mutants()
+{
+    const std::string source = read_source(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_rtos.cpp");
+    if (!redacted_status_cache_contract_accepts(source)) {
+        return false;
+    }
+
+    const std::string direct_core_reader = replace_once_copy(
+        source,
+        "status = g_redacted_status_cache;",
+        "status = g_task_core.redacted_status();");
+    const std::string extra_reader_producer = replace_once_copy(
+        source,
+        "    RuntimeOwnerRedactedStatus status{};\n"
+        "    taskENTER_CRITICAL();\n",
+        "    RuntimeOwnerRedactedStatus status{};\n"
+        "    g_redacted_status_cache = status;\n"
+        "    taskENTER_CRITICAL();\n");
+    const std::string missing_activation_publish = replace_once_copy(
+        source,
+        "    publish_redacted_status_cache();\n"
+        "    if (g_cutover_core.commit(",
+        "    if (g_cutover_core.commit(");
+    const std::string missing_drain_publish = replace_once_copy(
+        source,
+        "                g_queue_backend, g_owner_loop);\n"
+        "            if (g_owner_loop."
+        "take_alarm_delivery_overflow_log_pending()) {\n"
+        "                LOG(\"ALARM_DELIVERY_OVERFLOW\\n\");\n"
+        "            }\n"
+        "            publish_redacted_status_cache();\n",
+        "                g_queue_backend, g_owner_loop);\n"
+        "            if (g_owner_loop."
+        "take_alarm_delivery_overflow_log_pending()) {\n"
+        "                LOG(\"ALARM_DELIVERY_OVERFLOW\\n\");\n"
+        "            }\n");
+    const std::string missing_drive_publish = replace_once_copy(
+        source,
+        "        drive_owner_until_idle();\n"
+        "        publish_redacted_status_cache();\n",
+        "        drive_owner_until_idle();\n");
+    const std::string missing_final_publish = replace_once_copy(
+        source,
+        "        if (shutdown_received) {\n"
+        "            publish_redacted_status_cache();\n"
+        "            run_shutdown_finalizer(shutdown_context);\n",
+        "        if (shutdown_received) {\n"
+        "            run_shutdown_finalizer(shutdown_context);\n");
+    const std::string physical_under_critical = replace_once_copy(
+        source,
+        "        const RuntimeOwnerPhysicalStepResult physical =\n"
+        "            g_owner_loop.execute_one(g_device_backend);\n",
+        "        taskENTER_CRITICAL();\n"
+        "        const RuntimeOwnerPhysicalStepResult physical =\n"
+        "            g_owner_loop.execute_one(g_device_backend);\n"
+        "        taskEXIT_CRITICAL();\n");
+    const std::string harmless_helper_reorder = move_function_before_copy(
+        source,
+        "void increment_saturating(std::uint32_t &counter) noexcept",
+        "void publish_redacted_status_cache() noexcept");
+    const std::string cleanup_under_critical = replace_once_copy(
+        source,
+        "            const RuntimeOwnerShutdownStepResult result =\n"
+        "                g_owner_loop.execute_shutdown_cleanup(\n"
+        "                    g_device_backend,\n"
+        "                    directive,\n"
+        "                    context);\n",
+        "            taskENTER_CRITICAL();\n"
+        "            const RuntimeOwnerShutdownStepResult result =\n"
+        "                g_owner_loop.execute_shutdown_cleanup(\n"
+        "                    g_device_backend,\n"
+        "                    directive,\n"
+        "                    context);\n"
+        "            taskEXIT_CRITICAL();\n");
+    const std::string finalizer_under_critical = replace_once_copy(
+        source,
+        "            publish_redacted_status_cache();\n"
+        "            run_shutdown_finalizer(shutdown_context);\n",
+        "            publish_redacted_status_cache();\n"
+        "            taskENTER_CRITICAL();\n"
+        "            run_shutdown_finalizer(shutdown_context);\n"
+        "            taskEXIT_CRITICAL();\n");
+
+    return direct_core_reader != source &&
+           extra_reader_producer != source &&
+           missing_activation_publish != source &&
+           missing_drain_publish != source &&
+           missing_drive_publish != source &&
+           missing_final_publish != source &&
+           physical_under_critical != source &&
+           harmless_helper_reorder != source &&
+           cleanup_under_critical != source &&
+           finalizer_under_critical != source &&
+           redacted_status_cache_contract_accepts(
+               harmless_helper_reorder) &&
+           !redacted_status_cache_contract_accepts(direct_core_reader) &&
+           !redacted_status_cache_contract_accepts(extra_reader_producer) &&
+           !redacted_status_cache_contract_accepts(
+               missing_activation_publish) &&
+           !redacted_status_cache_contract_accepts(missing_drain_publish) &&
+           !redacted_status_cache_contract_accepts(missing_drive_publish) &&
+           !redacted_status_cache_contract_accepts(missing_final_publish) &&
+           !redacted_status_cache_contract_accepts(physical_under_critical) &&
+           !redacted_status_cache_contract_accepts(cleanup_under_critical) &&
+           !redacted_status_cache_contract_accepts(
+               finalizer_under_critical);
+}
+
+bool test_balanced_function_scanner_ignores_lexical_braces()
+{
+    const std::string source = read_source(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_rtos.cpp");
+    constexpr const char *publisher_opening =
+        "void publish_redacted_status_cache() noexcept\n"
+        "{\n";
+    const std::string string_literal_brace = replace_once_copy(
+        source,
+        publisher_opening,
+        std::string(publisher_opening) + "    LOG(\"}\");\n");
+    const std::string character_literal_brace = replace_once_copy(
+        source,
+        publisher_opening,
+        std::string(publisher_opening) +
+            "    const char harmless_brace = '}';\n"
+            "    (void)harmless_brace;\n");
+    const std::string line_comment_brace = replace_once_copy(
+        source,
+        publisher_opening,
+        std::string(publisher_opening) + "    // }\n");
+    const std::string block_comment_brace = replace_once_copy(
+        source,
+        publisher_opening,
+        std::string(publisher_opening) + "    /* } */\n");
+
+    return string_literal_brace != source &&
+           character_literal_brace != source &&
+           line_comment_brace != source &&
+           block_comment_brace != source &&
+           redacted_status_cache_contract_accepts(string_literal_brace) &&
+           redacted_status_cache_contract_accepts(
+               character_literal_brace) &&
+           redacted_status_cache_contract_accepts(line_comment_brace) &&
+           redacted_status_cache_contract_accepts(block_comment_brace);
 }
 
 bool test_rtos_source_includes_and_calls_shared_drain()
@@ -796,6 +1241,8 @@ int main()
     CHECK(test_urgent_queue_uses_provenance_message());
     CHECK(test_public_surface_remains_read_only_and_narrow());
     CHECK(test_production_atomic_cutover_is_single_and_ordered());
+    CHECK(test_redacted_status_cache_contract_and_publish_point_mutants());
+    CHECK(test_balanced_function_scanner_ignores_lexical_braces());
 
     if (failures != 0) {
         std::printf("FAIL checks=%d failures=%d\n", checks, failures);

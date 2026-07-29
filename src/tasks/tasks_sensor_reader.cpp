@@ -7,9 +7,12 @@
 #include "task.h"
 #include "tasks_sensor.hpp"
 #include "../config.h"
+#include "../boot_v2/lcd_status_policy.hpp"
 #include "../boot_v2/sensor_quality_core.hpp"
+#include "../boot_v2/temperature_alarm_delivery_mailbox.hpp"
 #include "../boot_v2/temperature_alarm_publish_core.hpp"
 #include "../boot_v2/runtime_owner_producer_facade.hpp"
+#include "../boot_v2/runtime_owner_rtos.hpp"
 #include "../lib/log.hpp"
 #include "app_context.hpp"
 #include "pico/stdlib.h"
@@ -94,11 +97,29 @@ void vSensorTask(void *pvParameters)
     boot_v2::SensorQualityCore quality_ch1;
     boot_v2::TemperatureAlarmPublishCore alert_publish_ch0;
     boot_v2::TemperatureAlarmPublishCore alert_publish_ch1;
+    boot_v2::TemperatureAlarmDeliveryConsumerCore alarm_delivery_consumer;
     bool alarm_ch0 = false;
     bool alarm_ch1 = false;
 
     while (true)
     {
+        boot_v2::TemperatureAlarmDeliveryEvent alarm_delivery{};
+        while (boot_v2::
+                   runtime_owner_try_receive_temperature_alarm_delivery(
+                       alarm_delivery) ==
+               boot_v2::TemperatureAlarmDeliveryPopResult::Popped) {
+            if (!alarm_delivery_consumer.apply(
+                    alarm_delivery,
+                    alert_publish_ch0,
+                    alert_publish_ch1)) {
+                LOG(
+                    "ALARM_COMPLETION_REJECT count=%lu\n",
+                    static_cast<unsigned long>(
+                        alarm_delivery_consumer.view()
+                            .rejected_completion_count));
+            }
+        }
+
         // Core 1의 ADC 직접 간섭을 예방하기 위해 Core 0에서 전압도 수집하여 전역 공유합니다.
         bool vsys_stable = false;
         float vsys_vol = read_vsys_voltage(vsys_stable);
@@ -131,13 +152,24 @@ void vSensorTask(void *pvParameters)
         }
         publish_sensor_quality(quality0.snapshot, quality1.snapshot);
 
-        if (quality0.display_value_valid != 0) {
-            temp_ch0 =
-                static_cast<float>(quality0.display_value_deci_celsius) /
-                10.0f;
-            lcd_params.current_temperature = temp_ch0;
-        } else {
-            lcd_params.current_temperature = -990.0f - (float)status_ch0;
+        const auto lcd_display_state =
+            boot_v2::make_lcd_sensor_display_state(
+                status_ch0, quality0, status_ch1, quality1);
+        lcd_params.current_temperature =
+            lcd_display_state.channel0.value_celsius;
+        lcd_params.display_value_valid_ch0 =
+            lcd_display_state.channel0.value_valid;
+        lcd_params.status_ch0 =
+            lcd_display_state.channel0.raw_status;
+        lcd_params.current_temperature_ch1 =
+            lcd_display_state.channel1.value_celsius;
+        lcd_params.display_value_valid_ch1 =
+            lcd_display_state.channel1.value_valid;
+        lcd_params.status_ch1 =
+            lcd_display_state.channel1.raw_status;
+
+        if (lcd_display_state.channel0.value_valid) {
+            temp_ch0 = lcd_display_state.channel0.value_celsius;
         }
         if (quality0.alarm_update_allowed != 0) {
             g_temp_ch0_sample_seq++;
@@ -147,22 +179,25 @@ void vSensorTask(void *pvParameters)
             alarm_ch0 = temp_ch0 > g_temp_upper_limit_ch0;
         }
         const auto alert0 = alert_publish_ch0.observe(
-            quality0.alarm_update_allowed != 0, alarm_ch0);
-        if (alert0.publish_required != 0 &&
-            boot_v2::runtime_owner_sensor_publish_telemetry(
-                1, g_temp_ch0_sample_seq) ==
+            quality0.alarm_update_allowed != 0,
+            alarm_ch0,
+            quality0.snapshot.value_deci_celsius);
+        if (alert0.publish_required != 0) {
+            const auto result =
+                boot_v2::runtime_owner_sensor_publish_alarm(
+                    1,
+                    alert0.snapshot_revision,
+                    alert0.value_deci_celsius,
+                    alert0.edge);
+            if (result ==
                 boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery) {
-            alert_publish_ch0.confirm_submitted();
+                (void)alert_publish_ch0.mark_enqueued(
+                    alert0.snapshot_revision, alert0.edge);
+            }
         }
-        lcd_params.status_ch0 = status_ch0;
 
-        if (quality1.display_value_valid != 0) {
-            temp_ch1 =
-                static_cast<float>(quality1.display_value_deci_celsius) /
-                10.0f;
-            lcd_params.current_temperature_ch1 = temp_ch1;
-        } else {
-            lcd_params.current_temperature_ch1 = -990.0f - (float)status_ch1;
+        if (lcd_display_state.channel1.value_valid) {
+            temp_ch1 = lcd_display_state.channel1.value_celsius;
         }
         if (quality1.alarm_update_allowed != 0) {
             g_temp_ch1_sample_seq++;
@@ -172,14 +207,22 @@ void vSensorTask(void *pvParameters)
             alarm_ch1 = temp_ch1 > g_temp_upper_limit_ch1;
         }
         const auto alert1 = alert_publish_ch1.observe(
-            quality1.alarm_update_allowed != 0, alarm_ch1);
-        if (alert1.publish_required != 0 &&
-            boot_v2::runtime_owner_sensor_publish_telemetry(
-                2, g_temp_ch1_sample_seq) ==
+            quality1.alarm_update_allowed != 0,
+            alarm_ch1,
+            quality1.snapshot.value_deci_celsius);
+        if (alert1.publish_required != 0) {
+            const auto result =
+                boot_v2::runtime_owner_sensor_publish_alarm(
+                    2,
+                    alert1.snapshot_revision,
+                    alert1.value_deci_celsius,
+                    alert1.edge);
+            if (result ==
                 boot_v2::RuntimeOwnerIngressResult::AcceptedForDelivery) {
-            alert_publish_ch1.confirm_submitted();
+                (void)alert_publish_ch1.mark_enqueued(
+                    alert1.snapshot_revision, alert1.edge);
+            }
         }
-        lcd_params.status_ch1 = status_ch1;
 
         // Stale/fault samples neither raise nor clear an existing alarm.
         g_buzzer_trigger = alarm_ch0 || alarm_ch1;

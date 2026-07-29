@@ -41,6 +41,8 @@ struct LcdTaskParams {
     volatile float current_temperature_ch1; // Ch1
     volatile int status_ch0;
     volatile int status_ch1;
+    volatile bool display_value_valid_ch0{false};
+    volatile bool display_value_valid_ch1{false};
     volatile float current_vsys_voltage;
     volatile bool is_vsys_stable;
     char status_text[16];

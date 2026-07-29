@@ -198,32 +198,32 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
     CHECK(source.find("g_shutdown_finalizer.submit_usb_recheck(") !=
           std::string::npos);
 
-    const std::size_t watchdog_branch = source.find(
-        "case RuntimeOwnerShutdownFinalizeAction::CommitWatchdog:");
+    const std::size_t watchdog_helper = source.find(
+        "[[noreturn]] void commit_shutdown_watchdog(");
     const std::size_t scratch_magic =
         source.find(
             "COMMAND_WATCHDOG_SCRATCH_MAGIC",
-            watchdog_branch);
+            watchdog_helper);
     const std::size_t scratch_context =
         source.find("watchdog_hw->scratch[3] =", scratch_magic);
     const std::size_t commit_log =
         source.find("SHUTDOWN_WATCHDOG_COMMIT", scratch_context);
     const std::size_t reboot =
         source.find("watchdog_reboot(0, 0, 100)", commit_log);
-    CHECK(watchdog_branch != std::string::npos);
+    CHECK(watchdog_helper != std::string::npos);
     CHECK(scratch_magic != std::string::npos);
     CHECK(scratch_context != std::string::npos);
     CHECK(commit_log != std::string::npos);
     CHECK(reboot != std::string::npos);
-    CHECK(watchdog_branch < scratch_magic);
+    CHECK(watchdog_helper < scratch_magic);
     CHECK(scratch_magic < scratch_context);
     CHECK(scratch_context < commit_log);
     CHECK(commit_log < reboot);
 
-    const std::size_t gp15_branch = source.find(
-        "case RuntimeOwnerShutdownFinalizeAction::CommitGp15Kill:");
+    const std::size_t gp15_helper = source.find(
+        "[[noreturn]] void commit_shutdown_gp15_kill()");
     const std::size_t gp15_init =
-        source.find("gpio_init(POWER_KILL_PIN)", gp15_branch);
+        source.find("gpio_init(POWER_KILL_PIN)", gp15_helper);
     const std::size_t gp15_inactive = source.find(
         "gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL)", gp15_init);
     const std::size_t gp15_output =
@@ -232,13 +232,13 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
         source.find("SHUTDOWN_GP15_COMMIT", gp15_output);
     const std::size_t gp15_active = source.find(
         "gpio_put(POWER_KILL_PIN, POWER_KILL_ACTIVE_LEVEL)", gp15_log);
-    CHECK(gp15_branch != std::string::npos);
+    CHECK(gp15_helper != std::string::npos);
     CHECK(gp15_init != std::string::npos);
     CHECK(gp15_inactive != std::string::npos);
     CHECK(gp15_output != std::string::npos);
     CHECK(gp15_log != std::string::npos);
     CHECK(gp15_active != std::string::npos);
-    CHECK(gp15_branch < gp15_init);
+    CHECK(gp15_helper < gp15_init);
     CHECK(gp15_init < gp15_inactive);
     CHECK(gp15_inactive < gp15_output);
     CHECK(gp15_output < gp15_log);
@@ -249,15 +249,72 @@ void test_shutdown_finalizer_owns_watchdog_and_gp15_fail_closed_actions()
     CHECK(backend.find("gpio_put(POWER_KILL_PIN") == std::string::npos);
     CHECK(backend.find("watchdog_reboot") == std::string::npos);
 
-    CHECK(source.find(
-              "case RuntimeOwnerShutdownFinalizeAction::AbortUsbChanged:") !=
-          std::string::npos);
-    CHECK(source.find("SHUTDOWN_USB_CHANGED_ABORT") != std::string::npos);
-    CHECK(source.find(
-              "case RuntimeOwnerShutdownFinalizeAction::"
-              "AbortEvidenceMissing:") != std::string::npos);
-    CHECK(source.find("SHUTDOWN_EVIDENCE_MISSING_ABORT") !=
-          std::string::npos);
+    const std::size_t fresh_usb_helper = source.find(
+        "[[noreturn]] void commit_shutdown_from_fresh_usb(");
+    const std::size_t fresh_usb = source.find(
+        "const bool latest_usb_present =",
+        fresh_usb_helper);
+    const std::size_t fresh_usb_sample = source.find(
+        "runtime_owner_usb_power_present()", fresh_usb);
+    const std::size_t reboot_override = source.find(
+        "context.intent == RuntimeOwnerShutdownIntent::Reboot",
+        fresh_usb_sample);
+    const std::size_t latest_usb_condition = source.find(
+        "latest_usb_present", reboot_override);
+    const std::size_t latest_watchdog = source.find(
+        "commit_shutdown_watchdog(context)", latest_usb_condition);
+    const std::size_t latest_gp15 = source.find(
+        "commit_shutdown_gp15_kill()", latest_watchdog);
+    CHECK(fresh_usb_helper != std::string::npos);
+    CHECK(fresh_usb != std::string::npos);
+    CHECK(fresh_usb_sample != std::string::npos);
+    CHECK(reboot_override != std::string::npos);
+    CHECK(latest_usb_condition != std::string::npos);
+    CHECK(latest_watchdog != std::string::npos);
+    CHECK(latest_gp15 != std::string::npos);
+    CHECK(fresh_usb_helper < fresh_usb);
+    CHECK(fresh_usb < fresh_usb_sample);
+    CHECK(fresh_usb_sample < reboot_override);
+    CHECK(reboot_override < latest_usb_condition);
+    CHECK(latest_usb_condition < latest_watchdog);
+    CHECK(latest_watchdog < latest_gp15);
+
+    const std::size_t watchdog_branch = source.find(
+        "case RuntimeOwnerShutdownFinalizeAction::CommitWatchdog:");
+    const std::size_t watchdog_call = source.find(
+        "commit_shutdown_watchdog(context)", watchdog_branch);
+    const std::size_t gp15_branch = source.find(
+        "case RuntimeOwnerShutdownFinalizeAction::CommitGp15Kill:");
+    const std::size_t gp15_call = source.find(
+        "commit_shutdown_gp15_kill()", gp15_branch);
+    const std::size_t abort_changed = source.find(
+        "case RuntimeOwnerShutdownFinalizeAction::AbortUsbChanged:");
+    const std::size_t abort_missing = source.find(
+        "case RuntimeOwnerShutdownFinalizeAction::"
+        "AbortEvidenceMissing:");
+    const std::size_t idle_branch = source.find(
+        "case RuntimeOwnerShutdownFinalizeAction::Idle:");
+    CHECK(watchdog_branch != std::string::npos);
+    CHECK(watchdog_call != std::string::npos);
+    CHECK(gp15_branch != std::string::npos);
+    CHECK(gp15_call != std::string::npos);
+    CHECK(abort_changed != std::string::npos);
+    CHECK(abort_missing != std::string::npos);
+    CHECK(idle_branch != std::string::npos);
+    CHECK(watchdog_branch < watchdog_call);
+    CHECK(gp15_branch < gp15_call);
+    CHECK(abort_changed < abort_missing);
+    CHECK(abort_missing < idle_branch);
+    if (abort_changed != std::string::npos &&
+        idle_branch != std::string::npos &&
+        abort_changed < idle_branch) {
+        const std::string abort_region =
+            source.substr(abort_changed, idle_branch - abort_changed);
+        CHECK(count(
+                  abort_region,
+                  "commit_shutdown_from_fresh_usb(context)") == 2);
+        CHECK(abort_region.find("vTaskDelay") == std::string::npos);
+    }
 
     CHECK(producer.find("stdio_usb_connected()") == std::string::npos);
     CHECK(producer.find("runtime_owner_usb_power_present()") !=

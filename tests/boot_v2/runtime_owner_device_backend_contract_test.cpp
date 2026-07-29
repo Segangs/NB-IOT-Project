@@ -1,10 +1,13 @@
 #include "runtime_owner_device_backend.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace {
 
@@ -95,6 +98,254 @@ std::string replace_once_copy(
         result.replace(position, from.size(), to);
     }
     return result;
+}
+
+bool post_delay_is_success_only(const std::string &wait_ok) noexcept
+{
+    const std::size_t response_guard = wait_ok.find(
+        "if (!this->modem_SendCmdWaitResponse("
+        "cmd, \"OK\", nullptr, timeout_ms))");
+    const std::size_t failure_return =
+        wait_ok.find("return false;", response_guard);
+    const std::size_t delay_guard =
+        wait_ok.find("if (post_delay_ms != 0)", failure_return);
+    const std::size_t delay =
+        wait_ok.find("modem_sleep(post_delay_ms);", delay_guard);
+    const std::size_t success_return =
+        wait_ok.find("return true;", delay);
+    return response_guard != std::string::npos &&
+           failure_return != std::string::npos &&
+           delay_guard != std::string::npos &&
+           delay != std::string::npos &&
+           success_return != std::string::npos &&
+           count(wait_ok, "modem_SendCmdWaitResponse(") == 1 &&
+           count(wait_ok, "modem_sleep(post_delay_ms);") == 1 &&
+           count(wait_ok, "return false;") == 1 &&
+           count(wait_ok, "return true;") == 1 &&
+           response_guard < failure_return &&
+           failure_return < delay_guard &&
+           delay_guard < delay &&
+           delay < success_return;
+}
+
+bool cfun_failure_stops_modem_init(const std::string &init) noexcept
+{
+    const std::size_t cfun_guard = init.find(
+        "if (!modem_SendCmdWaitOK("
+        "\"AT+CFUN=1\", 5000, 30000))");
+    const std::size_t failure_log =
+        init.find("LOG(\"MODEM_CFUN_FAIL\\n\");", cfun_guard);
+    const std::size_t cpin_failure =
+        init.find("cpin_status = 1;", failure_log);
+    const std::size_t failure_return =
+        init.find("return false;", cpin_failure);
+    const std::size_t sim_check =
+        init.find("cpin_status = check_sim_status();", failure_return);
+    return cfun_guard != std::string::npos &&
+           failure_log != std::string::npos &&
+           cpin_failure != std::string::npos &&
+           failure_return != std::string::npos &&
+           sim_check != std::string::npos &&
+           count(init, "modem_SendCmdWaitOK("
+                       "\"AT+CFUN=1\", 5000, 30000)") == 1 &&
+           init.find("modem_sleep(30000);") == std::string::npos &&
+           cfun_guard < failure_log &&
+           failure_log < cpin_failure &&
+           cpin_failure < failure_return &&
+           failure_return < sim_check;
+}
+
+struct ProductionSourceFile {
+    std::string path;
+    std::string source;
+};
+
+bool is_production_source_extension(
+    const std::filesystem::path &path)
+{
+    const std::string extension = path.extension().string();
+    return extension == ".cpp" || extension == ".hpp" ||
+           extension == ".c" || extension == ".h";
+}
+
+std::string without_ascii_whitespace(const std::string &source)
+{
+    std::string compact;
+    compact.reserve(source.size());
+    for (const char value : source) {
+        if (value != ' ' && value != '\t' && value != '\n' &&
+            value != '\r' && value != '\f' && value != '\v') {
+            compact.push_back(value);
+        }
+    }
+    return compact;
+}
+
+bool has_watchdog_scratch_2_or_3_access(
+    const std::string &source)
+{
+    const std::string compact = without_ascii_whitespace(source);
+    return compact.find("watchdog_hw->scratch[2]") !=
+               std::string::npos ||
+           compact.find("watchdog_hw->scratch[3]") !=
+               std::string::npos;
+}
+
+bool rtos_watchdog_scratch_role_is_exact(
+    const std::string &source)
+{
+    const std::string compact = without_ascii_whitespace(source);
+    constexpr const char *scratch_2 =
+        "watchdog_hw->scratch[2]";
+    constexpr const char *scratch_3 =
+        "watchdog_hw->scratch[3]";
+    constexpr const char *scratch_2_writer =
+        "watchdog_hw->scratch[2]=COMMAND_WATCHDOG_SCRATCH_MAGIC;";
+    constexpr const char *scratch_3_writer =
+        "watchdog_hw->scratch[3]=context.incident_correlation_id;";
+    return count(compact, scratch_2) == 1 &&
+           count(compact, scratch_3) == 1 &&
+           count(compact, scratch_2_writer) == 1 &&
+           count(compact, scratch_3_writer) == 1;
+}
+
+bool backend_watchdog_scratch_role_is_exact(
+    const std::string &source)
+{
+    const std::string prepare = section(
+        source,
+        "bool RuntimeOwnerDeviceBackend::prepare()",
+        "bool RuntimeOwnerDeviceBackend::prepared()");
+    if (prepare.empty()) {
+        return false;
+    }
+
+    const std::string whole_compact =
+        without_ascii_whitespace(source);
+    const std::string prepare_compact =
+        without_ascii_whitespace(prepare);
+    constexpr const char *scratch_2 =
+        "watchdog_hw->scratch[2]";
+    constexpr const char *scratch_3 =
+        "watchdog_hw->scratch[3]";
+    constexpr const char *scratch_2_capture =
+        "evidence.watchdog_marker_present="
+        "watchdog_hw->scratch[2]==COMMAND_WATCHDOG_SCRATCH_MAGIC?1:0;";
+    constexpr const char *scratch_3_capture =
+        "evidence.watchdog_cmd_id=watchdog_hw->scratch[3];";
+    constexpr const char *scratch_2_clear =
+        "watchdog_hw->scratch[2]=0;";
+    constexpr const char *scratch_3_clear =
+        "watchdog_hw->scratch[3]=0;";
+
+    const std::size_t whole_scratch_2 =
+        count(whole_compact, scratch_2);
+    const std::size_t whole_scratch_3 =
+        count(whole_compact, scratch_3);
+    const std::size_t prepare_scratch_2 =
+        count(prepare_compact, scratch_2);
+    const std::size_t prepare_scratch_3 =
+        count(prepare_compact, scratch_3);
+    return whole_scratch_2 == 2 &&
+           whole_scratch_3 == 2 &&
+           whole_scratch_2 == prepare_scratch_2 &&
+           whole_scratch_3 == prepare_scratch_3 &&
+           count(prepare_compact, scratch_2_capture) == 1 &&
+           count(prepare_compact, scratch_3_capture) == 1 &&
+           count(prepare_compact, scratch_2_clear) == 1 &&
+           count(prepare_compact, scratch_3_clear) == 1;
+}
+
+bool watchdog_scratch_accesses_are_allowlisted(
+    const std::vector<ProductionSourceFile> &sources)
+{
+    constexpr const char *writer =
+        "src/boot_v2/runtime_owner_rtos.cpp";
+    constexpr const char *recovery_consumer =
+        "src/boot_v2/runtime_owner_device_backend.cpp";
+    for (const ProductionSourceFile &source : sources) {
+        if (source.path == writer) {
+            if (!rtos_watchdog_scratch_role_is_exact(source.source)) {
+                return false;
+            }
+        } else if (source.path == recovery_consumer) {
+            if (!backend_watchdog_scratch_role_is_exact(source.source)) {
+                return false;
+            }
+        } else if (has_watchdog_scratch_2_or_3_access(source.source)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool collect_production_source_files(
+    std::vector<ProductionSourceFile> &sources)
+{
+    namespace fs = std::filesystem;
+    sources.clear();
+
+    const fs::path root{NB_IOT_SOURCE_ROOT};
+    const fs::path main_path = root / "main.cpp";
+    const std::string main_source =
+        read_file(main_path.string().c_str());
+    if (main_source.empty()) {
+        return false;
+    }
+    sources.push_back({"main.cpp", main_source});
+
+    std::error_code error;
+    fs::recursive_directory_iterator iterator(
+        root / "src",
+        fs::directory_options::skip_permission_denied,
+        error);
+    const fs::recursive_directory_iterator end;
+    if (error) {
+        return false;
+    }
+    while (iterator != end) {
+        std::error_code entry_error;
+        const fs::directory_entry entry = *iterator;
+        if (entry.is_regular_file(entry_error) &&
+            is_production_source_extension(entry.path())) {
+            const std::string relative_path =
+                entry.path().lexically_relative(root).generic_string();
+            const std::string source =
+                read_file(entry.path().string().c_str());
+            if (source.empty()) {
+                return false;
+            }
+            sources.push_back({relative_path, source});
+        }
+        if (entry_error) {
+            return false;
+        }
+        iterator.increment(error);
+        if (error) {
+            return false;
+        }
+    }
+    std::sort(
+        sources.begin(),
+        sources.end(),
+        [](const ProductionSourceFile &left,
+           const ProductionSourceFile &right) {
+            return left.path < right.path;
+        });
+    return true;
+}
+
+std::size_t count_production_source_path(
+    const std::vector<ProductionSourceFile> &sources,
+    const char *path)
+{
+    std::size_t found = 0;
+    for (const ProductionSourceFile &source : sources) {
+        if (source.path == path) {
+            ++found;
+        }
+    }
+    return found;
 }
 
 bool compact_config_apply_contract_accepts(const std::string &apply) noexcept
@@ -223,6 +474,93 @@ bool pull_config_apply_contract_accepts(
            apply_failure_return < success_return;
 }
 
+bool initial_config_pull_is_exact_fail_closed_and_state_preserving(
+    const std::string &pull_config,
+    const std::string &open_transport,
+    const std::string &boot_task) noexcept
+{
+    const std::size_t connected_guard =
+        pull_config.find("if (!modem.is_connected())");
+    const std::size_t response_topic = pull_config.find(
+        "\"devices/%s/config\"");
+    const std::size_t request_topic = pull_config.find(
+        "\"devices/%s/config/request\"");
+    const std::size_t publish =
+        pull_config.find("modem.modem_MqttPublish(request_topic, \"{}\")");
+    const std::size_t extract =
+        pull_config.find("mqtt_kmqtt_data_extract_payload(");
+    const std::size_t exact_topic_argument =
+        pull_config.find("response_topic,", extract);
+    const std::size_t timeout_log =
+        pull_config.find("CONFIG_FRAME_TIMEOUT");
+    const std::size_t timeout_failure = pull_config.find(
+        "return failed(kDiagnosticPoll);", timeout_log);
+    const std::size_t apply =
+        pull_config.find("apply_mqtt_config_payload(payload)");
+
+    const std::size_t pull = open_transport.find(
+        "const RuntimeOwnerPhysicalResult pulled = pull_config();");
+    const std::size_t pull_failure =
+        open_transport.find("pulled.kind !=", pull);
+    const std::size_t pull_failure_return =
+        open_transport.find("return pulled;", pull_failure);
+    const std::size_t commit_increment =
+        open_transport.find("++config_commit_sequence_;");
+
+    const std::size_t boot_entry =
+        boot_task.find("void vBootTask(void *)");
+    const std::size_t boot_fixed_map =
+        boot_task.find("init_fixed_sensor_map();", boot_entry);
+    const std::size_t boot_transport =
+        boot_task.find("if (!submit_transport_request())", boot_fixed_map);
+
+    constexpr const char *forbidden_pull_state_writes[] = {
+        "init_fixed_sensor_map",
+        "g_sensors",
+        "g_sensor_count",
+        "g_temp_upper_limit",
+        "g_temp_lower_limit",
+    };
+    for (const char *needle : forbidden_pull_state_writes) {
+        if (pull_config.find(needle) != std::string::npos) {
+            return false;
+        }
+    }
+
+    return connected_guard != std::string::npos &&
+           response_topic != std::string::npos &&
+           request_topic != std::string::npos &&
+           publish != std::string::npos &&
+           extract != std::string::npos &&
+           exact_topic_argument != std::string::npos &&
+           timeout_log != std::string::npos &&
+           timeout_failure != std::string::npos &&
+           apply != std::string::npos &&
+           pull != std::string::npos &&
+           pull_failure != std::string::npos &&
+           pull_failure_return != std::string::npos &&
+           commit_increment != std::string::npos &&
+           count(pull_config, "return succeeded();") == 1 &&
+           count(boot_task, "init_fixed_sensor_map();") == 1 &&
+           pull_config.find("mqtt_command_topic_payload_extract") ==
+               std::string::npos &&
+           boot_entry != std::string::npos &&
+           boot_fixed_map != std::string::npos &&
+           boot_transport != std::string::npos &&
+           response_topic < request_topic &&
+           request_topic < publish &&
+           publish < extract &&
+           extract < exact_topic_argument &&
+           exact_topic_argument < apply &&
+           apply < timeout_log &&
+           timeout_log < timeout_failure &&
+           pull < pull_failure &&
+           pull_failure < pull_failure_return &&
+           pull_failure_return < commit_increment &&
+           boot_entry < boot_fixed_map &&
+           boot_fixed_map < boot_transport;
+}
+
 bool dedicated_command_contract_accepts(
     const std::string &pull_command) noexcept
 {
@@ -274,6 +612,237 @@ void test_header_contract() noexcept
     CHECK(std::is_default_constructible<RuntimeOwnerDeviceBackend>::value);
     CHECK(!std::is_copy_constructible<RuntimeOwnerDeviceBackend>::value);
     CHECK(!std::is_copy_assignable<RuntimeOwnerDeviceBackend>::value);
+}
+
+void test_publish_telemetry_uses_only_the_frozen_normal_intent() noexcept
+{
+    const std::string source = read_file(
+        NB_IOT_SOURCE_ROOT
+        "/src/boot_v2/runtime_owner_device_backend.cpp");
+    const std::string publish = section(
+        source,
+        "RuntimeOwnerPhysicalResult "
+        "RuntimeOwnerDeviceBackend::publish_telemetry(",
+        "RuntimeOwnerPhysicalResult "
+        "RuntimeOwnerDeviceBackend::publish_power_event(");
+    CHECK(!publish.empty());
+    CHECK(publish.find("runtime_owner_normal_intent_is_canonical(intent)") !=
+          std::string::npos);
+    CHECK(publish.find("intent.value_deci_celsius") != std::string::npos);
+    CHECK(publish.find("copy_sensor_quality_snapshot") ==
+          std::string::npos);
+    CHECK(publish.find("sensor_quality_allows_telemetry") ==
+          std::string::npos);
+    CHECK(publish.find("SensorQualitySnapshotV1") == std::string::npos);
+    CHECK(publish.find("lcd_params.current_temperature") ==
+          std::string::npos);
+    CHECK(publish.find("g_temp_ch") == std::string::npos);
+}
+
+void test_main_classifies_generic_watchdog_without_consuming_command_scratch()
+    noexcept
+{
+    const std::string source =
+        read_file(NB_IOT_SOURCE_ROOT "/main.cpp");
+    const std::string detect_boot_reason = section(
+        source,
+        "void detect_boot_reason()",
+        "TaskHandle_t xBootTaskHandle");
+
+    CHECK(!source.empty());
+    CHECK(!detect_boot_reason.empty());
+    CHECK(source.find("watchdog_hw->scratch[2]") == std::string::npos);
+    CHECK(source.find("watchdog_hw->scratch[3]") == std::string::npos);
+    CHECK(source.find("COMMAND_WATCHDOG_SCRATCH_MAGIC") ==
+          std::string::npos);
+    CHECK(source.find("0x12345678") == std::string::npos);
+    CHECK(detect_boot_reason.find("watchdog_caused_reboot()") !=
+          std::string::npos);
+    CHECK(detect_boot_reason.find("g_boot_reason_code = 2") !=
+          std::string::npos);
+    CHECK(detect_boot_reason.find("g_boot_cmd_id = 0") !=
+          std::string::npos);
+    CHECK(detect_boot_reason.find("g_boot_reason_code = 1") ==
+          std::string::npos);
+}
+
+void test_allowlist_rejects_fixture_missed_by_previous_watchdog_scope()
+    noexcept
+{
+    const std::string main_source =
+        read_file(NB_IOT_SOURCE_ROOT "/main.cpp");
+    const std::string backend_source = read_file(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_device_backend.cpp");
+    const std::string mutant_path = "src/tasks/tasks_boot.cpp";
+    const std::string mutant_source =
+        "void forbidden_consumer() { "
+        "(void) watchdog_hw -> scratch [ 2 ]; }";
+
+    const bool previous_scope_accepts =
+        main_source.find("watchdog_hw->scratch[2]") == std::string::npos &&
+        main_source.find("watchdog_hw->scratch[3]") == std::string::npos &&
+        backend_source.find("watchdog_hw->scratch[2]") !=
+            std::string::npos &&
+        backend_source.find("watchdog_hw->scratch[3]") !=
+            std::string::npos;
+    CHECK(previous_scope_accepts);
+    CHECK(mutant_path == "src/tasks/tasks_boot.cpp");
+    CHECK(has_watchdog_scratch_2_or_3_access(mutant_source));
+    const std::vector<ProductionSourceFile> sources{
+        {"main.cpp", main_source},
+        {"src/boot_v2/runtime_owner_device_backend.cpp", backend_source},
+        {mutant_path, mutant_source},
+    };
+    CHECK(!watchdog_scratch_accesses_are_allowlisted(sources));
+}
+
+void test_allowlisted_files_enforce_exact_scratch_roles_and_counts()
+    noexcept
+{
+    const std::string writer_path =
+        "src/boot_v2/runtime_owner_rtos.cpp";
+    const std::string writer_exact =
+        "void commit_shutdown_watchdog() {\n"
+        "watchdog_hw->scratch[2] = COMMAND_WATCHDOG_SCRATCH_MAGIC;\n"
+        "watchdog_hw->scratch[3] = context.incident_correlation_id;\n"
+        "}\n";
+    const std::vector<ProductionSourceFile> writer_allowed{
+        {writer_path, writer_exact},
+    };
+    CHECK(watchdog_scratch_accesses_are_allowlisted(writer_allowed));
+
+    const std::string writer_wrong_role = replace_once_copy(
+        writer_exact,
+        "watchdog_hw->scratch[2] = COMMAND_WATCHDOG_SCRATCH_MAGIC;",
+        "(void)watchdog_hw->scratch[2];");
+    CHECK(writer_wrong_role != writer_exact);
+    CHECK(!watchdog_scratch_accesses_are_allowlisted(
+        {{writer_path, writer_wrong_role}}));
+
+    const std::string writer_extra_access =
+        writer_exact +
+        "void forbidden_helper() { "
+        "(void) watchdog_hw -> scratch [ 3 ]; }\n";
+    CHECK(!watchdog_scratch_accesses_are_allowlisted(
+        {{writer_path, writer_extra_access}}));
+
+    const std::string backend_path =
+        "src/boot_v2/runtime_owner_device_backend.cpp";
+    const std::string backend_exact =
+        "bool RuntimeOwnerDeviceBackend::prepare() noexcept {\n"
+        "evidence.watchdog_marker_present = "
+        "watchdog_hw->scratch[2] == COMMAND_WATCHDOG_SCRATCH_MAGIC "
+        "? 1 : 0;\n"
+        "evidence.watchdog_cmd_id = watchdog_hw->scratch[3];\n"
+        "command_core_.prepare(evidence);\n"
+        "watchdog_hw->scratch[2] = 0;\n"
+        "watchdog_hw->scratch[3] = 0;\n"
+        "}\n"
+        "bool RuntimeOwnerDeviceBackend::prepared() const noexcept {\n"
+        "return true;\n"
+        "}\n";
+    const std::vector<ProductionSourceFile> backend_allowed{
+        {backend_path, backend_exact},
+    };
+    CHECK(watchdog_scratch_accesses_are_allowlisted(backend_allowed));
+
+    const std::string backend_wrong_capture = replace_once_copy(
+        backend_exact,
+        "evidence.watchdog_marker_present = "
+        "watchdog_hw->scratch[2] == COMMAND_WATCHDOG_SCRATCH_MAGIC "
+        "? 1 : 0;",
+        "(void)watchdog_hw->scratch[2];");
+    CHECK(backend_wrong_capture != backend_exact);
+    CHECK(!watchdog_scratch_accesses_are_allowlisted(
+        {{backend_path, backend_wrong_capture}}));
+
+    std::string backend_relocated_capture = replace_once_copy(
+        backend_exact,
+        "evidence.watchdog_cmd_id = watchdog_hw->scratch[3];\n",
+        "");
+    backend_relocated_capture +=
+        "void forbidden_helper() { "
+        "evidence.watchdog_cmd_id = watchdog_hw->scratch[3]; }\n";
+    CHECK(backend_relocated_capture != backend_exact);
+    CHECK(!watchdog_scratch_accesses_are_allowlisted(
+        {{backend_path, backend_relocated_capture}}));
+
+    const std::string backend_extra_access =
+        backend_exact +
+        "void forbidden_helper() { "
+        "(void) watchdog_hw -> scratch [ 2 ]; }\n";
+    CHECK(!watchdog_scratch_accesses_are_allowlisted(
+        {{backend_path, backend_extra_access}}));
+}
+
+void test_all_production_watchdog_scratch_accesses_follow_allowlist()
+{
+    std::vector<ProductionSourceFile> sources;
+    const bool collected = collect_production_source_files(sources);
+
+    CHECK(collected);
+    CHECK(!sources.empty());
+    CHECK(count_production_source_path(sources, "main.cpp") == 1);
+    CHECK(count_production_source_path(
+              sources,
+              "src/boot_v2/runtime_owner_rtos.cpp") == 1);
+    CHECK(count_production_source_path(
+              sources,
+              "src/boot_v2/runtime_owner_device_backend.cpp") == 1);
+    CHECK(watchdog_scratch_accesses_are_allowlisted(sources));
+}
+
+void test_backend_prepare_consumes_command_scratch_exactly_once() noexcept
+{
+    const std::string source = read_file(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_device_backend.cpp");
+    const std::string prepare = section(
+        source,
+        "bool RuntimeOwnerDeviceBackend::prepare()",
+        "bool RuntimeOwnerDeviceBackend::prepared()");
+
+    CHECK(!prepare.empty());
+    const std::size_t shutdown_record =
+        prepare.find("runtime_owner_shutdown_record_current()");
+    const std::size_t scratch_magic_capture = prepare.find(
+        "watchdog_hw->scratch[2] == COMMAND_WATCHDOG_SCRATCH_MAGIC");
+    const std::size_t scratch_cmd_id_capture = prepare.find(
+        "evidence.watchdog_cmd_id = watchdog_hw->scratch[3]");
+    const std::size_t journal_prepare =
+        prepare.find("command_core_.prepare(evidence)");
+    const std::size_t scratch_magic_clear =
+        prepare.find("watchdog_hw->scratch[2] = 0");
+    const std::size_t scratch_cmd_id_clear =
+        prepare.find("watchdog_hw->scratch[3] = 0");
+    const std::size_t failed_closed =
+        prepare.find("CommandRuntimePrepareResult::FailedClosed");
+
+    CHECK(count(prepare, "watchdog_hw->scratch[2]") == 2);
+    CHECK(count(prepare, "watchdog_hw->scratch[3]") == 2);
+    CHECK(count(
+              prepare,
+              "watchdog_hw->scratch[2] == "
+              "COMMAND_WATCHDOG_SCRATCH_MAGIC") == 1);
+    CHECK(count(
+              prepare,
+              "evidence.watchdog_cmd_id = watchdog_hw->scratch[3]") == 1);
+    CHECK(count(prepare, "watchdog_hw->scratch[2] = 0") == 1);
+    CHECK(count(prepare, "watchdog_hw->scratch[3] = 0") == 1);
+    CHECK(shutdown_record != std::string::npos);
+    CHECK(scratch_magic_capture != std::string::npos);
+    CHECK(scratch_cmd_id_capture != std::string::npos);
+    CHECK(journal_prepare != std::string::npos);
+    CHECK(scratch_magic_clear != std::string::npos);
+    CHECK(scratch_cmd_id_clear != std::string::npos);
+    CHECK(failed_closed != std::string::npos);
+    CHECK(shutdown_record < scratch_magic_capture);
+    CHECK(shutdown_record < scratch_cmd_id_capture);
+    CHECK(scratch_magic_capture < journal_prepare);
+    CHECK(scratch_cmd_id_capture < journal_prepare);
+    CHECK(journal_prepare < scratch_magic_clear);
+    CHECK(journal_prepare < scratch_cmd_id_clear);
+    CHECK(scratch_magic_clear < failed_closed);
+    CHECK(scratch_cmd_id_clear < failed_closed);
 }
 
 void test_single_firmware_backend_graph() noexcept
@@ -484,6 +1053,12 @@ void test_mqtt_publish_drains_uart_during_command_and_puback_waits() noexcept
           std::string::npos);
     CHECK(publish_wait.find("const uint32_t step_ms = 1;") !=
           std::string::npos);
+    CHECK(publish_wait.find(
+              "modem_SendCmdWaitOK(pub_cmd, 5000, 0)") !=
+          std::string::npos);
+    CHECK(publish_wait.find(
+              "modem_SendCmdWaitOK(pub_cmd, 5000)") ==
+          std::string::npos);
     CHECK(command_wait.find("modem_sleep(step_ms);") != std::string::npos);
     CHECK(publish_wait.find("modem_sleep(step_ms);") != std::string::npos);
     CHECK(publish_wait.find("elapsed += step_ms;") != std::string::npos);
@@ -519,7 +1094,7 @@ void test_mqtt_publish_accepts_only_rev16_publish_status() noexcept
     CHECK(!publish.empty());
     CHECK(publish.find("+KMQTT_IND: %d,4") != std::string::npos);
     CHECK(publish.find("+KMQTT_IND: %d,3") == std::string::npos);
-    CHECK(publish.find("modem_SendCmdWaitOK(pub_cmd, 5000)") !=
+    CHECK(publish.find("modem_SendCmdWaitOK(pub_cmd, 5000, 0)") !=
           std::string::npos);
 }
 
@@ -677,6 +1252,71 @@ void test_config_waits_for_complete_kmqtt_data_and_logs_true_lengths() noexcept
     CHECK(pull_config.find("PAYLOAD_BYTES=%u") != std::string::npos);
 }
 
+void test_initial_config_requires_exact_topic_and_preserves_failure_state()
+    noexcept
+{
+    const std::string source = read_file(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_device_backend.cpp");
+    const std::string pull_config = section(
+        source,
+        "RuntimeOwnerDeviceBackend::pull_config",
+        "RuntimeOwnerDeviceBackend::pull_command");
+    const std::string open_transport = section(
+        source,
+        "RuntimeOwnerDeviceBackend::open_transport",
+        "RuntimeOwnerDeviceBackend::publish_boot_report");
+    const std::string boot_task = read_file(
+        NB_IOT_SOURCE_ROOT "/src/tasks/tasks_boot.cpp");
+
+    CHECK(!pull_config.empty());
+    CHECK(!open_transport.empty());
+    CHECK(!boot_task.empty());
+    CHECK(initial_config_pull_is_exact_fail_closed_and_state_preserving(
+        pull_config, open_transport, boot_task));
+
+    const std::string timeout_success_mutant = replace_once_copy(
+        pull_config,
+        "return failed(kDiagnosticPoll);",
+        "return succeeded();");
+    CHECK(timeout_success_mutant != pull_config);
+    CHECK(!initial_config_pull_is_exact_fail_closed_and_state_preserving(
+        timeout_success_mutant, open_transport, boot_task));
+
+    const std::string command_parser_mutant = replace_once_copy(
+        pull_config,
+        "mqtt_kmqtt_data_extract_payload(",
+        "mqtt_command_topic_payload_extract(");
+    CHECK(command_parser_mutant != pull_config);
+    CHECK(!initial_config_pull_is_exact_fail_closed_and_state_preserving(
+        command_parser_mutant, open_transport, boot_task));
+
+    const std::string early_commit_mutant = replace_once_copy(
+        open_transport,
+        "const RuntimeOwnerPhysicalResult pulled = pull_config();",
+        "++config_commit_sequence_;\n"
+        "    const RuntimeOwnerPhysicalResult pulled = pull_config();");
+    CHECK(early_commit_mutant != open_transport);
+    CHECK(!initial_config_pull_is_exact_fail_closed_and_state_preserving(
+        pull_config, early_commit_mutant, boot_task));
+
+    const std::string threshold_reset_mutant = replace_once_copy(
+        pull_config,
+        "if (!modem.is_connected())",
+        "g_temp_upper_limit = DEFAULT_TEMP_UPPER_LIMIT;\n"
+        "    if (!modem.is_connected())");
+    CHECK(threshold_reset_mutant != pull_config);
+    CHECK(!initial_config_pull_is_exact_fail_closed_and_state_preserving(
+        threshold_reset_mutant, open_transport, boot_task));
+
+    const std::string boot_init_removed_mutant = replace_once_copy(
+        boot_task,
+        "    init_fixed_sensor_map();\n",
+        "");
+    CHECK(boot_init_removed_mutant != boot_task);
+    CHECK(!initial_config_pull_is_exact_fail_closed_and_state_preserving(
+        pull_config, open_transport, boot_init_removed_mutant));
+}
+
 void test_post_config_probe_reuses_connected_session_without_control_query()
     noexcept
 {
@@ -792,6 +1432,89 @@ void test_post_config_at_probe_uses_the_common_configurable_settle() noexcept
     CHECK(probe_at.find("modem.check_at_alive()") != std::string::npos);
     CHECK(probe_at.find("modem_sleep(1000);") == std::string::npos);
     CHECK(count(modem_header, "kAtCommandSettleMs = 1000") == 1);
+}
+
+void test_modem_post_delay_runs_only_after_success() noexcept
+{
+    const std::string modem = read_file(
+        NB_IOT_SOURCE_ROOT "/src/tasks/tasks_modem.cpp");
+    const std::string wait_ok = section(
+        modem,
+        "bool nb_iot::modem_SendCmdWaitOK(",
+        "void nb_iot::modem_hw_power_on(");
+    CHECK(!wait_ok.empty());
+    CHECK(post_delay_is_success_only(wait_ok));
+
+    const std::string correct_fixture =
+        "bool modem_SendCmdWaitOK() {\n"
+        "    if (!this->modem_SendCmdWaitResponse("
+        "cmd, \"OK\", nullptr, timeout_ms))\n"
+        "    {\n"
+        "        return false;\n"
+        "    }\n"
+        "    if (post_delay_ms != 0)\n"
+        "    {\n"
+        "        modem_sleep(post_delay_ms);\n"
+        "    }\n"
+        "    return true;\n"
+        "}\n";
+    CHECK(post_delay_is_success_only(correct_fixture));
+    const std::string failure_delay_mutant = replace_once_copy(
+        correct_fixture,
+        "        return false;\n",
+        "        modem_sleep(post_delay_ms);\n"
+        "        return false;\n");
+    CHECK(failure_delay_mutant != correct_fixture);
+    CHECK(!post_delay_is_success_only(failure_delay_mutant));
+
+    const std::string missing_delay_mutant = replace_once_copy(
+        correct_fixture,
+        "        modem_sleep(post_delay_ms);\n",
+        "");
+    CHECK(missing_delay_mutant != correct_fixture);
+    CHECK(!post_delay_is_success_only(missing_delay_mutant));
+}
+
+void test_cfun_failure_stops_modem_initialization() noexcept
+{
+    const std::string modem = read_file(
+        NB_IOT_SOURCE_ROOT "/src/tasks/tasks_modem.cpp");
+    const std::string init = section(
+        modem,
+        "bool nb_iot::modem_init(",
+        "bool nb_iot::check_at_alive(");
+    CHECK(!init.empty());
+    CHECK(cfun_failure_stops_modem_init(init));
+
+    const std::string correct_fixture =
+        "bool modem_init() {\n"
+        "    if (!modem_SendCmdWaitOK("
+        "\"AT+CFUN=1\", 5000, 30000))\n"
+        "    {\n"
+        "        LOG(\"MODEM_CFUN_FAIL\\n\");\n"
+        "        cpin_status = 1;\n"
+        "        return false;\n"
+        "    }\n"
+        "    cpin_status = check_sim_status();\n"
+        "}\n";
+    CHECK(cfun_failure_stops_modem_init(correct_fixture));
+
+    const std::string unguarded_cfun_mutant = replace_once_copy(
+        correct_fixture,
+        "    if (!modem_SendCmdWaitOK("
+        "\"AT+CFUN=1\", 5000, 30000))\n",
+        "    (void)modem_SendCmdWaitOK("
+        "\"AT+CFUN=1\", 5000, 30000);\n"
+        "    if (false)\n");
+    CHECK(unguarded_cfun_mutant != correct_fixture);
+    CHECK(!cfun_failure_stops_modem_init(unguarded_cfun_mutant));
+
+    const std::string fallthrough_mutant = replace_once_copy(
+        correct_fixture,
+        "        return false;\n",
+        "");
+    CHECK(fallthrough_mutant != correct_fixture);
+    CHECK(!cfun_failure_stops_modem_init(fallthrough_mutant));
 }
 
 void test_boot_through_periodic_ready_at_trace_is_timestamped_and_secret_safe()
@@ -1225,7 +1948,7 @@ void test_temperature_channel_offsets_match_the_approved_calibration() noexcept
     CHECK(!sensor.empty());
     CHECK(config.find("#define TEMP1_CAL_OFFSET_C 5.0f") !=
           std::string::npos);
-    CHECK(config.find("#define TEMP2_CAL_OFFSET_C 0.0f") !=
+    CHECK(config.find("#define TEMP2_CAL_OFFSET_C 5.0f") !=
           std::string::npos);
     CHECK(sensor.find("if (status_ch0 == 0)") != std::string::npos);
     CHECK(sensor.find("temp_ch0 += TEMP1_CAL_OFFSET_C;") !=
@@ -1587,9 +2310,22 @@ void test_shutdown_cleanup_is_private_bounded_and_ordered() noexcept
           std::string::npos);
     CHECK(cleanup.find("watchdog_reboot") == std::string::npos);
 
-    CHECK(store.find("flash_safe_execute(") != std::string::npos);
-    CHECK(store.find("flash_range_erase(") != std::string::npos);
-    CHECK(store.find("flash_range_program(") != std::string::npos);
+    CHECK(store.find("flash_safe_execute(") == std::string::npos);
+    CHECK(store.find("flash_range_erase(") == std::string::npos);
+    CHECK(store.find("flash_range_program(") == std::string::npos);
+    CHECK(store.find("flash_operation_execute(") != std::string::npos);
+    CHECK(store.find("transaction.replace_sector(") !=
+          std::string::npos);
+    CHECK(store.find("!= FlashOperationCode::Succeeded") ==
+          std::string::npos);
+    CHECK(store.find("FlashMutationDisposition::NotAttempted") !=
+          std::string::npos);
+    CHECK(store.find("verification_attempted") !=
+          std::string::npos);
+    CHECK(store.find("return write.verification_attempted") !=
+          std::string::npos);
+    CHECK(store.find("transaction.read(") !=
+          std::string::npos);
     CHECK(store.find("flash_partition::shutdown_record_a_offset") !=
           std::string::npos);
     CHECK(store.find("flash_partition::shutdown_record_b_offset") !=
@@ -1662,6 +2398,12 @@ void test_power_event_publish_recovers_transport_before_one_retry() noexcept
 int main()
 {
     test_header_contract();
+    test_publish_telemetry_uses_only_the_frozen_normal_intent();
+    test_main_classifies_generic_watchdog_without_consuming_command_scratch();
+    test_allowlist_rejects_fixture_missed_by_previous_watchdog_scope();
+    test_allowlisted_files_enforce_exact_scratch_roles_and_counts();
+    test_all_production_watchdog_scratch_accesses_follow_allowlist();
+    test_backend_prepare_consumes_command_scratch_exactly_once();
     test_single_firmware_backend_graph();
     test_typed_command_shutdown_bridge_has_no_direct_power_authority();
     test_mqtt_poll_drains_uart_before_fifo_can_overflow();
@@ -1673,9 +2415,12 @@ int main()
     test_config_subscription_qos0_is_an_explicit_firmware_trial();
     test_boot_report_precedes_subscription_and_liveness_uses_probe_topic();
     test_config_waits_for_complete_kmqtt_data_and_logs_true_lengths();
+    test_initial_config_requires_exact_topic_and_preserves_failure_state();
     test_post_config_probe_reuses_connected_session_without_control_query();
     test_silent_liveness_publish_keeps_trace_for_at_and_close_diagnostics();
     test_post_config_at_probe_uses_the_common_configurable_settle();
+    test_modem_post_delay_runs_only_after_success();
+    test_cfun_failure_stops_modem_initialization();
     test_boot_through_periodic_ready_at_trace_is_timestamped_and_secret_safe();
     test_all_at_commands_use_configurable_one_second_settle_except_reset_all();
     test_complete_kmqtt_data_handoffs_without_quiet_or_session_teardown();

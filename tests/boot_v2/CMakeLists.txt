@@ -41,12 +41,12 @@ set(PROTECTED_LEGACY_PATHS
 )
 set(PROTECTED_LEGACY_SHA256
     "89a17edafde9a79f73ae43477ba73ef4f1d0abf73a66ccf02b36a6559c3b87d2"
-    "c365dfb515076ae7648195488a612871e97edab1f35f617ba49c5d688a785d1d"
+    "983a1166a49ff21a6ce0ebc220ddcbb514ec08c949b28996a2579474c00129c1"
     "2d673bde2a73cb752d24a921c8655dcc3f6d9a954283695f99d266d2a23f8ef4"
-    "b7ab5b3269e111b3cabe4147f1a5148c7c0e570db853c1dd4ce3f609b531968f"
-    "e6796a1f6188b79bcf5b283394b01eff748a90202acde1185af6a6a7193eead2"
+    "2050ddc9aab97f0a626b3a79aab250bf3b8770102648897999293f2f917f98e2"
+    "b2386cff8dc351b484153c46e3bd6edb56f4b3da858b30a5e63a7ae9d52d4c70"
     "6244f9979958cdac7aa0fb11987c09e596ac4e89ff4091887e6a68b9f675e407"
-    "079971b5dd00460744fafaac9d86a0f1796f6a46d07b29e08ae5a40eb74fb580"
+    "fb893f46151efa347c18a096b21a75a1dbf2870c8b10d4f9341a0249e637980f"
 )
 list(LENGTH PROTECTED_LEGACY_PATHS PROTECTED_LEGACY_PATH_COUNT)
 list(LENGTH PROTECTED_LEGACY_SHA256 PROTECTED_LEGACY_SHA_COUNT)
@@ -149,6 +149,8 @@ add_executable(runtime_owner_post_config_handoff_test
     runtime_owner_post_config_handoff_test.cpp
     ../../src/boot_v2/runtime_owner_task_core.cpp
     ../../src/boot_v2/runtime_owner_adapter_core.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
     ../../src/boot_v2/runtime_owner_executor_contract.cpp
     ../../src/boot_v2/runtime_owner_core.cpp
     ../../src/boot_v2/runtime_snapshot_core.cpp
@@ -177,6 +179,8 @@ add_test(
 add_executable(runtime_owner_adapter_core_test
     runtime_owner_adapter_core_test.cpp
     ../../src/boot_v2/runtime_owner_adapter_core.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
     ../../src/boot_v2/runtime_owner_core.cpp
     ../../src/boot_v2/liveness_service.cpp
     ../../src/boot_v2/lifecycle_gate.cpp
@@ -213,10 +217,44 @@ add_test(
     COMMAND runtime_owner_adapter_core_test
 )
 
+add_executable(runtime_owner_alarm_delivery_bridge_test
+    runtime_owner_alarm_delivery_bridge_test.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
+    ../../src/boot_v2/runtime_owner_adapter_core.cpp
+    ../../src/boot_v2/runtime_owner_core.cpp
+    ../../src/boot_v2/liveness_service.cpp
+    ../../src/boot_v2/lifecycle_gate.cpp
+)
+target_include_directories(
+    runtime_owner_alarm_delivery_bridge_test PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/boot_v2
+)
+target_compile_features(
+    runtime_owner_alarm_delivery_bridge_test PRIVATE cxx_std_17
+)
+set_target_properties(
+    runtime_owner_alarm_delivery_bridge_test PROPERTIES
+    CXX_EXTENSIONS OFF
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(
+        runtime_owner_alarm_delivery_bridge_test PRIVATE
+        -Wall -Wextra -Werror -pedantic
+        -fno-exceptions -fno-rtti
+    )
+endif()
+add_test(
+    NAME runtime_owner_alarm_delivery_bridge_test
+    COMMAND runtime_owner_alarm_delivery_bridge_test
+)
+
 add_executable(runtime_owner_task_core_test
     runtime_owner_task_core_test.cpp
     ../../src/boot_v2/runtime_owner_task_core.cpp
     ../../src/boot_v2/runtime_owner_adapter_core.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
     ../../src/boot_v2/runtime_owner_executor_contract.cpp
     ../../src/boot_v2/runtime_snapshot_core.cpp
     ../../src/boot_v2/runtime_owner_core.cpp
@@ -286,6 +324,8 @@ add_executable(runtime_owner_cutover_integration_test
     runtime_owner_cutover_integration_test.cpp
     ../../src/boot_v2/runtime_owner_task_core.cpp
     ../../src/boot_v2/runtime_owner_adapter_core.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
     ../../src/boot_v2/runtime_owner_executor_contract.cpp
     ../../src/boot_v2/runtime_snapshot_core.cpp
     ../../src/boot_v2/runtime_owner_core.cpp
@@ -344,6 +384,8 @@ add_executable(runtime_owner_rtos_owner_loop_test
     runtime_owner_rtos_owner_loop_test.cpp
     ../../src/boot_v2/runtime_owner_task_core.cpp
     ../../src/boot_v2/runtime_owner_adapter_core.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
     ../../src/boot_v2/runtime_owner_executor_contract.cpp
     ../../src/boot_v2/runtime_snapshot_core.cpp
     ../../src/boot_v2/runtime_owner_core.cpp
@@ -422,6 +464,42 @@ add_test(
     COMMAND temperature_alarm_publish_core_test
 )
 
+find_package(Threads REQUIRED)
+add_executable(temperature_alarm_delivery_mailbox_test
+    temperature_alarm_delivery_mailbox_test.cpp
+    ../../src/boot_v2/temperature_alarm_delivery_mailbox.cpp
+    ../../src/boot_v2/temperature_alarm_publish_core.cpp
+)
+target_include_directories(
+    temperature_alarm_delivery_mailbox_test PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/boot_v2
+)
+target_compile_features(
+    temperature_alarm_delivery_mailbox_test PRIVATE cxx_std_17
+)
+target_compile_definitions(
+    temperature_alarm_delivery_mailbox_test PRIVATE
+    NB_IOT_SOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/../.."
+)
+set_target_properties(
+    temperature_alarm_delivery_mailbox_test PROPERTIES
+    CXX_EXTENSIONS OFF
+)
+target_link_libraries(
+    temperature_alarm_delivery_mailbox_test PRIVATE Threads::Threads
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(
+        temperature_alarm_delivery_mailbox_test PRIVATE
+        -Wall -Wextra -Werror -pedantic
+        -fno-exceptions -fno-rtti
+    )
+endif()
+add_test(
+    NAME temperature_alarm_delivery_mailbox_test
+    COMMAND temperature_alarm_delivery_mailbox_test
+)
+
 add_executable(power_state_core_test
     power_state_core_test.cpp
     ../../src/boot_v2/power_state_core.cpp
@@ -488,6 +566,7 @@ add_test(
 
 add_executable(lcd_status_policy_test
     lcd_status_policy_test.cpp
+    ../../src/boot_v2/sensor_quality_core.cpp
 )
 target_include_directories(lcd_status_policy_test PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../../src/boot_v2
@@ -652,6 +731,23 @@ add_test(
     NAME runtime_owner_device_backend_contract_test
     COMMAND runtime_owner_device_backend_contract_test
 )
+
+add_executable(mqtt_payload_test
+    ../mqtt_payload_test.cpp
+    ../../src/lib/mqtt_payload.cpp
+)
+target_include_directories(mqtt_payload_test PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/lib
+)
+target_compile_features(mqtt_payload_test PRIVATE cxx_std_17)
+set_target_properties(mqtt_payload_test PROPERTIES CXX_EXTENSIONS OFF)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(mqtt_payload_test PRIVATE
+        -Wall -Wextra -Werror -pedantic
+        -fno-exceptions -fno-rtti
+    )
+endif()
+add_test(NAME mqtt_payload_test COMMAND mqtt_payload_test)
 
 add_executable(runtime_owner_legacy_cutover_contract_test
     runtime_owner_legacy_cutover_contract_test.cpp
@@ -1129,4 +1225,113 @@ endif()
 add_test(
     NAME command_journal_flash_store_contract_test
     COMMAND command_journal_flash_store_contract_test
+)
+
+add_executable(flash_operation_service_contract_test
+    flash_operation_service_contract_test.cpp
+)
+
+target_compile_features(
+    flash_operation_service_contract_test PRIVATE cxx_std_17
+)
+target_compile_definitions(
+    flash_operation_service_contract_test PRIVATE
+    NB_IOT_SOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/../.."
+)
+set_target_properties(
+    flash_operation_service_contract_test PROPERTIES
+    CXX_EXTENSIONS OFF
+)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(
+        flash_operation_service_contract_test PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -pedantic
+        -fno-exceptions
+        -fno-rtti
+    )
+endif()
+
+add_test(
+    NAME flash_operation_service_contract_test
+    COMMAND flash_operation_service_contract_test
+)
+
+add_executable(flash_operation_service_behavior_test
+    flash_operation_service_behavior_test.cpp
+    flash_operation_service_fakes/flash_test_platform.cpp
+    ../../src/lib/flash_operation_service.cpp
+)
+
+target_include_directories(
+    flash_operation_service_behavior_test BEFORE PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/flash_operation_service_fakes
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/lib
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/boot_v2
+)
+target_compile_features(
+    flash_operation_service_behavior_test PRIVATE cxx_std_17
+)
+set_target_properties(
+    flash_operation_service_behavior_test PROPERTIES
+    CXX_EXTENSIONS OFF
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(
+        flash_operation_service_behavior_test PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -pedantic
+        -fno-exceptions
+        -fno-rtti
+    )
+endif()
+add_test(
+    NAME flash_operation_service_behavior_test
+    COMMAND flash_operation_service_behavior_test
+)
+
+add_executable(flash_operation_clients_behavior_test
+    flash_operation_clients_behavior_test.cpp
+    flash_operation_service_fakes/flash_test_platform.cpp
+    ../../src/lib/flash_operation_service.cpp
+    ../../src/lib/flash_logger.cpp
+    ../../src/boot_v2/command_journal_flash_store.cpp
+    ../../src/boot_v2/command_journal_store_core.cpp
+    ../../src/boot_v2/command_journal_record_core.cpp
+    ../../src/boot_v2/command_ack_core.cpp
+    ../../src/boot_v2/runtime_owner_shutdown_record_store.cpp
+    ../../src/boot_v2/runtime_owner_shutdown_record_core.cpp
+)
+target_include_directories(
+    flash_operation_clients_behavior_test BEFORE PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/flash_operation_service_fakes
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/lib
+    ${CMAKE_CURRENT_LIST_DIR}/../../src/boot_v2
+)
+target_compile_features(
+    flash_operation_clients_behavior_test PRIVATE cxx_std_17
+)
+set_target_properties(
+    flash_operation_clients_behavior_test PROPERTIES
+    CXX_EXTENSIONS OFF
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(
+        flash_operation_clients_behavior_test PRIVATE
+        -Wall
+        -Wextra
+        -Werror
+        -pedantic
+        -fno-exceptions
+        -fno-rtti
+    )
+endif()
+add_test(
+    NAME flash_operation_clients_behavior_test
+    COMMAND flash_operation_clients_behavior_test
 )

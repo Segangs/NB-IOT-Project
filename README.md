@@ -28,6 +28,25 @@
 
 ## 📅 2026-07-29
 
+* 중간 코드 정밀 감사 기반 shutdown 최신 USB 판정·watchdog scratch 단일 소비·MQTT 80/81바이트 경계·TEMP2 +5℃ 보정·`AT+CFUN=1` 실패 중단 보강
+* Config 응답 exact topic 검증·실패 시 기존 설정 보존과 LCD CRC fallback 표시·RuntimeOwner SMP 상태 cache 적용
+* scheduler 시작 전·후 공통 Flash operation service와 `Applied`·`NotAttempted`·`Unknown` 결과 계약 통합
+* 온도 알림 queue 수락과 실제 전송 완료 분리·revision/edge/value 동결·16칸 completion mailbox·실패 재시도 최초 온도 보존
+* Flask 기기 조회의 owner/admin 범위·foreign-device 차단·Realtime token fail-closed 적용과 RLS 비활성 유지
+* 독립 코드·통합 리뷰 Critical/Important 0건과 Release Host 47/47·서버 127/127·모바일 JavaScript 8/8 통과
+* 실기에서 `KMQTTPUB` 성공 뒤 2초 UART 비수신에 따른 32바이트 FIFO tail·config frame 절단 재현
+* MQTT publish 전용 post-delay 0 적용과 기존 1ms PUBACK drain·다음 AT 1초 quiet settle 유지
+* fresh Pico 2 UF2 524,800바이트·2026-07-29 22:22:55 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`
+* Pico 실제 Flash 뒤 `CONFIG_FRAME_COMPLETE` 60바이트·payload 8바이트·`CONFIG_LIMIT_OK`·`PERIODIC_READY` 확인
+* 반복 Flash probe 기록 후 device fault 0과 전원 버튼 shutdown의 세션 정리·모뎀 종료·Flash 기록 성공 확인
+* USB 연결 최신 판정에 따른 `SHUTDOWN_WATCHDOG_COMMIT`·1초 내 USB 재연결·새 부팅 확인
+* 종료 대기 중 PWR/STATUS LED 빨간색 점멸 실물 확인
+* watchdog 재부팅 뒤 `MQTT_PUB_OK`·`CONFIG_FRAME_COMPLETE`·`PERIODIC_READY`·`BOOT_DONE` 재확인
+* 통합 후보 77개 파일의 private DOCS·build/cache·비밀값 제외와 변경 추가분 민감정보 패턴 0건 확인
+* 하위 경로 `.env`의 Git 제외 보강과 `.env.example` 추적 가능 상태 유지
+* pre-merge fresh Host 47/47·Flask 127/127·모바일 JavaScript 8/8·Python compile·Pico 2 Release build 통과
+* pre-merge UF2 524,800바이트·2026-07-29 23:04:09 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`
+* 비공개 `.env` 임시 연결 후 제거·추가 비밀값 literal 0건·private handoff Git 제외 유지
 * Ubuntu 운영 Flask의 검증된 `main.py`·EMQX 관리 도구 4개 원자 반영과 기존 파일 backup 보존
 * 운영 Python 3.12 Flask suite 108/108·서비스 `active`·NRestarts 0·로컬/공개 HTTP 200 확인
 * EMQX command request·ACK Action/Rule 4개와 power-event Action/Rule 2개 활성·정의 일치

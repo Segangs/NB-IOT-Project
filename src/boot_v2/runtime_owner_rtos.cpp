@@ -59,6 +59,7 @@ QueueHandle_t g_urgent_queue{nullptr};
 QueueHandle_t g_control_queue{nullptr};
 QueueHandle_t g_normal_queue{nullptr};
 RuntimeOwnerTaskCore g_task_core{};
+RuntimeOwnerRedactedStatus g_redacted_status_cache{};
 RuntimeOwnerRtosStatus g_status{};
 RuntimeOwnerRtosDrainMetrics g_drain_metrics{};
 
@@ -108,6 +109,15 @@ std::uint32_t g_usb_sample_sequence{0};
 
 constexpr std::uint32_t kRuntimeOwnerStableCutoverIdentity = 0x47324132u;
 
+void publish_redacted_status_cache() noexcept
+{
+    const RuntimeOwnerRedactedStatus snapshot =
+        g_task_core.redacted_status();
+    taskENTER_CRITICAL();
+    g_redacted_status_cache = snapshot;
+    taskEXIT_CRITICAL();
+}
+
 void increment_saturating(std::uint32_t &counter) noexcept
 {
     if (counter != std::numeric_limits<std::uint32_t>::max()) {
@@ -144,11 +154,50 @@ UsbPowerObservation sample_usb_power(
     return observation;
 }
 
+[[noreturn]] void commit_shutdown_watchdog(
+    const RuntimeOwnerUrgentMessage context) noexcept
+{
+    watchdog_hw->scratch[2] = COMMAND_WATCHDOG_SCRATCH_MAGIC;
+    watchdog_hw->scratch[3] = context.incident_correlation_id;
+    LOG("SHUTDOWN_WATCHDOG_COMMIT\n");
+    watchdog_reboot(0, 0, 100);
+    for (;;) {
+        tight_loop_contents();
+    }
+}
+
+[[noreturn]] void commit_shutdown_gp15_kill() noexcept
+{
+    gpio_init(POWER_KILL_PIN);
+    gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL);
+    gpio_set_dir(POWER_KILL_PIN, GPIO_OUT);
+    LOG("SHUTDOWN_GP15_COMMIT\n");
+    gpio_put(POWER_KILL_PIN, POWER_KILL_ACTIVE_LEVEL);
+    for (;;) {
+        tight_loop_contents();
+    }
+}
+
+[[noreturn]] void commit_shutdown_from_fresh_usb(
+    const RuntimeOwnerUrgentMessage context) noexcept
+{
+    const bool latest_usb_present =
+        runtime_owner_usb_power_present();
+    if (context.intent == RuntimeOwnerShutdownIntent::Reboot ||
+        latest_usb_present) {
+        commit_shutdown_watchdog(context);
+    }
+    commit_shutdown_gp15_kill();
+}
+
 void drive_owner_until_idle() noexcept
 {
     for (std::uint32_t cycle = 0; cycle < 64; ++cycle) {
         const RuntimeOwnerTaskCycleResult advanced =
             g_owner_loop.advance();
+        if (g_owner_loop.take_alarm_delivery_overflow_log_pending()) {
+            LOG("ALARM_DELIVERY_OVERFLOW\n");
+        }
         const RuntimeOwnerPhysicalStepResult deferred =
             g_owner_loop.submit_deferred_config(g_device_backend);
         if (deferred == RuntimeOwnerPhysicalStepResult::Completed) {
@@ -226,34 +275,15 @@ void drive_owner_until_idle() noexcept
             break;
         }
         case RuntimeOwnerShutdownFinalizeAction::CommitWatchdog:
-            watchdog_hw->scratch[2] =
-                COMMAND_WATCHDOG_SCRATCH_MAGIC;
-            watchdog_hw->scratch[3] =
-                context.incident_correlation_id;
-            LOG("SHUTDOWN_WATCHDOG_COMMIT\n");
-            watchdog_reboot(0, 0, 100);
-            for (;;) {
-                tight_loop_contents();
-            }
+            commit_shutdown_watchdog(context);
         case RuntimeOwnerShutdownFinalizeAction::CommitGp15Kill:
-            gpio_init(POWER_KILL_PIN);
-            gpio_put(POWER_KILL_PIN, POWER_KILL_INACTIVE_LEVEL);
-            gpio_set_dir(POWER_KILL_PIN, GPIO_OUT);
-            LOG("SHUTDOWN_GP15_COMMIT\n");
-            gpio_put(POWER_KILL_PIN, POWER_KILL_ACTIVE_LEVEL);
-            for (;;) {
-                tight_loop_contents();
-            }
+            commit_shutdown_gp15_kill();
         case RuntimeOwnerShutdownFinalizeAction::AbortUsbChanged:
-            LOG("SHUTDOWN_USB_CHANGED_ABORT\n");
-            for (;;) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
+            LOG("SHUTDOWN_USB_CHANGED_RECHECK\n");
+            commit_shutdown_from_fresh_usb(context);
         case RuntimeOwnerShutdownFinalizeAction::AbortEvidenceMissing:
-            LOG("SHUTDOWN_EVIDENCE_MISSING_ABORT\n");
-            for (;;) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
+            LOG("SHUTDOWN_EVIDENCE_MISSING_RECHECK\n");
+            commit_shutdown_from_fresh_usb(context);
         case RuntimeOwnerShutdownFinalizeAction::Idle:
         case RuntimeOwnerShutdownFinalizeAction::Terminal:
             LOG("SHUTDOWN_FINALIZER_TERMINAL_ABORT\n");
@@ -277,6 +307,10 @@ void runtime_owner_task_entry(void *) noexcept
         for (;;) {
             const RuntimeOwnerDrainStep step = runtime_owner_drain_once(
                 g_queue_backend, g_owner_loop);
+            if (g_owner_loop.take_alarm_delivery_overflow_log_pending()) {
+                LOG("ALARM_DELIVERY_OVERFLOW\n");
+            }
+            publish_redacted_status_cache();
             taskENTER_CRITICAL();
             runtime_owner_record_drain_step(g_drain_metrics, step);
             taskEXIT_CRITICAL();
@@ -296,7 +330,9 @@ void runtime_owner_task_entry(void *) noexcept
         }
 
         drive_owner_until_idle();
+        publish_redacted_status_cache();
         if (shutdown_received) {
+            publish_redacted_status_cache();
             run_shutdown_finalizer(shutdown_context);
         }
     }
@@ -345,6 +381,24 @@ RuntimeOwnerIngressResult try_submit(
 }
 
 } // namespace
+
+TemperatureAlarmDeliveryPopResult
+runtime_owner_try_receive_temperature_alarm_delivery(
+    TemperatureAlarmDeliveryEvent &event) noexcept
+{
+    const TemperatureAlarmDeliveryPopResult result =
+        g_owner_loop.try_pop_alarm_delivery(event);
+    if (result == TemperatureAlarmDeliveryPopResult::Popped) {
+        TaskHandle_t task_handle{nullptr};
+        taskENTER_CRITICAL();
+        task_handle = g_task_handle;
+        taskEXIT_CRITICAL();
+        if (task_handle != nullptr) {
+            (void)xTaskNotifyGive(task_handle);
+        }
+    }
+    return result;
+}
 
 bool runtime_owner_usb_power_present() noexcept
 {
@@ -473,6 +527,7 @@ RuntimeOwnerAtomicCutoverResult runtime_owner_rtos_activate_atomic() noexcept
         (void)g_cutover_core.fail(false);
         return RuntimeOwnerAtomicCutoverResult::RejectedNotReady;
     }
+    publish_redacted_status_cache();
     if (g_cutover_core.commit(kRuntimeOwnerStableCutoverIdentity) !=
         RuntimeOwnerCutoverResult::Committed) {
         (void)g_cutover_core.fail(false);
@@ -521,7 +576,7 @@ RuntimeOwnerRedactedStatus runtime_owner_redacted_status() noexcept
 {
     RuntimeOwnerRedactedStatus status{};
     taskENTER_CRITICAL();
-    status = g_task_core.redacted_status();
+    status = g_redacted_status_cache;
     taskEXIT_CRITICAL();
     return status;
 }

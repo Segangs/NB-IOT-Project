@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "runtime_owner_rtos.hpp"
+#include "temperature_alarm_publish_core.hpp"
 
 namespace boot_v2 {
 
@@ -14,11 +15,14 @@ runtime_owner_periodic_request_transport() noexcept;
 [[nodiscard]] RuntimeOwnerIngressResult
 runtime_owner_periodic_publish_telemetry(
     std::uint32_t sensor_id,
-    std::uint32_t snapshot_revision) noexcept;
+    std::uint32_t snapshot_revision,
+    std::int16_t value_deci_celsius) noexcept;
 [[nodiscard]] RuntimeOwnerIngressResult
-runtime_owner_sensor_publish_telemetry(
+runtime_owner_sensor_publish_alarm(
     std::uint32_t sensor_id,
-    std::uint32_t snapshot_revision) noexcept;
+    std::uint32_t snapshot_revision,
+    std::int16_t value_deci_celsius,
+    TemperatureAlarmEdge edge) noexcept;
 [[nodiscard]] RuntimeOwnerIngressResult
 runtime_owner_periodic_refresh_rssi() noexcept;
 [[nodiscard]] RuntimeOwnerIngressResult

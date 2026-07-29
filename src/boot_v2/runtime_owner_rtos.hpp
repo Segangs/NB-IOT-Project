@@ -43,6 +43,9 @@ runtime_owner_redacted_status() noexcept;
 [[nodiscard]] RuntimeOwnerRtosDrainMetrics
 runtime_owner_rtos_drain_metrics() noexcept;
 [[nodiscard]] bool runtime_owner_usb_power_present() noexcept;
+[[nodiscard]] TemperatureAlarmDeliveryPopResult
+runtime_owner_try_receive_temperature_alarm_delivery(
+    TemperatureAlarmDeliveryEvent &event) noexcept;
 
 }  // namespace boot_v2
 

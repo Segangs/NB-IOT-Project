@@ -201,6 +201,7 @@ bool mqtt_config_compact_limits_parse(
 
 bool mqtt_kmqtt_data_extract_payload(
     const char *frame,
+    const char *expected_topic,
     char *out,
     size_t out_len,
     size_t *frame_len,
@@ -214,107 +215,146 @@ bool mqtt_kmqtt_data_extract_payload(
     {
         *payload_len = 0;
     }
-    if (frame == nullptr || out == nullptr || out_len < 2)
+    if (out != nullptr && out_len != 0)
     {
-        return false;
+        out[0] = '\0';
     }
-    out[0] = '\0';
-
-    const char *const marker = strstr(frame, "+KMQTT_DATA:");
-    if (marker == nullptr)
-    {
-        return false;
-    }
-    const char *object = strchr(marker, '{');
-    const char *array = strchr(marker, '[');
-    const char *start = object;
-    if (array != nullptr && (start == nullptr || array < start))
-    {
-        start = array;
-    }
-    if (start == nullptr)
+    if (frame == nullptr || expected_topic == nullptr ||
+        expected_topic[0] == '\0' || out == nullptr || out_len < 2)
     {
         return false;
     }
 
-    char delimiters[64];
-    size_t depth = 0;
-    bool in_string = false;
-    bool escaped = false;
-    const char *end = nullptr;
-    for (const char *cursor = start; *cursor != '\0'; ++cursor)
+    const char *const marker_text = "+KMQTT_DATA:";
+    const size_t marker_len = strlen(marker_text);
+    const size_t expected_topic_len = strlen(expected_topic);
+    const char *search = frame;
+    while ((search = strstr(search, marker_text)) != nullptr)
     {
-        const char value = *cursor;
-        if (in_string)
+        const char *const marker = search;
+        const char *const line_end = strstr(marker, "\r\n");
+        if (line_end == nullptr)
         {
-            if (escaped)
-            {
-                escaped = false;
-            }
-            else if (value == '\\')
-            {
-                escaped = true;
-            }
-            else if (value == '"')
-            {
-                in_string = false;
-            }
-            continue;
+            return false;
         }
-        if (value == '"')
-        {
-            in_string = true;
-            continue;
-        }
-        if (value == '{' || value == '[')
-        {
-            if (depth >= sizeof(delimiters))
-            {
-                return false;
-            }
-            delimiters[depth++] = value;
-            continue;
-        }
-        if (value == '}' || value == ']')
-        {
-            const char expected = value == '}' ? '{' : '[';
-            if (depth == 0 || delimiters[depth - 1] != expected)
-            {
-                return false;
-            }
-            --depth;
-            if (depth == 0)
-            {
-                end = cursor;
-                break;
-            }
-        }
-    }
-    if (end == nullptr || in_string || depth != 0)
-    {
-        return false;
-    }
-    if (end[1] != '"' || end[2] != '\r' || end[3] != '\n')
-    {
-        return false;
-    }
 
-    const size_t length = (size_t)(end - start + 1);
-    if (length >= out_len)
-    {
-        return false;
+        const char *cursor = marker + marker_len;
+        while (*cursor == ' ' || *cursor == '\t')
+        {
+            ++cursor;
+        }
+        const char *const session_begin = cursor;
+        while (*cursor >= '0' && *cursor <= '9')
+        {
+            ++cursor;
+        }
+        if (cursor == session_begin || *cursor != ',' ||
+            cursor[1] != '"')
+        {
+            search = line_end + 2;
+            continue;
+        }
+        cursor += 2;
+        const char *const topic_begin = cursor;
+        while (cursor < line_end && *cursor != '"')
+        {
+            ++cursor;
+        }
+        if (cursor == line_end)
+        {
+            return false;
+        }
+        const size_t topic_len = (size_t)(cursor - topic_begin);
+        if (topic_len != expected_topic_len ||
+            memcmp(topic_begin, expected_topic, topic_len) != 0)
+        {
+            search = line_end + 2;
+            continue;
+        }
+        if (cursor[1] != ',' || cursor[2] != '"' ||
+            (cursor[3] != '{' && cursor[3] != '['))
+        {
+            return false;
+        }
+
+        const char *const start = cursor + 3;
+        char delimiters[64];
+        size_t depth = 0;
+        bool in_string = false;
+        bool escaped = false;
+        const char *end = nullptr;
+        for (cursor = start; cursor < line_end; ++cursor)
+        {
+            const char value = *cursor;
+            if (in_string)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (value == '\\')
+                {
+                    escaped = true;
+                }
+                else if (value == '"')
+                {
+                    in_string = false;
+                }
+                continue;
+            }
+            if (value == '"')
+            {
+                in_string = true;
+                continue;
+            }
+            if (value == '{' || value == '[')
+            {
+                if (depth >= sizeof(delimiters))
+                {
+                    return false;
+                }
+                delimiters[depth++] = value;
+                continue;
+            }
+            if (value == '}' || value == ']')
+            {
+                const char expected = value == '}' ? '{' : '[';
+                if (depth == 0 || delimiters[depth - 1] != expected)
+                {
+                    return false;
+                }
+                --depth;
+                if (depth == 0)
+                {
+                    end = cursor;
+                    break;
+                }
+            }
+        }
+        if (end == nullptr || in_string || depth != 0 ||
+            end[1] != '"' || end + 2 != line_end)
+        {
+            return false;
+        }
+
+        const size_t length = (size_t)(end - start + 1);
+        if (length >= out_len)
+        {
+            return false;
+        }
+        memcpy(out, start, length);
+        out[length] = '\0';
+        if (frame_len != nullptr)
+        {
+            *frame_len = (size_t)(line_end + 2 - marker);
+        }
+        if (payload_len != nullptr)
+        {
+            *payload_len = length;
+        }
+        return true;
     }
-    memcpy(out, start, length);
-    out[length] = '\0';
-    if (frame_len != nullptr)
-    {
-        *frame_len = (size_t)((end + 3) - marker + 1);
-    }
-    if (payload_len != nullptr)
-    {
-        *payload_len = length;
-    }
-    return true;
+    return false;
 }
 
 bool mqtt_telemetry_payload_build(int sensor_id, float value, char *out, size_t out_len)

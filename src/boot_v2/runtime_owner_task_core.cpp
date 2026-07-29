@@ -8,7 +8,7 @@ constexpr bool normal_intents_equal(
     const NormalIntent right) noexcept
 {
     return left.kind == right.kind && left.flags == right.flags &&
-           left.reserved == right.reserved &&
+           left.value_deci_celsius == right.value_deci_celsius &&
            left.subject_id == right.subject_id &&
            left.snapshot_revision == right.snapshot_revision;
 }
@@ -833,6 +833,19 @@ RuntimeOwnerRedactedStatus RuntimeOwnerTaskCore::redacted_status() const
     return status;
 }
 
+TemperatureAlarmDeliveryPopResult
+RuntimeOwnerTaskCore::try_pop_alarm_delivery(
+    TemperatureAlarmDeliveryEvent &event) noexcept
+{
+    return adapter_.try_pop_alarm_delivery(event);
+}
+
+bool RuntimeOwnerTaskCore::
+    take_alarm_delivery_overflow_log_pending() noexcept
+{
+    return adapter_.take_alarm_delivery_overflow_log_pending();
+}
+
 #if defined(NB_IOT_RUNTIME_OWNER_TASK_TESTING)
 RuntimeOwnerTaskCycleResult RuntimeOwnerTaskCoreTestPeer::process_cycle(
     RuntimeOwnerTaskCore &core,
@@ -913,6 +926,14 @@ bool RuntimeOwnerTaskCoreTestPeer::shutdown_invariant_holds(
     const RuntimeOwnerTaskCore &core) noexcept
 {
     return core.shutdown_invariant_holds();
+}
+
+TemperatureAlarmDeliveryPushResult
+RuntimeOwnerTaskCoreTestPeer::fixture_push_alarm_delivery(
+    RuntimeOwnerTaskCore &core,
+    const TemperatureAlarmDeliveryEvent event) noexcept
+{
+    return core.adapter_.alarm_delivery_mailbox_.try_push(event);
 }
 #endif
 

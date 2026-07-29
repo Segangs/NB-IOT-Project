@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <string>
 
 #include "../../src/boot_v2/command_ack_core.hpp"
 #include "../../src/boot_v2/mqtt_command_codec.hpp"
@@ -138,6 +139,42 @@ void check_codec_round_trip_and_exact_shape()
         nullptr,
         nullptr));
     CHECK(std::strcmp(payload, "[7,9,3,0,60]") == 0);
+}
+
+void check_codec_accepts_80_byte_payload_and_rejects_81_bytes()
+{
+    const std::string topic = "devices/123/cmd/response";
+    const std::string payload_80 =
+        "[" + std::string(78, '1') + "]";
+    const std::string payload_81 =
+        "[" + std::string(79, '1') + "]";
+    const std::string frame_80 =
+        "+KMQTT_DATA: 1,\"" + topic + "\",\"" +
+        payload_80 + "\"\r\n";
+    const std::string frame_81 =
+        "+KMQTT_DATA: 1,\"" + topic + "\",\"" +
+        payload_81 + "\"\r\n";
+    char output[82]{};
+    std::size_t payload_bytes = 0;
+
+    CHECK(payload_80.size() == 80);
+    CHECK(payload_81.size() == 81);
+    CHECK(boot_v2::mqtt_command_topic_payload_extract(
+        frame_80.c_str(),
+        topic.c_str(),
+        output,
+        sizeof(output),
+        nullptr,
+        &payload_bytes));
+    CHECK(payload_bytes == 80);
+    CHECK(std::strcmp(output, payload_80.c_str()) == 0);
+    CHECK(!boot_v2::mqtt_command_topic_payload_extract(
+        frame_81.c_str(),
+        topic.c_str(),
+        output,
+        sizeof(output),
+        nullptr,
+        nullptr));
 }
 
 void check_codec_rejects_malformed_or_relationally_invalid_payloads()
@@ -431,6 +468,7 @@ void check_boot_recovery_never_reexecutes_execute_marked()
 int main()
 {
     check_codec_round_trip_and_exact_shape();
+    check_codec_accepts_80_byte_payload_and_rejects_81_bytes();
     check_codec_rejects_malformed_or_relationally_invalid_payloads();
     check_codec_accepts_only_canonical_receipt_error_pairs();
     check_normal_command_flow_and_exact_receipts();

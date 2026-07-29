@@ -418,7 +418,7 @@ void test_composed_cutover_flow_is_allocation_free()
     RuntimeOwnerTaskCycleInput premature_normal{};
     premature_normal.normal_pending = 1;
     premature_normal.normal = {
-        NormalIntentKind::PublishTelemetry, 0, 0, 17, 1};
+        NormalIntentKind::PublishTelemetry, 0x01, 215, 17, 1};
     CHECK(process_cycle(success_core, premature_normal).normal_result ==
           NormalSubmitResult::RejectedNotReady);
     RuntimeOwnerExecutorCommand wrong_end_boot = end_boot;
@@ -451,7 +451,7 @@ void test_composed_cutover_flow_is_allocation_free()
     RuntimeOwnerTaskCycleInput malformed_ready_cycle{};
     malformed_ready_cycle.normal_pending = 1;
     malformed_ready_cycle.normal = {
-        NormalIntentKind::PublishTelemetry, 0, 0, 17, 0};
+        NormalIntentKind::PublishTelemetry, 0x01, 215, 17, 0};
     const RuntimeOwnerTaskCycleResult malformed_ready_result =
         process_cycle(success_core, malformed_ready_cycle);
     CHECK(malformed_ready_result.disposition ==
@@ -474,7 +474,7 @@ void test_composed_cutover_flow_is_allocation_free()
     RuntimeOwnerTaskCycleInput normal_cycle{};
     normal_cycle.normal_pending = 1;
     normal_cycle.normal = {
-        NormalIntentKind::PublishTelemetry, 0, 0, 17, 1};
+        NormalIntentKind::PublishTelemetry, 0x01, 215, 17, 1};
     CHECK(process_cycle(success_core, normal_cycle).normal_result ==
           NormalSubmitResult::Accepted);
     CHECK(RuntimeOwnerTaskCoreTestPeer::runtime_admission_open(success_core));

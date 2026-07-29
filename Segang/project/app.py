@@ -1,8 +1,9 @@
 import os
 import secrets
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, g
 from dotenv import load_dotenv
 from supabase import Client
 from supabase_clients import OAuthPkceStorage, create_machine_client, create_oauth_client
@@ -14,6 +15,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from message_integration import install_message_routes
+from limited_links import LinkPurpose
 
 load_dotenv(os.path.join(REPO_ROOT, ".env"))
 load_dotenv(os.path.join(PROJECT_DIR, ".env"), override=True)
@@ -57,18 +59,47 @@ def parse_to_kst(t_str):
         return None
     return dt
 
-def load_user_sensor_context():
-    sensor_res = supabase.table("USER_SENSOR").select(
-        "Id, userSensorId, deviceId, sensorCtgyId, setTmpUpLimit, setTmpLowLimit"
-    ).execute()
-    ctgy_res = supabase.table("SENSOR_CTGY").select(
-        "sensorCtgyId, sensorCtgyType, sensorCtgyModel"
-    ).execute()
+@dataclass(frozen=True)
+class DeviceReadPrincipal:
+    user_id: object
+    is_admin: bool
 
-    ctgy_map = {c["sensorCtgyId"]: c for c in (ctgy_res.data or [])}
+
+def load_user_sensor_context(device_ids):
+    scoped_device_ids = sorted(set(device_ids))
+    if not scoped_device_ids:
+        return {}, {}
+
+    sensor_res = (
+        supabase.table("USER_SENSOR")
+        .select(
+            "Id, userSensorId, deviceId, sensorCtgyId, "
+            "setTmpUpLimit, setTmpLowLimit"
+        )
+        .in_("deviceId", scoped_device_ids)
+        .execute()
+    )
+    sensor_rows = sensor_res.data or []
+    category_ids = sorted({
+        item["sensorCtgyId"]
+        for item in sensor_rows
+        if item.get("sensorCtgyId") is not None
+    })
+    if category_ids:
+        ctgy_res = (
+            supabase.table("SENSOR_CTGY")
+            .select("sensorCtgyId, sensorCtgyType, sensorCtgyModel")
+            .in_("sensorCtgyId", category_ids)
+            .execute()
+        )
+        category_rows = ctgy_res.data or []
+    else:
+        category_rows = []
+
+    ctgy_map = {c["sensorCtgyId"]: c for c in category_rows}
     sensor_map = {}
     device_sensor_map = {}
-    for item in (sensor_res.data or []):
+    for item in sensor_rows:
         sensor_pk = item["Id"]
         ctgy = ctgy_map.get(item.get("sensorCtgyId"), {})
         merged = {
@@ -87,44 +118,71 @@ def sensor_label(user_sensor_id, sensor_type=""):
 def status_label(value):
     return "정상" if value == 0 else "이상"
 
-def get_recent_logs(n=10):
+def get_recent_logs(n, devices, sensor_map):
     """Fetches recent database events from Supabase in the last 24 hours and formats them as simplified real-time logs."""
     try:
-        # Get current time in KST and calculate 24h cutoff
+        device_ids = sorted({
+            item["deviceId"]
+            for item in devices
+            if item.get("deviceId") is not None
+        })
+        if not device_ids:
+            return []
+        sensor_ids = sorted({
+            sensor_id
+            for sensor_id, item in sensor_map.items()
+            if item.get("deviceId") in device_ids
+        })
+
         now_kst = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=9))).replace(tzinfo=None)
         cutoff_kst = now_kst - timedelta(hours=24)
 
-        # 1. Fetch latest boot logs in the last 24 hours
         boot_res = supabase.table("device_boot_logs")\
             .select("*")\
+            .in_("deviceId", device_ids)\
             .gte("boottime", cutoff_kst.strftime("%Y-%m-%d %H:%M:%S"))\
             .order("id", desc=True)\
             .limit(n)\
             .execute()
         boot_logs = boot_res.data or []
-        
-        # 2. Fetch latest sensor values in the last 24 hours
-        sens_res = supabase.table("sensorvalue")\
-            .select("*")\
-            .gte("sensorvaluetime", cutoff_kst.strftime("%Y-%m-%dT%H:%M:%S"))\
-            .order("sensorValueId", desc=True)\
-            .limit(n)\
-            .execute()
-        sens_logs = sens_res.data or []
-        
-        sensor_map, _ = load_user_sensor_context()
 
-        # Load device to map deviceId -> (deviceIMEI, userId)
-        dev_res = supabase.table("device").select("deviceId, deviceIMEI, userId").execute()
-        dev_map = {d["deviceId"]: (d["deviceIMEI"], d["userId"]) for d in (dev_res.data or [])}
+        if sensor_ids:
+            sens_res = supabase.table("sensorvalue")\
+                .select("*")\
+                .in_("sensorId", sensor_ids)\
+                .gte("sensorvaluetime", cutoff_kst.strftime("%Y-%m-%dT%H:%M:%S"))\
+                .order("sensorValueId", desc=True)\
+                .limit(n)\
+                .execute()
+            sens_logs = sens_res.data or []
+        else:
+            sens_logs = []
 
-        # Load user map
-        users_res = supabase.table("users").select("userId, userName").execute()
-        user_map = {u["userId"]: u["userName"] for u in (users_res.data or [])}
+        dev_map = {
+            d["deviceId"]: (d.get("deviceIMEI", "Unknown IMEI"), d.get("userId"))
+            for d in devices
+        }
+        user_ids = sorted({
+            d.get("userId")
+            for d in devices
+            if d.get("userId") is not None
+        })
+        if user_ids:
+            users_res = (
+                supabase.table("users")
+                .select("userId, userName")
+                .in_("userId", user_ids)
+                .execute()
+            )
+            user_map = {
+                u["userId"]: u["userName"]
+                for u in (users_res.data or [])
+            }
+        else:
+            user_map = {}
         
         merged_logs = []
         
-        # 3. Format Boot Logs
         for blog in boot_logs:
             btime = blog.get("boottime", "")
             d_id = blog.get("deviceId", 1)
@@ -145,7 +203,6 @@ def get_recent_logs(n=10):
                 log_line = f"[{formatted_btime}] {user_name} : 서버 접속됨 ({status_str}, IMEI {imei})"
                 merged_logs.append((dt, log_line))
             
-        # 4. Format Sensor Logs
         for slog in sens_logs:
             stime = slog.get("sensorvaluetime", "")
             sens_id = slog.get("sensorId", 1)
@@ -160,7 +217,6 @@ def get_recent_logs(n=10):
                 
             user_name = user_map.get(u_id, "외부인(OAuth)")
             
-            # Check upper limit
             upper_limit = float(sensor_info.get("setTmpUpLimit") or -10.0)
                     
             status_str = "정상" if val <= upper_limit else "이상"
@@ -171,10 +227,7 @@ def get_recent_logs(n=10):
                 log_line = f"[{formatted_stime}] {user_name} : 서버 접속됨 ({status_str}, IMEI {imei})"
                 merged_logs.append((dt, log_line))
             
-        # 5. Sort merged logs by datetime descending
         merged_logs.sort(key=lambda x: x[0], reverse=True)
-        
-        # Return top n logs
         return [item[1] for item in merged_logs[:n]]
     except Exception as ex:
         return [f"[로그 백엔드 오류]: {ex}"]
@@ -182,6 +235,61 @@ def get_recent_logs(n=10):
 # ----------------- Middlewares / Helpers -----------------
 def is_logged_in():
     return "user_id" in session or "supabase_token" in session
+
+
+def current_device_read_principal():
+    user_id = session.get("user_id")
+    if user_id is None:
+        return None
+    return DeviceReadPrincipal(
+        user_id=user_id,
+        is_admin=session.get("level") == 0,
+    )
+
+
+def load_scoped_devices(principal, columns):
+    query = supabase.table("device").select(columns)
+    if not principal.is_admin:
+        query = query.eq("userId", principal.user_id)
+    response = query.execute()
+    return response.data or []
+
+
+def history_grant_matches(grant, device_id):
+    if (
+        grant is None
+        or grant.purpose is not LinkPurpose.TEMP_HISTORY
+        or grant.target_path != f"/device-temp-history/{device_id}"
+        or grant.device_id != device_id
+        or not isinstance(grant.sensor_ids, tuple)
+        or not grant.sensor_ids
+        or len(set(grant.sensor_ids)) != len(grant.sensor_ids)
+        or not all(
+            isinstance(sensor_id, int)
+            and not isinstance(sensor_id, bool)
+            and sensor_id > 0
+            for sensor_id in grant.sensor_ids
+        )
+    ):
+        return False
+    return True
+
+
+def empty_status_payload():
+    return {
+        "success": True,
+        "avg_temp": 0,
+        "total_devices": 0,
+        "active_devices": 0,
+        "device_health": 0,
+        "sensor_health": 0,
+        "comm_health": 0,
+        "alerts": [],
+        "logs": [],
+        "chart_labels": [],
+        "chart_values": [],
+    }
+
 
 @app.before_request
 def redirect_www():
@@ -232,38 +340,84 @@ def check_admin_inactivity():
             session["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 def get_dynamic_anomalies():
+    scoped_context = getattr(g, "device_read_scope", None)
+    if scoped_context is None:
+        return []
+    devices, sensor_map = scoped_context
+    return get_scoped_dynamic_anomalies(devices, sensor_map)
+
+
+def get_scoped_dynamic_anomalies(devices, sensor_map):
     """
     Computes anomalies in the last 24 hours by matching sensorvalue against USER_SENSOR limits.
     Returns a list of calculated anomalies.
     """
     try:
-        # Get KST and UTC cutoffs for last 24 hours
+        device_ids = sorted({
+            item["deviceId"]
+            for item in devices
+            if item.get("deviceId") is not None
+        })
+        if not device_ids:
+            return []
+        sensor_ids = sorted({
+            sensor_id
+            for sensor_id, item in sensor_map.items()
+            if item.get("deviceId") in device_ids
+        })
+        if not sensor_ids:
+            return []
+
         now_kst = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=9))).replace(tzinfo=None)
         cutoff_kst = now_kst - timedelta(hours=24)
 
-        # Fetch required tables from Supabase, filtering sensorvalue by last 24h (max 500 rows for performance)
         sv_res = supabase.table("sensorvalue")\
             .select("*")\
+            .in_("sensorId", sensor_ids)\
             .gte("sensorvaluetime", cutoff_kst.strftime("%Y-%m-%dT%H:%M:%S"))\
             .order("sensorValueId", desc=True)\
             .limit(500)\
             .execute()
-        um_res = supabase.table("usermachine").select("deviceId, userMachineId, machineId").execute()
-        m_res = supabase.table("machine").select("machineId, modelName").execute()
-        
-        # Load device owners mapping
-        d_res = supabase.table("device").select("deviceId, userId").execute()
-        u_res = supabase.table("users").select("userId, userName").execute()
+        um_res = (
+            supabase.table("usermachine")
+            .select("deviceId, userMachineId, machineId")
+            .in_("deviceId", device_ids)
+            .execute()
+        )
         
         sensorvalues = sv_res.data or []
         usermachines = um_res.data or []
-        machines = m_res.data or []
-        devices = d_res.data or []
-        users = u_res.data or []
+        machine_ids = sorted({
+            item["machineId"]
+            for item in usermachines
+            if item.get("machineId") is not None
+        })
+        if machine_ids:
+            m_res = (
+                supabase.table("machine")
+                .select("machineId, modelName")
+                .in_("machineId", machine_ids)
+                .execute()
+            )
+            machines = m_res.data or []
+        else:
+            machines = []
+        user_ids = sorted({
+            item["userId"]
+            for item in devices
+            if item.get("userId") is not None
+        })
+        if user_ids:
+            u_res = (
+                supabase.table("users")
+                .select("userId, userName")
+                .in_("userId", user_ids)
+                .execute()
+            )
+            users = u_res.data or []
+        else:
+            users = []
         
-        sensor_map, _ = load_user_sensor_context()
-        
-        # 2. Create device -> userMachineId & machineId mapping
         device_machine = {}
         for item in usermachines:
             device_machine[item["deviceId"]] = {
@@ -271,10 +425,8 @@ def get_dynamic_anomalies():
                 "machineId": item["machineId"]
             }
             
-        # 3. Create machineId -> modelName mapping
         machine_model = {item["machineId"]: item["modelName"] for item in machines}
         
-        # 5. Create device -> user name mapping
         device_user = {d["deviceId"]: d["userId"] for d in devices}
         user_name_map = {u["userId"]: u["userName"] for u in users}
             
@@ -309,7 +461,6 @@ def get_dynamic_anomalies():
                 model_name = machine_model.get(machine_id, "알 수 없는 기기")
                 t_str = sv.get("sensorvaluetime")
                 
-                # Fetch device owner name
                 u_id = device_user.get(device_id)
                 u_name = user_name_map.get(u_id, "외부인(OAuth)")
                 
@@ -352,7 +503,8 @@ def index():
 
 @app.route("/dashboard")
 def dashboard():
-    if not is_logged_in():
+    principal = current_device_read_principal()
+    if principal is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
     
@@ -360,14 +512,14 @@ def dashboard():
     return render_template(
         "dashboard.html", 
         user_name=user_name, 
-        supabase_url=SUPABASE_URL, 
-        supabase_key=SUPABASE_KEY
+        supabase_url=SUPABASE_URL if principal.is_admin else "",
+        supabase_key=SUPABASE_KEY if principal.is_admin else "",
     )
 
 # ----------------- Authentication -----------------
 @app.route("/auth/login", methods=["GET", "POST"])
 def login():
-    if is_logged_in():
+    if current_device_read_principal() is not None:
         return redirect(url_for("dashboard"))
         
     if request.method == "POST":
@@ -416,7 +568,7 @@ def login():
 
 @app.route("/auth/register", methods=["GET", "POST"])
 def register():
-    if is_logged_in():
+    if current_device_read_principal() is not None:
         return redirect(url_for("dashboard"))
         
     if request.method == "POST":
@@ -850,17 +1002,33 @@ def board_delete(post_id):
 # ----------------- Devices List -----------------
 @app.route("/devices")
 def device_list():
-    if not is_logged_in():
+    principal = current_device_read_principal()
+    if principal is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
         
     try:
-        res = supabase.table("device").select("*").order("deviceId", desc=False).execute()
-        devices = res.data or []
+        devices = load_scoped_devices(principal, "*")
+        devices.sort(key=lambda item: item.get("deviceId", 0))
         
-        # Load USIM mapping to show usimIMSI
-        usim_res = supabase.table("usim").select("usimId, usimIMSI").execute()
-        usim_map = {u["usimId"]: u["usimIMSI"] for u in (usim_res.data or [])}
+        usim_ids = sorted({
+            item["usimId"]
+            for item in devices
+            if item.get("usimId") is not None
+        })
+        if usim_ids:
+            usim_res = (
+                supabase.table("usim")
+                .select("usimId, usimIMSI")
+                .in_("usimId", usim_ids)
+                .execute()
+            )
+            usim_map = {
+                u["usimId"]: u["usimIMSI"]
+                for u in (usim_res.data or [])
+            }
+        else:
+            usim_map = {}
         
         for dev in devices:
             u_id = dev.get("usimId")
@@ -874,21 +1042,55 @@ def device_list():
 # ----------------- Device Status (기기 상태 상세 로그) -----------------
 @app.route("/device-status")
 def device_status():
-    if not is_logged_in():
+    principal = current_device_read_principal()
+    if principal is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
         
     try:
-        # Fetch latest boot logs
-        boot_res = supabase.table("device_boot_logs").select("*").order("id", desc=True).limit(100).execute()
+        devices = load_scoped_devices(
+            principal,
+            "deviceId, deviceIMEI, userId",
+        )
+        if not devices:
+            return render_template("device_status.html", logs=[])
+        device_ids = sorted(d["deviceId"] for d in devices)
+        boot_res = (
+            supabase.table("device_boot_logs")
+            .select("*")
+            .in_("deviceId", device_ids)
+            .order("id", desc=True)
+            .limit(100)
+            .execute()
+        )
         boot_logs = boot_res.data or []
         
-        # Fetch device and user maps
-        dev_res = supabase.table("device").select("deviceId, deviceIMEI").execute()
-        dev_map = {d["deviceId"]: d["deviceIMEI"] for d in (dev_res.data or [])}
-        
-        users_res = supabase.table("users").select("userId, userName").execute()
-        user_map = {u["userId"]: u["userName"] for u in (users_res.data or [])}
+        dev_map = {
+            d["deviceId"]: d.get("deviceIMEI", "Unknown IMEI")
+            for d in devices
+        }
+        device_owner_map = {
+            d["deviceId"]: d.get("userId")
+            for d in devices
+        }
+        user_ids = sorted({
+            owner_id
+            for owner_id in device_owner_map.values()
+            if owner_id is not None
+        })
+        if user_ids:
+            users_res = (
+                supabase.table("users")
+                .select("userId, userName")
+                .in_("userId", user_ids)
+                .execute()
+            )
+            user_map = {
+                u["userId"]: u["userName"]
+                for u in (users_res.data or [])
+            }
+        else:
+            user_map = {}
         
         # Collect cmdIds for batch query
         cmd_ids = []
@@ -919,7 +1121,7 @@ def device_status():
         formatted_logs = []
         for log in boot_logs:
             d_id = log.get("deviceId")
-            u_id = log.get("userId")
+            u_id = device_owner_map.get(d_id)
             c_id = log.get("cmdId")
             reason_code = log.get("bootReasonCode")
             
@@ -1023,33 +1225,96 @@ def send_command():
 # ----------------- Temperature Status (온도 상태 상세 비교) -----------------
 @app.route("/temp-status")
 def temp_status():
-    if not is_logged_in():
+    principal = current_device_read_principal()
+    if principal is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
         
     try:
-        # Fetch sensor values
-        sv_res = supabase.table("sensorvalue").select("*").order("sensorValueId", desc=True).limit(150).execute()
-        sensor_values = sv_res.data or []
+        devices = load_scoped_devices(
+            principal,
+            "deviceId, userId, deviceIMEI",
+        )
+        if not devices:
+            return render_template("temp_status.html", temps=[])
+        device_ids = sorted(d["deviceId"] for d in devices)
+        sensor_map, _ = load_user_sensor_context(device_ids)
+        temp_sensor_ids = sorted({
+            sensor_id
+            for sensor_id, item in sensor_map.items()
+            if item.get("sensorCtgyType") == "TMP"
+        })
+        if temp_sensor_ids:
+            sv_res = (
+                supabase.table("sensorvalue")
+                .select("*")
+                .in_("sensorId", temp_sensor_ids)
+                .order("sensorValueId", desc=True)
+                .limit(150)
+                .execute()
+            )
+            sensor_values = sv_res.data or []
+        else:
+            sensor_values = []
+
+        dev_map = {
+            d["deviceId"]: (
+                d.get("deviceIMEI", "Unknown IMEI"),
+                d.get("userId"),
+            )
+            for d in devices
+        }
         
-        sensor_map, _ = load_user_sensor_context()
-        
-        dev_res = supabase.table("device").select("deviceId, userId, deviceIMEI").execute()
-        dev_map = {d["deviceId"]: (d["deviceIMEI"], d["userId"]) for d in (dev_res.data or [])}
-        
-        um_res = supabase.table("usermachine").select("deviceId, userMachineId, machineId").execute()
+        um_res = (
+            supabase.table("usermachine")
+            .select("deviceId, userMachineId, machineId")
+            .in_("deviceId", device_ids)
+            .execute()
+        )
         device_machine = {}
         for item in (um_res.data or []):
             device_machine[item["deviceId"]] = {
                 "userMachineId": item["userMachineId"],
                 "machineId": item["machineId"]
             }
-            
-        users_res = supabase.table("users").select("userId, userName").execute()
-        user_map = {u["userId"]: u["userName"] for u in (users_res.data or [])}
-        
-        m_res = supabase.table("machine").select("machineId, modelName").execute()
-        machine_model = {item["machineId"]: item["modelName"] for item in (m_res.data or [])}
+
+        user_ids = sorted({
+            d["userId"]
+            for d in devices
+            if d.get("userId") is not None
+        })
+        if user_ids:
+            users_res = (
+                supabase.table("users")
+                .select("userId, userName")
+                .in_("userId", user_ids)
+                .execute()
+            )
+            user_map = {
+                u["userId"]: u["userName"]
+                for u in (users_res.data or [])
+            }
+        else:
+            user_map = {}
+
+        machine_ids = sorted({
+            item["machineId"]
+            for item in device_machine.values()
+            if item.get("machineId") is not None
+        })
+        if machine_ids:
+            m_res = (
+                supabase.table("machine")
+                .select("machineId, modelName")
+                .in_("machineId", machine_ids)
+                .execute()
+            )
+            machine_model = {
+                item["machineId"]: item["modelName"]
+                for item in (m_res.data or [])
+            }
+        else:
+            machine_model = {}
         
         formatted_temps = []
         for sv in sensor_values:
@@ -1106,25 +1371,42 @@ def temp_status():
 # ----------------- Device Temperature History (기기별 온도 추이) -----------------
 @app.route("/device-temp-history/<int:device_id>")
 def device_temp_history(device_id):
-    regular_login = is_logged_in()
+    principal = current_device_read_principal()
     limited_grant = None
-    if not regular_login and message_services is not None:
+    if principal is None and is_logged_in():
+        flash("로그인이 필요한 서비스입니다.", "warning")
+        return redirect(url_for("login"))
+    if principal is None and message_services is not None:
         limited_grant = message_services.resolve_limited_session(
             request.cookies.get("__Host-limited_session")
         )
-    if not regular_login and limited_grant is None:
+    if principal is None and limited_grant is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
-    if (
-        limited_grant is not None
-        and limited_grant.device_id != device_id
+    if limited_grant is not None and not history_grant_matches(
+        limited_grant,
+        device_id,
     ):
         return "", 404
         
     try:
-        # 1. Fetch device data
-        dev_res = supabase.table("device").select("deviceId, userId, deviceIMEI, userWorkplaceId").eq("deviceId", device_id).execute()
+        device_query = (
+            supabase.table("device")
+            .select("deviceId, userId, deviceIMEI, userWorkplaceId")
+            .eq("deviceId", device_id)
+        )
+        if principal is not None and not principal.is_admin:
+            device_query = device_query.eq("userId", principal.user_id)
+        elif limited_grant is not None:
+            device_query = (
+                device_query
+                .eq("userId", limited_grant.user_id)
+                .eq("userWorkplaceId", limited_grant.workplace_id)
+            )
+        dev_res = device_query.limit(1).execute()
         if not dev_res.data:
+            if limited_grant is not None:
+                return "", 404
             flash("해당 기기를 찾을 수 없습니다.", "danger")
             return redirect(url_for("temp_status"))
         dev = dev_res.data[0]
@@ -1135,7 +1417,13 @@ def device_temp_history(device_id):
         # 2. Fetch owner userName
         user_name = "외부인(OAuth)"
         if u_id:
-            u_res = supabase.table("users").select("userName").eq("userId", u_id).execute()
+            u_res = (
+                supabase.table("users")
+                .select("userName")
+                .eq("userId", u_id)
+                .limit(1)
+                .execute()
+            )
             if u_res.data:
                 user_name = u_res.data[0].get("userName", "외부인(OAuth)")
                 
@@ -1143,13 +1431,34 @@ def device_temp_history(device_id):
         workplaces = []
         user_machines_list = []
         if u_id:
-            # Fetch workplaces belonging to u_id (include WorkplaceName)
-            wp_res = supabase.table("userworkplace").select("userWorkplaceId, WorkplaceAddress, WorkplaceName").eq("userId", u_id).execute()
+            workplace_query = (
+                supabase.table("userworkplace")
+                .select(
+                    "userWorkplaceId, WorkplaceAddress, WorkplaceName"
+                )
+                .eq("userId", u_id)
+            )
+            if limited_grant is not None:
+                workplace_query = workplace_query.eq(
+                    "userWorkplaceId",
+                    limited_grant.workplace_id,
+                )
+            wp_res = workplace_query.execute()
             workplaces = wp_res.data or []
             
-            # Fetch devices belonging to u_id
-            devs_res = supabase.table("device").select("deviceId, userWorkplaceId").eq("userId", u_id).execute()
-            devices = devs_res.data or []
+            if limited_grant is not None:
+                devices = [{
+                    "deviceId": dev["deviceId"],
+                    "userWorkplaceId": dev.get("userWorkplaceId"),
+                }]
+            else:
+                devs_res = (
+                    supabase.table("device")
+                    .select("deviceId, userWorkplaceId")
+                    .eq("userId", u_id)
+                    .execute()
+                )
+                devices = devs_res.data or []
             dev_ids = [d["deviceId"] for d in devices]
             
             if dev_ids:
@@ -1208,12 +1517,30 @@ def device_temp_history(device_id):
                 model_name = m_res.data[0].get("modelName", "알 수 없는 기기")
                 
         # 5–6. Fetch only temperature sensors and their live limits.
-        sensor_map, device_sensor_map = load_user_sensor_context()
+        sensor_map, device_sensor_map = load_user_sensor_context([device_id])
         tmp_sensors = [
             item for item in device_sensor_map.values()
             if item.get("deviceId") == device_id
             and item.get("sensorCtgyType") == "TMP"
         ]
+        if limited_grant is not None:
+            allowed_sensor_ids = set(limited_grant.sensor_ids)
+            available_sensor_ids = {s["Id"] for s in tmp_sensors}
+            if (
+                not allowed_sensor_ids
+                or not allowed_sensor_ids.issubset(available_sensor_ids)
+            ):
+                return "", 404
+            tmp_sensors = [
+                sensor
+                for sensor in tmp_sensors
+                if sensor["Id"] in allowed_sensor_ids
+            ]
+            sensor_map = {
+                sensor_id: sensor
+                for sensor_id, sensor in sensor_map.items()
+                if sensor_id in allowed_sensor_ids
+            }
         sensor_ids = [s["Id"] for s in tmp_sensors]
         upper_limit = float(
             (
@@ -1223,14 +1550,7 @@ def device_temp_history(device_id):
             )
             or -10.0
         )
-        if limited_grant is not None:
-            allowed_sensor_ids = set(limited_grant.sensor_ids)
-            if (
-                not allowed_sensor_ids
-                or not allowed_sensor_ids.issubset(set(sensor_ids))
-            ):
-                return "", 404
-            sensor_ids = sorted(allowed_sensor_ids)
+        sensor_ids.sort()
         
         # 7. Fetch last 50 sensor values
         formatted_history = []
@@ -1302,31 +1622,77 @@ def device_temp_history(device_id):
 # ----------------- National Temperatures (전국 평균 온도 상세) -----------------
 @app.route("/national-temperatures")
 def national_temperatures():
-    if not is_logged_in():
+    if current_device_read_principal() is None:
         flash("로그인이 필요한 서비스입니다.", "warning")
         return redirect(url_for("login"))
     return render_template("national_temperatures.html")
 
 @app.route("/api/national-temperatures")
 def api_national_temperatures():
-    if not is_logged_in():
+    principal = current_device_read_principal()
+    if principal is None:
         return jsonify({"error": "Unauthorized"}), 401
         
     try:
-        # Fetch required tables from Supabase to join details in memory
-        sv_res = supabase.table("sensorvalue").select("*").order("sensorValueId", desc=True).limit(80).execute()
-        d_res = supabase.table("device").select("deviceId, userId").execute()
-        um_res = supabase.table("usermachine").select("deviceId, machineId").execute()
-        m_res = supabase.table("machine").select("machineId, systemType").execute()
-        u_res = supabase.table("users").select("userId, userName").execute()
-        
-        sensorvalues = sv_res.data or []
-        devices = d_res.data or []
+        devices = load_scoped_devices(principal, "deviceId, userId")
+        if not devices:
+            return jsonify({"success": True, "data": []})
+        device_ids = sorted(d["deviceId"] for d in devices)
+        sensor_map, _ = load_user_sensor_context(device_ids)
+        sensor_ids = sorted({
+            sensor_id
+            for sensor_id, item in sensor_map.items()
+            if item.get("sensorCtgyType") == "TMP"
+        })
+        if sensor_ids:
+            sv_res = (
+                supabase.table("sensorvalue")
+                .select("*")
+                .in_("sensorId", sensor_ids)
+                .order("sensorValueId", desc=True)
+                .limit(80)
+                .execute()
+            )
+            sensorvalues = sv_res.data or []
+        else:
+            sensorvalues = []
+        um_res = (
+            supabase.table("usermachine")
+            .select("deviceId, machineId")
+            .in_("deviceId", device_ids)
+            .execute()
+        )
         usermachines = um_res.data or []
-        machines = m_res.data or []
-        users = u_res.data or []
-        
-        sensor_map, _ = load_user_sensor_context()
+        machine_ids = sorted({
+            item["machineId"]
+            for item in usermachines
+            if item.get("machineId") is not None
+        })
+        if machine_ids:
+            m_res = (
+                supabase.table("machine")
+                .select("machineId, systemType")
+                .in_("machineId", machine_ids)
+                .execute()
+            )
+            machines = m_res.data or []
+        else:
+            machines = []
+        user_ids = sorted({
+            item["userId"]
+            for item in devices
+            if item.get("userId") is not None
+        })
+        if user_ids:
+            u_res = (
+                supabase.table("users")
+                .select("userId, userName")
+                .in_("userId", user_ids)
+                .execute()
+            )
+            users = u_res.data or []
+        else:
+            users = []
         
         # 2. Create device -> user mapping
         device_user = {item["deviceId"]: item["userId"] for item in devices}
@@ -1381,34 +1747,79 @@ def api_national_temperatures():
 # ----------------- Dashboard Real-Time API -----------------
 @app.route("/api/status")
 def api_status():
-    if not is_logged_in():
+    principal = current_device_read_principal()
+    if principal is None:
         return jsonify({"error": "Unauthorized"}), 401
         
     try:
-        # 1. Fetch reference time (latest event time)
-        latest_boot = supabase.table("device_boot_logs").select("boottime").order("id", desc=True).limit(1).execute()
-        latest_sens = supabase.table("sensorvalue").select("sensorvaluetime").order("sensorValueId", desc=True).limit(1).execute()
+        devices = load_scoped_devices(
+            principal,
+            "deviceId, userId, deviceIMEI",
+        )
+        if not devices:
+            return jsonify(empty_status_payload())
+        device_ids = sorted(d["deviceId"] for d in devices)
+        sensor_map, _ = load_user_sensor_context(device_ids)
+        sensor_ids = sorted(sensor_map)
+
+        latest_boot = (
+            supabase.table("device_boot_logs")
+            .select("boottime")
+            .in_("deviceId", device_ids)
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if sensor_ids:
+            latest_sens = (
+                supabase.table("sensorvalue")
+                .select("sensorvaluetime")
+                .in_("sensorId", sensor_ids)
+                .order("sensorValueId", desc=True)
+                .limit(1)
+                .execute()
+            )
+        else:
+            latest_sens = None
         
         ref_time = datetime.now(timezone(timedelta(hours=9))).replace(tzinfo=None)
         t_candidates = []
         if latest_boot.data:
             t_candidates.append(parse_to_kst(latest_boot.data[0]["boottime"]))
-        if latest_sens.data:
+        if latest_sens is not None and latest_sens.data:
             t_candidates.append(parse_to_kst(latest_sens.data[0]["sensorvaluetime"]))
-        if t_candidates:
-            ref_time = max(t for t in t_candidates if t is not None)
+        valid_candidates = [t for t in t_candidates if t is not None]
+        if valid_candidates:
+            ref_time = max(valid_candidates)
             
         cutoff_time = ref_time - timedelta(hours=12)
         
-        # 2. Get active devices in last 12h
-        boot_res = supabase.table("device_boot_logs").select("*").gte("boottime", cutoff_time.strftime("%Y-%m-%d %H:%M:%S")).execute()
+        boot_res = (
+            supabase.table("device_boot_logs")
+            .select("*")
+            .in_("deviceId", device_ids)
+            .gte(
+                "boottime",
+                cutoff_time.strftime("%Y-%m-%d %H:%M:%S"),
+            )
+            .execute()
+        )
         boot_data = boot_res.data or []
         
-        sens_cutoff = cutoff_time
-        sens_res = supabase.table("sensorvalue").select("*").gte("sensorvaluetime", sens_cutoff.strftime("%Y-%m-%dT%H:%M:%S")).execute()
-        sens_data = sens_res.data or []
-        
-        sensor_map, _ = load_user_sensor_context()
+        if sensor_ids:
+            sens_res = (
+                supabase.table("sensorvalue")
+                .select("*")
+                .in_("sensorId", sensor_ids)
+                .gte(
+                    "sensorvaluetime",
+                    cutoff_time.strftime("%Y-%m-%dT%H:%M:%S"),
+                )
+                .execute()
+            )
+            sens_data = sens_res.data or []
+        else:
+            sens_data = []
         
         active_device_ids = set()
         for b in boot_data:
@@ -1418,14 +1829,11 @@ def api_status():
             if d_id:
                 active_device_ids.add(d_id)
                 
-        all_dev_res = supabase.table("device").select("deviceId").execute()
-        all_devices = all_dev_res.data or []
-        total_devices = len(all_devices)
+        total_devices = len(devices)
         
-        # If no active devices, fallback to all devices in DB
         target_device_ids = active_device_ids
         if not target_device_ids:
-            target_device_ids = {d["deviceId"] for d in all_devices}
+            target_device_ids = set(device_ids)
             
         # 3. Calculate health metrics
         device_scores = []
@@ -1439,7 +1847,14 @@ def api_status():
                 dev_boots.sort(key=lambda x: parse_to_kst(x["boottime"]), reverse=True)
                 blog = dev_boots[0]
             else:
-                fallback_res = supabase.table("device_boot_logs").select("*").eq("deviceId", d_id).order("id", desc=True).limit(1).execute()
+                fallback_res = (
+                    supabase.table("device_boot_logs")
+                    .select("*")
+                    .eq("deviceId", d_id)
+                    .order("id", desc=True)
+                    .limit(1)
+                    .execute()
+                )
                 if fallback_res.data:
                     blog = fallback_res.data[0]
                     
@@ -1489,7 +1904,6 @@ def api_status():
         sensor_health = round(sum(sensor_scores) / len(sensor_scores), 1) if sensor_scores else 100.0
         comm_health = round(sum(conn_scores) / len(conn_scores), 1) if conn_scores else 100.0
         
-        # 4. Hourly normal operation rate trend (last 12h) using carry-forward
         device_limits = {}
         for d_id in target_device_ids:
             limits = [
@@ -1500,8 +1914,16 @@ def api_status():
             ]
             device_limits[d_id] = min(limits) if limits else -10.0
 
-        all_sv_res = supabase.table("sensorvalue").select("*").execute()
-        all_sv = all_sv_res.data or []
+        if sensor_ids:
+            all_sv_res = (
+                supabase.table("sensorvalue")
+                .select("*")
+                .in_("sensorId", sensor_ids)
+                .execute()
+            )
+            all_sv = all_sv_res.data or []
+        else:
+            all_sv = []
         
         chart_labels = []
         chart_values = []
@@ -1537,16 +1959,26 @@ def api_status():
             chart_labels.append(b_end.strftime("%H:%M"))
             chart_values.append(rate)
             
-        # 5. Fallback/Standard dashboard returns
-        val_res = supabase.table("sensorvalue").select("sensorValue").order("sensorValueId", desc=True).limit(50).execute()
-        vals = val_res.data or []
+        if sensor_ids:
+            val_res = (
+                supabase.table("sensorvalue")
+                .select("sensorValue")
+                .in_("sensorId", sensor_ids)
+                .order("sensorValueId", desc=True)
+                .limit(50)
+                .execute()
+            )
+            vals = val_res.data or []
+        else:
+            vals = []
         if vals:
             avg_temp = round(sum(float(v["sensorValue"]) for v in vals) / len(vals), 1)
         else:
-            avg_temp = 3.5
+            avg_temp = 0
             
+        g.device_read_scope = (devices, sensor_map)
         alerts = get_dynamic_anomalies()
-        logs = get_recent_logs(8)
+        logs = get_recent_logs(8, devices, sensor_map)
         
         return jsonify({
             "success": True,

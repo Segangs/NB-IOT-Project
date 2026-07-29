@@ -409,6 +409,11 @@ private:
         RuntimeOwnerExecutorCommand command,
         NormalCompletionKind kind,
         std::uint32_t diagnostic_code) noexcept;
+    [[nodiscard]] TemperatureAlarmDeliveryPopResult
+        try_pop_alarm_delivery(
+            TemperatureAlarmDeliveryEvent &event) noexcept;
+    [[nodiscard]] bool
+        take_alarm_delivery_overflow_log_pending() noexcept;
     [[nodiscard]] RuntimeOwnerShutdownRequestResult request_shutdown(
         ShutdownProducer producer,
         std::uint32_t producer_sequence,
@@ -483,6 +488,10 @@ public:
             RuntimeOwnerTaskCore &core) noexcept;
     [[nodiscard]] static bool shutdown_invariant_holds(
         const RuntimeOwnerTaskCore &core) noexcept;
+    [[nodiscard]] static TemperatureAlarmDeliveryPushResult
+        fixture_push_alarm_delivery(
+            RuntimeOwnerTaskCore &core,
+            TemperatureAlarmDeliveryEvent event) noexcept;
 };
 #endif
 

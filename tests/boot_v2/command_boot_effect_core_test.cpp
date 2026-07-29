@@ -115,6 +115,65 @@ void test_exact_positive_evidence() noexcept
         gp15_evidence(44)));
 }
 
+void test_poweroff_initial_usb_present_accepts_actual_gp15_evidence() noexcept
+{
+    const CommandJournalRecord power_off =
+        execute_marked(CommandOpcode::PowerOff, 45, 7);
+    CommandBootEffectEvidence actual_gp15 =
+        watchdog_evidence(45, true);
+    actual_gp15.watchdog_marker_present = 0;
+    actual_gp15.watchdog_cmd_id = 0;
+
+    CHECK(command_boot_effect_matches(power_off, 8, actual_gp15));
+}
+
+void test_poweroff_initial_usb_absent_requires_exact_actual_watchdog_marker()
+    noexcept
+{
+    const CommandJournalRecord power_off =
+        execute_marked(CommandOpcode::PowerOff, 46, 7);
+    CommandBootEffectEvidence actual_watchdog =
+        gp15_evidence(46);
+    actual_watchdog.watchdog_marker_present = 1;
+    actual_watchdog.watchdog_cmd_id = 46;
+    CHECK(command_boot_effect_matches(power_off, 8, actual_watchdog));
+
+    actual_watchdog.watchdog_cmd_id = 99;
+    CHECK(!command_boot_effect_matches(power_off, 8, actual_watchdog));
+}
+
+void test_poweroff_rejects_usb_absent_watchdog_record_pair() noexcept
+{
+    const CommandJournalRecord power_off =
+        execute_marked(CommandOpcode::PowerOff, 47, 7);
+    const CommandBootEffectEvidence marker_present =
+        watchdog_evidence(47, false);
+    CHECK(!command_boot_effect_matches(power_off, 8, marker_present));
+
+    CommandBootEffectEvidence marker_absent = marker_present;
+    marker_absent.watchdog_marker_present = 0;
+    marker_absent.watchdog_cmd_id = 0;
+    CHECK(!command_boot_effect_matches(power_off, 8, marker_absent));
+}
+
+void test_poweroff_rejects_usb_present_gp15_record_pair() noexcept
+{
+    const CommandJournalRecord power_off =
+        execute_marked(CommandOpcode::PowerOff, 48, 7);
+    CommandBootEffectEvidence marker_absent{};
+    marker_absent.shutdown_record_present = 1;
+    marker_absent.shutdown_record = shutdown_record(
+        48,
+        true,
+        RuntimeOwnerShutdownPlannedAction::Gp15Kill);
+    CHECK(!command_boot_effect_matches(power_off, 8, marker_absent));
+
+    CommandBootEffectEvidence marker_present = marker_absent;
+    marker_present.watchdog_marker_present = 1;
+    marker_present.watchdog_cmd_id = 48;
+    CHECK(!command_boot_effect_matches(power_off, 8, marker_present));
+}
+
 void test_identity_reason_action_and_marker_must_match() noexcept
 {
     const CommandJournalRecord reboot =
@@ -194,6 +253,10 @@ void test_boot_journal_crc_and_shape_fail_closed() noexcept
 int main()
 {
     test_exact_positive_evidence();
+    test_poweroff_initial_usb_present_accepts_actual_gp15_evidence();
+    test_poweroff_initial_usb_absent_requires_exact_actual_watchdog_marker();
+    test_poweroff_rejects_usb_absent_watchdog_record_pair();
+    test_poweroff_rejects_usb_present_gp15_record_pair();
     test_identity_reason_action_and_marker_must_match();
     test_boot_journal_crc_and_shape_fail_closed();
 

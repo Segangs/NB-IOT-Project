@@ -66,6 +66,7 @@ add_executable(nb_iot_project
     src/boot_v2/liveness_service.cpp
     src/boot_v2/runtime_owner_core.cpp
     src/boot_v2/runtime_owner_adapter_core.cpp
+    src/boot_v2/temperature_alarm_delivery_mailbox.cpp
     src/boot_v2/runtime_owner_executor_contract.cpp
     src/boot_v2/runtime_snapshot_core.cpp
     src/boot_v2/runtime_owner_task_core.cpp
@@ -101,6 +102,7 @@ add_executable(nb_iot_project
     src/tasks/tasks_modem.cpp
     src/tasks/tasks_mqtt.cpp
     src/tasks/tasks_periodic_modem.cpp
+    src/lib/flash_operation_service.cpp
     src/lib/flash_logger.cpp
     src/lib/log.cpp
     src/lib/mqtt_payload.cpp

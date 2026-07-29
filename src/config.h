@@ -37,7 +37,7 @@
 #define DS18B20_BOOT_DELAY_MS 30000
 #define DS18B20_SAMPLE_INTERVAL_MS 30000
 #define TEMP1_CAL_OFFSET_C 5.0f
-#define TEMP2_CAL_OFFSET_C 0.0f
+#define TEMP2_CAL_OFFSET_C 5.0f
 #define ADC_VSYS_CHANNEL  3       // VSYS measurement (usually ADC channel 3 on RP2040/RP2350)
 
 // ====================================================================================

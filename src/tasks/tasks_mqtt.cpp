@@ -365,7 +365,7 @@ bool nb_iot::modem_MqttPublish(const char *topic, const char *payload)
     snprintf(abort_urc, sizeof(abort_urc), "+KMQTT_IND: %d,0", this->mqtt_session_id);
     snprintf(generic_error_urc, sizeof(generic_error_urc), "+KMQTT_IND: %d,5", this->mqtt_session_id);
 
-    if (!this->modem_SendCmdWaitOK(pub_cmd, 5000))
+    if (!this->modem_SendCmdWaitOK(pub_cmd, 5000, 0))
     {
         const bool silent_command_timeout = this->buffer_idx == 0;
         const bool liveness_probe =

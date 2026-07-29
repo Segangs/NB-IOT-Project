@@ -95,7 +95,7 @@ constexpr bool intents_equal(
     const NormalIntent right) noexcept
 {
     return left.kind == right.kind && left.flags == right.flags &&
-           left.reserved == right.reserved &&
+           left.value_deci_celsius == right.value_deci_celsius &&
            left.subject_id == right.subject_id &&
            left.snapshot_revision == right.snapshot_revision;
 }
@@ -241,7 +241,7 @@ void test_all_core_effects_map_exactly()
 void test_all_normal_intents_map_exactly()
 {
     const std::array<NormalCase, kNormalIntentKindCount - 1> cases{{
-        {{NormalIntentKind::PublishTelemetry, 0, 0, 42, 77},
+        {{NormalIntentKind::PublishTelemetry, 0x01, -166, 42, 77},
          RuntimeOwnerDeviceOperationKind::PublishTelemetry},
         {{NormalIntentKind::RefreshRssi, 0, 0, 0, 0},
          RuntimeOwnerDeviceOperationKind::RefreshRssi},

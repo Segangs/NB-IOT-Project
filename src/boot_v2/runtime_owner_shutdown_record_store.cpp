@@ -4,12 +4,11 @@
 #include <cstring>
 #include <limits>
 
-#include "hardware/flash.h"
 #include "hardware/regs/addressmap.h"
-#include "pico/flash.h"
-#include "pico/platform.h"
+#include "pico.h"
 
 #include "flash_partition_layout.hpp"
+#include "../lib/flash_operation_service.hpp"
 #include "../lib/log.hpp"
 
 namespace boot_v2 {
@@ -35,17 +34,43 @@ const RuntimeOwnerShutdownRecordV1 &slot(
 struct ShutdownRecordFlashWrite {
     std::uint32_t offset{0};
     const std::uint8_t *page{nullptr};
+    bool verification_attempted{false};
+    bool verified{false};
 };
 
-void __no_inline_not_in_flash_func(shutdown_record_flash_callback)(
-    void *parameter)
+FlashOperationResult runtime_owner_shutdown_record_transaction(
+    FlashOperationTransaction &transaction,
+    void *const parameter) noexcept
 {
     auto *const write =
         static_cast<ShutdownRecordFlashWrite *>(parameter);
-    flash_range_erase(
-        write->offset, flash_partition::shutdown_record_slot_size);
-    flash_range_program(
-        write->offset, write->page, flash_partition::page_size);
+    if (write == nullptr) {
+        return FlashOperationCode::InvalidArgument;
+    }
+    const FlashOperationResult result =
+        transaction.replace_sector(
+        write->offset,
+        write->offset,
+        write->page,
+        flash_partition::page_size);
+    if (result.mutation ==
+        FlashMutationDisposition::NotAttempted) {
+        return result;
+    }
+
+    alignas(flash_partition::page_size)
+        std::uint8_t readback[flash_partition::page_size];
+    const FlashOperationResult read_result = transaction.read(
+        write->offset, readback, sizeof(readback));
+    if (read_result == FlashOperationCode::Succeeded) {
+        write->verification_attempted = true;
+        write->verified =
+            std::memcmp(
+                readback,
+                write->page,
+                sizeof(readback)) == 0;
+    }
+    return result;
 }
 
 std::uint32_t next_sequence(
@@ -99,14 +124,16 @@ bool runtime_owner_shutdown_record_commit(
     std::memset(page, 0xFF, sizeof(page));
     std::memcpy(page, &record, sizeof(record));
     ShutdownRecordFlashWrite write{target_offset, page};
-    if (flash_safe_execute(
-            shutdown_record_flash_callback, &write, timeout_ms) != 0) {
+    const FlashOperationResult result = flash_operation_execute(
+        runtime_owner_shutdown_record_transaction,
+        &write,
+        timeout_ms);
+    if (result.mutation ==
+        FlashMutationDisposition::NotAttempted) {
         return false;
     }
-
-    const RuntimeOwnerShutdownRecordV1 &written = slot(target_offset);
-    return runtime_owner_shutdown_record_valid(written) &&
-           std::memcmp(&written, &record, sizeof(record)) == 0;
+    return write.verification_attempted &&
+           write.verified;
 }
 
 void runtime_owner_shutdown_record_log_current() noexcept

@@ -35,12 +35,12 @@ constexpr RuntimeOwnerUrgentMessage urgent_message(
 
 constexpr NormalIntent valid_normal() noexcept
 {
-    return {NormalIntentKind::PublishTelemetry, 0, 0, 41, 9};
+    return {NormalIntentKind::PublishTelemetry, 0x01, -166, 41, 9};
 }
 
 constexpr NormalIntent invalid_normal() noexcept
 {
-    return {NormalIntentKind::PublishTelemetry, 0, 0, 41, 0};
+    return {NormalIntentKind::PublishTelemetry, 0x01, -166, 41, 0};
 }
 
 void test_power_mapping()
@@ -290,6 +290,65 @@ void test_control_and_source_shape()
     CHECK(source.find("TaskHandle_t") == std::string::npos);
 }
 
+void test_alarm_delivery_pop_forwards_exact_event()
+{
+    RuntimeOwnerTaskCore core{};
+    RuntimeOwnerTaskCoreTestPeer::fixture_activate(core);
+    RuntimeOwnerRtosOwnerLoop loop{core};
+    const TemperatureAlarmDeliveryEvent expected{
+        2,
+        71,
+        TemperatureAlarmTerminalResult::Failed,
+        TemperatureAlarmEdge::Clear,
+        0,
+    };
+    CHECK(RuntimeOwnerTaskCoreTestPeer::fixture_push_alarm_delivery(
+              core, expected) ==
+          TemperatureAlarmDeliveryPushResult::Accepted);
+
+    TemperatureAlarmDeliveryEvent delivered{};
+    CHECK(loop.try_pop_alarm_delivery(delivered) ==
+          TemperatureAlarmDeliveryPopResult::Popped);
+    CHECK(delivered.sensor_id == expected.sensor_id);
+    CHECK(delivered.snapshot_revision == expected.snapshot_revision);
+    CHECK(delivered.result == expected.result);
+    CHECK(delivered.edge == expected.edge);
+    CHECK(delivered.reserved == 0);
+    CHECK(loop.try_pop_alarm_delivery(delivered) ==
+          TemperatureAlarmDeliveryPopResult::Empty);
+}
+
+void test_consumer_pop_wakes_owner_for_full_retry()
+{
+    std::ifstream stream(
+        NB_IOT_SOURCE_ROOT "/src/boot_v2/runtime_owner_rtos.cpp");
+    const std::string source{
+        std::istreambuf_iterator<char>(stream),
+        std::istreambuf_iterator<char>()};
+    const std::size_t wrapper = source.find(
+        "runtime_owner_try_receive_temperature_alarm_delivery(");
+    const std::size_t pop = source.find(
+        "g_owner_loop.try_pop_alarm_delivery", wrapper);
+    const std::size_t popped = source.find(
+        "TemperatureAlarmDeliveryPopResult::Popped", pop);
+    const std::size_t notify =
+        source.find("xTaskNotifyGive(task_handle)", popped);
+    const std::size_t wrapper_end = source.find("\n}\n", wrapper);
+    const std::size_t awaiting =
+        source.find("AdapterStepAction::AwaitingTrustedReceipt");
+    CHECK(stream.is_open());
+    CHECK(wrapper != std::string::npos);
+    CHECK(pop != std::string::npos);
+    CHECK(popped != std::string::npos);
+    CHECK(notify != std::string::npos);
+    CHECK(wrapper_end != std::string::npos);
+    CHECK(wrapper < pop);
+    CHECK(pop < popped);
+    CHECK(popped < notify);
+    CHECK(notify < wrapper_end);
+    CHECK(awaiting != std::string::npos);
+}
+
 void test_transport_config_receipt_is_deferred_until_phase_advance()
 {
     struct Backend {
@@ -362,6 +421,8 @@ int main()
     test_invalid_urgent_does_not_reach_a_port_or_cycle();
     test_normal_classification_is_state_independent();
     test_control_and_source_shape();
+    test_alarm_delivery_pop_forwards_exact_event();
+    test_consumer_pop_wakes_owner_for_full_retry();
     test_transport_config_receipt_is_deferred_until_phase_advance();
     if (failures != 0) {
         std::printf("RUNTIME_OWNER_RTOS_OWNER_LOOP_TEST FAIL checks=%zu failures=%zu\n",

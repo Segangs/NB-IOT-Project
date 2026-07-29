@@ -24,20 +24,8 @@
 
 void detect_boot_reason() {
     if (watchdog_caused_reboot()) {
-        uint32_t magic = watchdog_hw->scratch[2];
-        uint32_t cmd_id = watchdog_hw->scratch[3];
-        
-        // Clear scratch registers immediately so they don't persist on next random reboot
-        watchdog_hw->scratch[2] = 0;
-        watchdog_hw->scratch[3] = 0;
-        
-        if (magic == 0x12345678) {
-            g_boot_reason_code = 1; // Cmd전송으로 인한 재부팅
-            g_boot_cmd_id = cmd_id;
-        } else {
-            g_boot_reason_code = 2; // 오류로 인한 워치독 재부팅
-            g_boot_cmd_id = 0;
-        }
+        g_boot_reason_code = 2; // 오류로 인한 워치독 재부팅
+        g_boot_cmd_id = 0;
     } else {
         // Check POWMAN chip reset register
         uint32_t reset_reason = powman_hw->chip_reset;

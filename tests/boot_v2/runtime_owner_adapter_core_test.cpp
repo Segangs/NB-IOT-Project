@@ -470,7 +470,7 @@ void RuntimeOwnerAdapterCoreTestPeer::fixture_seed_begin_fallback_cleanup_state(
     adapter.normal_queue_[0] = {
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             77,
             9,
@@ -528,7 +528,7 @@ void RuntimeOwnerAdapterCoreTestPeer::
     adapter.normal_queue_[0] = {
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             88,
             12,
@@ -907,12 +907,14 @@ using TrustedIngressPayloadKind =
 
 constexpr NormalIntent make_telemetry_intent(
     const std::uint32_t subject_id,
-    const std::uint32_t snapshot_revision) noexcept
+    const std::uint32_t snapshot_revision,
+    const std::int16_t value_deci_celsius = 0,
+    const std::uint8_t flags = 0x01) noexcept
 {
     return {
         NormalIntentKind::PublishTelemetry,
-        0,
-        0,
+        flags,
+        value_deci_celsius,
         subject_id,
         snapshot_revision,
     };
@@ -1030,7 +1032,7 @@ constexpr bool normal_intents_equal(
 {
     return left.kind == right.kind &&
            left.flags == right.flags &&
-           left.reserved == right.reserved &&
+           left.value_deci_celsius == right.value_deci_celsius &&
            left.subject_id == right.subject_id &&
            left.snapshot_revision == right.snapshot_revision;
 }
@@ -1776,7 +1778,7 @@ constexpr bool kAdapterStepResultValueFields =
 constexpr bool kNormalIntentValueFields = has_only_nonowning_value_fields<
     decltype(NormalIntent::kind),
     decltype(NormalIntent::flags),
-    decltype(NormalIntent::reserved),
+    decltype(NormalIntent::value_deci_celsius),
     decltype(NormalIntent::subject_id),
     decltype(NormalIntent::snapshot_revision)>;
 
@@ -1887,6 +1889,15 @@ static_assert(has_fixed_dto_contract<
               32,
               4>);
 static_assert(has_fixed_dto_contract<NormalIntent, 12, 4>);
+static_assert(offsetof(NormalIntent, kind) == 0);
+static_assert(offsetof(NormalIntent, flags) == 1);
+static_assert(offsetof(NormalIntent, value_deci_celsius) == 2);
+static_assert(offsetof(NormalIntent, subject_id) == 4);
+static_assert(offsetof(NormalIntent, snapshot_revision) == 8);
+static_assert(
+    std::is_same<
+        decltype(NormalIntent::value_deci_celsius),
+        std::int16_t>::value);
 static_assert(has_fixed_dto_contract<TrustedReceipt, 28, 4>);
 static_assert(has_fixed_dto_contract<NormalCompletion, 16, 4>);
 static_assert(has_fixed_dto_contract<TrustedIngressEnvelope, 52, 4>);
@@ -1951,7 +1962,7 @@ constexpr bool has_safe_default(const NormalIntent value)
 {
     return value.kind == NormalIntentKind::Invalid &&
            value.flags == 0 &&
-           value.reserved == 0 &&
+           value.value_deci_celsius == 0 &&
            value.subject_id == 0 &&
            value.snapshot_revision == 0;
 }
@@ -14339,8 +14350,10 @@ void test_shared_normal_intent_canonical_contract()
         NormalIntent intent;
         bool expected;
     };
-    constexpr std::array<Case, 17> cases{{
-        {{NormalIntentKind::PublishTelemetry, 0, 0, 1, 1}, true},
+    constexpr Case cases[] = {
+        {{NormalIntentKind::PublishTelemetry, 0x01, -166, 1, 1}, true},
+        {{NormalIntentKind::PublishTelemetry, 0x03, 250, 1, 2}, true},
+        {{NormalIntentKind::PublishTelemetry, 0x07, 251, 1, 3}, true},
         {{NormalIntentKind::RefreshRssi, 0, 0, 0, 0}, true},
         {{NormalIntentKind::PullConfig, 0, 0, 0, 0}, true},
         {{NormalIntentKind::PullCommand, 0, 0, 0, 0}, true},
@@ -14348,19 +14361,28 @@ void test_shared_normal_intent_canonical_contract()
         {{NormalIntentKind::PublishAdapterRestored, 0, 0, 1, 2}, true},
         {{NormalIntentKind::Invalid, 0, 0, 0, 0}, false},
         {{static_cast<NormalIntentKind>(0xff), 0, 0, 0, 0}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x00, 100, 1, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x02, 100, 1, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x04, 100, 1, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x05, 100, 1, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x06, 100, 1, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x08, 100, 1, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x01, 100, 0, 1}, false},
+        {{NormalIntentKind::PublishTelemetry, 0x01, 100, 1, 0}, false},
         {{NormalIntentKind::PublishTelemetry, 0, 0, 0, 1}, false},
         {{NormalIntentKind::PublishTelemetry, 0, 0, 1, 0}, false},
         {{NormalIntentKind::PublishAdapterRemoved, 0, 0, 0, 1}, false},
         {{NormalIntentKind::PublishAdapterRestored, 0, 0, 1, 0}, false},
+        {{NormalIntentKind::PublishAdapterRemoved, 0x01, 0, 1, 1}, false},
+        {{NormalIntentKind::PublishAdapterRestored, 0, -1, 1, 1}, false},
         {{NormalIntentKind::RefreshRssi, 0, 0, 1, 0}, false},
+        {{NormalIntentKind::RefreshRssi, 0, -1, 0, 0}, false},
         {{NormalIntentKind::PullConfig, 0, 0, 0, 1}, false},
         {{NormalIntentKind::PullCommand, 0, 0, 1, 0}, false},
-        {{NormalIntentKind::PublishTelemetry, 1, 0, 1, 1}, false},
-        {{NormalIntentKind::PublishTelemetry, 0, 1, 1, 1}, false},
-    }};
+    };
 
     static_assert(runtime_owner_normal_intent_is_canonical(cases[0].intent));
-    static_assert(!runtime_owner_normal_intent_is_canonical(cases[6].intent));
+    static_assert(!runtime_owner_normal_intent_is_canonical(cases[8].intent));
     for (const Case &entry : cases) {
         CHECK(runtime_owner_normal_intent_is_canonical(entry.intent) ==
               entry.expected);
@@ -14399,16 +14421,20 @@ void test_normal_admission_precedence_and_canonical_validation()
             before, RuntimeOwnerAdapterCoreTestPeer::snapshot(adapter)));
     }
 
-    const std::array<NormalIntent, 10> invalid_inputs{{
+    const std::array<NormalIntent, 14> invalid_inputs{{
         {},
         {static_cast<NormalIntentKind>(255), 0, 0, 0, 0},
         {NormalIntentKind::PublishTelemetry, 0, 0, 0, 1},
         {NormalIntentKind::PublishTelemetry, 0, 0, 1, 0},
-        {NormalIntentKind::PublishTelemetry, 1, 0, 1, 1},
-        {NormalIntentKind::PublishTelemetry, 0, 1, 1, 1},
+        {NormalIntentKind::PublishTelemetry, 0x02, 1, 1, 1},
+        {NormalIntentKind::PublishTelemetry, 0x04, 1, 1, 1},
+        {NormalIntentKind::PublishTelemetry, 0x05, 1, 1, 1},
+        {NormalIntentKind::PublishTelemetry, 0x08, 1, 1, 1},
         {NormalIntentKind::RefreshRssi, 0, 0, 1, 0},
+        {NormalIntentKind::RefreshRssi, 0, 1, 0, 0},
         {NormalIntentKind::PullConfig, 0, 0, 0, 1},
         {NormalIntentKind::PublishAdapterRemoved, 0, 0, 0, 1},
+        {NormalIntentKind::PublishAdapterRemoved, 1, 0, 1, 1},
         {NormalIntentKind::PublishAdapterRestored, 0, 0, 1, 0},
     }};
     for (const NormalIntent input : invalid_inputs) {
@@ -14569,17 +14595,17 @@ void test_normal_ring_fifo_high_water_and_index_wrap()
     CHECK(adapter.view().normal_high_water == 8);
 }
 
-void test_normal_queued_same_key_coalescing_and_stale_slot_exclusion()
+void test_normal_queued_exact_identity_coalescing_and_stale_slot_exclusion()
 {
     RuntimeOwnerAdapterCore adapter{};
     fixture_prepare_runtime_ready(adapter, true);
     auto normal = adapter.normal_port();
 
-    CHECK(normal.submit(make_telemetry_intent(11, 1)) ==
+    CHECK(normal.submit(make_telemetry_intent(11, 1, 215)) ==
           NormalSubmitResult::Accepted);
-    CHECK(normal.submit(make_telemetry_intent(22, 2)) ==
+    CHECK(normal.submit(make_telemetry_intent(22, 2, -166)) ==
           NormalSubmitResult::Accepted);
-    CHECK(normal.submit(make_telemetry_intent(11, 3)) ==
+    CHECK(normal.submit(make_telemetry_intent(11, 1, 215)) ==
           NormalSubmitResult::AcceptedCoalesced);
 
     RuntimeOwnerAdapterPrivateSnapshot state =
@@ -14593,11 +14619,11 @@ void test_normal_queued_same_key_coalescing_and_stale_slot_exclusion()
         static_cast<std::size_t>((state.normal_head + 1u) % 8u);
     CHECK(normal_intents_equal(
         state.normal_slots[first_index].intent,
-        make_telemetry_intent(11, 3)));
+        make_telemetry_intent(11, 1, 215)));
     CHECK(state.normal_slots[first_index].enqueue_sequence == 3);
     CHECK(normal_intents_equal(
         state.normal_slots[second_index].intent,
-        make_telemetry_intent(22, 2)));
+        make_telemetry_intent(22, 2, -166)));
     CHECK(state.normal_slots[second_index].enqueue_sequence == 2);
 
     CHECK(normal.submit(make_kind_only_intent(NormalIntentKind::RefreshRssi)) ==
@@ -14613,7 +14639,8 @@ void test_normal_queued_same_key_coalescing_and_stale_slot_exclusion()
     std::uint32_t consumed_sequence = 0;
     CHECK(RuntimeOwnerAdapterCoreTestPeer::fixture_consume_normal(
         adapter, consumed, consumed_sequence));
-    CHECK(normal_intents_equal(consumed, make_telemetry_intent(11, 3)));
+    CHECK(normal_intents_equal(
+        consumed, make_telemetry_intent(11, 1, 215)));
     CHECK(consumed_sequence == 3);
     CHECK(normal.submit(make_telemetry_intent(11, 4)) ==
           NormalSubmitResult::Accepted);
@@ -14642,6 +14669,42 @@ void test_normal_queued_same_key_coalescing_and_stale_slot_exclusion()
     after_reject.normal_rejected_full_count =
         before_reject.normal_rejected_full_count;
     CHECK(private_snapshots_equal(before_reject, after_reject));
+}
+
+void test_telemetry_alarm_edges_and_frozen_snapshots_have_distinct_identity()
+{
+    RuntimeOwnerAdapterCore adapter{};
+    fixture_prepare_runtime_ready(adapter, true);
+    auto normal = adapter.normal_port();
+
+    const NormalIntent telemetry =
+        make_telemetry_intent(1, 10, 250, 0x01);
+    const NormalIntent alarm_clear =
+        make_telemetry_intent(1, 10, 250, 0x03);
+    const NormalIntent alarm_high =
+        make_telemetry_intent(1, 10, 250, 0x07);
+    const NormalIntent next_revision =
+        make_telemetry_intent(1, 11, 250, 0x01);
+    const NormalIntent changed_value =
+        make_telemetry_intent(1, 10, 251, 0x01);
+    const NormalIntent other_sensor =
+        make_telemetry_intent(2, 10, 250, 0x01);
+
+    CHECK(normal.submit(telemetry) == NormalSubmitResult::Accepted);
+    CHECK(normal.submit(alarm_clear) == NormalSubmitResult::Accepted);
+    CHECK(normal.submit(alarm_high) == NormalSubmitResult::Accepted);
+    CHECK(normal.submit(next_revision) == NormalSubmitResult::Accepted);
+    CHECK(normal.submit(changed_value) == NormalSubmitResult::Accepted);
+    CHECK(normal.submit(other_sensor) == NormalSubmitResult::Accepted);
+    CHECK(adapter.view().normal_depth == 6);
+    CHECK(adapter.view().normal_coalesced_count == 0);
+
+    CHECK(normal.submit(alarm_high) ==
+          NormalSubmitResult::AcceptedCoalesced);
+    CHECK(normal.submit(alarm_clear) ==
+          NormalSubmitResult::AcceptedCoalesced);
+    CHECK(adapter.view().normal_depth == 6);
+    CHECK(adapter.view().normal_coalesced_count == 2);
 }
 
 void test_normal_sequence_saturation_precedes_full_and_latches_fatal_critical()
@@ -14712,7 +14775,7 @@ void test_normal_diagnostic_counters_saturate_without_wrapping()
               NormalSubmitResult::Accepted);
         RuntimeOwnerAdapterCoreTestPeer::fixture_set_normal_diagnostic_counts(
             adapter, maximum, 0);
-        CHECK(normal.submit(make_telemetry_intent(1, 2)) ==
+        CHECK(normal.submit(make_telemetry_intent(1, 1)) ==
               NormalSubmitResult::AcceptedCoalesced);
         CHECK(adapter.view().normal_coalesced_count == maximum);
         CHECK(RuntimeOwnerAdapterCoreTestPeer::snapshot(adapter).
@@ -16485,7 +16548,7 @@ void test_task3a_constructor_and_exercised_paths_are_allocation_free()
             fixture_prepare_runtime_ready(adapter, true);
             CHECK(normal.submit(make_telemetry_intent(1, 1)) ==
                   NormalSubmitResult::Accepted);
-            CHECK(normal.submit(make_telemetry_intent(1, 2)) ==
+            CHECK(normal.submit(make_telemetry_intent(1, 1)) ==
                   NormalSubmitResult::AcceptedCoalesced);
             RuntimeOwnerAdapterCoreTestPeer::
                 fixture_set_last_normal_enqueue_sequence(
@@ -16824,7 +16887,8 @@ int main()
     test_shutdown_pending_blocks_normal_before_shape_validation();
     test_safety_delivery_block_blocks_normal_before_shape_validation();
     test_normal_ring_fifo_high_water_and_index_wrap();
-    test_normal_queued_same_key_coalescing_and_stale_slot_exclusion();
+    test_normal_queued_exact_identity_coalescing_and_stale_slot_exclusion();
+    test_telemetry_alarm_edges_and_frozen_snapshots_have_distinct_identity();
     test_normal_sequence_saturation_precedes_full_and_latches_fatal_critical();
     test_normal_diagnostic_counters_saturate_without_wrapping();
     test_shutdown_sticky_request_and_terminal_precedence();

@@ -562,10 +562,19 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_config() noexcept
     if (!modem.is_connected()) {
         return failed(kDiagnosticMqtt);
     }
-    char topic[80]{};
+    char response_topic[80]{};
+    char request_topic[80]{};
     std::snprintf(
-        topic, sizeof(topic), "devices/%s/config/request", mqtt_device_id());
-    if (!modem.modem_MqttPublish(topic, "{}")) {
+        response_topic,
+        sizeof(response_topic),
+        "devices/%s/config",
+        mqtt_device_id());
+    std::snprintf(
+        request_topic,
+        sizeof(request_topic),
+        "devices/%s/config/request",
+        mqtt_device_id());
+    if (!modem.modem_MqttPublish(request_topic, "{}")) {
         return failed(kDiagnosticPublish);
     }
 
@@ -588,6 +597,7 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_config() noexcept
         std::size_t payload_bytes = 0;
         if (mqtt_kmqtt_data_extract_payload(
                 rx,
+                response_topic,
                 payload,
                 sizeof(payload),
                 &frame_bytes,
@@ -606,10 +616,7 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_config() noexcept
     }
     LOG("CONFIG_FRAME_TIMEOUT %u\n",
         static_cast<unsigned>(std::strlen(modem.get_rx_buffer())));
-    if (g_sensor_count == 0) {
-        init_fixed_sensor_map();
-    }
-    return succeeded();
+    return failed(kDiagnosticPoll);
 }
 
 RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::pull_command() noexcept
@@ -862,17 +869,15 @@ RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::freeze_snapshot(
 RuntimeOwnerPhysicalResult RuntimeOwnerDeviceBackend::publish_telemetry(
     const RuntimeOwnerExecutorCommand command) noexcept
 {
-    const std::uint32_t sensor_id = command.source.normal_intent.subject_id;
-    if (sensor_id == 0 || sensor_id > 2) {
-        return failed(kDiagnosticInvalidCommand);
-    }
-    SensorQualitySnapshotV1 sensor{};
-    if (!copy_sensor_quality_snapshot(sensor_id - 1, sensor) ||
-        !sensor_quality_allows_telemetry(sensor)) {
+    const NormalIntent intent = command.source.normal_intent;
+    const std::uint32_t sensor_id = intent.subject_id;
+    if (intent.kind != NormalIntentKind::PublishTelemetry ||
+        !runtime_owner_normal_intent_is_canonical(intent) ||
+        sensor_id > 2) {
         return failed(kDiagnosticInvalidCommand);
     }
     const float value =
-        static_cast<float>(sensor.value_deci_celsius) / 10.0f;
+        static_cast<float>(intent.value_deci_celsius) / 10.0f;
     char topic[64]{};
     char payload[64]{};
     std::snprintf(

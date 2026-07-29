@@ -165,7 +165,7 @@ void test_contract_numeric_values_and_defaults()
     CHECK(input.reserved == 0);
     CHECK(input.normal.kind == NormalIntentKind::Invalid);
     CHECK(input.normal.flags == 0);
-    CHECK(input.normal.reserved == 0);
+    CHECK(input.normal.value_deci_celsius == 0);
     CHECK(input.normal.subject_id == 0);
     CHECK(input.normal.snapshot_revision == 0);
 
@@ -350,7 +350,7 @@ constexpr bool normal_intents_equal(
 {
     return left.kind == right.kind &&
            left.flags == right.flags &&
-           left.reserved == right.reserved &&
+           left.value_deci_celsius == right.value_deci_celsius &&
            left.subject_id == right.subject_id &&
            left.snapshot_revision == right.snapshot_revision;
 }
@@ -523,7 +523,7 @@ void test_dormant_normal_cycle_is_rejected_without_adapter_mutation()
         0,
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             41,
             9,
@@ -602,7 +602,7 @@ void test_dormant_malformed_normal_is_rejected_without_adapter_mutation()
         {
             NormalIntentKind::Invalid,
             255,
-            65535,
+            -1,
             UINT32_MAX,
             UINT32_MAX,
         },
@@ -635,7 +635,7 @@ void test_active_source_scoped_shutdown_blocks_control_and_normal()
         0,
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             51,
             11,
@@ -674,7 +674,7 @@ void test_active_transport_and_normal_selects_transport_only_and_translates()
         0,
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             61,
             13,
@@ -722,7 +722,7 @@ void test_active_normal_only_selects_normal_and_translates_adapter()
         0,
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             71,
             17,
@@ -766,7 +766,7 @@ void test_active_malformed_normal_rejects_before_admission_and_steps_once()
     RuntimeOwnerTaskCycleInput input{};
     input.normal_pending = 1;
     input.normal = {
-        NormalIntentKind::PublishTelemetry, 0, 0, 71, 0};
+        NormalIntentKind::PublishTelemetry, 0x01, 0, 71, 0};
 
     const AdapterStepResult expected_step = reference.step();
     const RuntimeOwnerAdapterView expected_view = reference.view();
@@ -860,7 +860,7 @@ void test_terminal_all_pending_is_rejected_without_adapter_mutation()
         0,
         {
             NormalIntentKind::PublishTelemetry,
-            0,
+            0x01,
             0,
             81,
             19,

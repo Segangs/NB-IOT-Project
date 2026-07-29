@@ -4,12 +4,11 @@
 #include <cstdint>
 #include <cstring>
 
-#include "hardware/flash.h"
 #include "hardware/regs/addressmap.h"
-#include "pico/flash.h"
-#include "pico/platform.h"
+#include "pico.h"
 
 #include "flash_partition_layout.hpp"
+#include "../lib/flash_operation_service.hpp"
 
 namespace boot_v2 {
 namespace {
@@ -18,8 +17,6 @@ static_assert(flash_partition::total_size == PICO_FLASH_SIZE_BYTES);
 static_assert(
     flash_partition::command_journal_slot_size ==
     flash_partition::sector_size);
-static_assert(flash_partition::sector_size == FLASH_SECTOR_SIZE);
-static_assert(flash_partition::page_size == FLASH_PAGE_SIZE);
 static_assert(
     sizeof(CommandJournalRecordV1) <= flash_partition::page_size);
 
@@ -60,20 +57,43 @@ bool command_journal_flash_read_slot(
 struct CommandJournalFlashWrite {
     std::uint32_t offset{0};
     const std::uint8_t *page{nullptr};
+    bool verification_attempted{false};
+    bool verified{false};
 };
 
-void __no_inline_not_in_flash_func(command_journal_flash_write_callback)(
-    void *parameter)
+FlashOperationResult command_journal_flash_replace_transaction(
+    FlashOperationTransaction &transaction,
+    void *const parameter) noexcept
 {
     auto *const write =
         static_cast<CommandJournalFlashWrite *>(parameter);
-    flash_range_erase(
+    if (write == nullptr) {
+        return FlashOperationCode::InvalidArgument;
+    }
+    const FlashOperationResult result =
+        transaction.replace_sector(
         write->offset,
-        flash_partition::command_journal_slot_size);
-    flash_range_program(
         write->offset,
         write->page,
         flash_partition::page_size);
+    if (result.mutation ==
+        FlashMutationDisposition::NotAttempted) {
+        return result;
+    }
+
+    alignas(flash_partition::page_size)
+        std::uint8_t readback[flash_partition::page_size];
+    const FlashOperationResult read_result = transaction.read(
+        write->offset, readback, sizeof(readback));
+    if (read_result == FlashOperationCode::Succeeded) {
+        write->verification_attempted = true;
+        write->verified =
+            std::memcmp(
+                readback,
+                write->page,
+                sizeof(readback)) == 0;
+    }
+    return result;
 }
 
 bool command_journal_flash_replace_slot(
@@ -97,10 +117,17 @@ bool command_journal_flash_replace_slot(
     }
 
     CommandJournalFlashWrite write{offset, page};
-    return flash_safe_execute(
-               command_journal_flash_write_callback,
-               &write,
-               timeout_ms) == 0;
+    const FlashOperationResult result =
+        flash_operation_execute(
+            command_journal_flash_replace_transaction,
+            &write,
+            timeout_ms);
+    if (result.mutation ==
+        FlashMutationDisposition::NotAttempted) {
+        return false;
+    }
+    return write.verification_attempted &&
+           write.verified;
 }
 
 } // namespace

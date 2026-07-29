@@ -126,8 +126,6 @@ private:
         AwaitingUsb = 2,
         WatchdogAllowed = 3,
         Gp15Allowed = 4,
-        UsbChanged = 5,
-        EvidenceMissing = 6,
     };
 
     [[nodiscard]] RuntimeOwnerShutdownDirective directive(
@@ -145,7 +143,6 @@ private:
     std::uint8_t cleanup_timed_out_mask_{0};
     std::uint8_t cleanup_failed_mask_{0};
     std::uint8_t hard_deadline_reached_{0};
-    std::uint8_t poweroff_evidence_ready_{0};
     RuntimeOwnerUrgentMessage context_{};
     UsbPowerObservation initial_usb_{};
     std::uint32_t started_at_monotonic_ms_{0};

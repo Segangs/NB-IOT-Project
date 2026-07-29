@@ -100,18 +100,6 @@ RuntimeOwnerShutdownDirective RuntimeOwnerShutdownFinalizerCore::next(
             RuntimeOwnerShutdownCleanupStep::Invalid,
             0);
     }
-    if (phase_ == Phase::UsbChanged) {
-        return directive(
-            RuntimeOwnerShutdownFinalizeAction::AbortUsbChanged,
-            RuntimeOwnerShutdownCleanupStep::Invalid,
-            0);
-    }
-    if (phase_ == Phase::EvidenceMissing) {
-        return directive(
-            RuntimeOwnerShutdownFinalizeAction::AbortEvidenceMissing,
-            RuntimeOwnerShutdownCleanupStep::Invalid,
-            0);
-    }
     if (phase_ == Phase::AwaitingUsb) {
         return directive(
             RuntimeOwnerShutdownFinalizeAction::RecheckUsb,
@@ -174,10 +162,6 @@ RuntimeOwnerShutdownFinalizerCore::complete(
         cleanup_failed_mask_ =
             static_cast<std::uint8_t>(cleanup_failed_mask_ | mask);
     }
-    if (step == RuntimeOwnerShutdownCleanupStep::PowerOffModem &&
-        result == RuntimeOwnerShutdownStepResult::Succeeded) {
-        poweroff_evidence_ready_ = 1;
-    }
     ++step_index_;
     if (step_index_ >= kCleanupSteps.size()) {
         phase_ = Phase::AwaitingUsb;
@@ -190,9 +174,7 @@ RuntimeOwnerShutdownFinalizerCore::submit_usb_recheck(
     const UsbPowerObservation observation) noexcept
 {
     if (phase_ == Phase::WatchdogAllowed ||
-        phase_ == Phase::Gp15Allowed ||
-        phase_ == Phase::UsbChanged ||
-        phase_ == Phase::EvidenceMissing) {
+        phase_ == Phase::Gp15Allowed) {
         return RuntimeOwnerShutdownUsbResult::RejectedTerminal;
     }
     if (phase_ != Phase::AwaitingUsb ||
@@ -207,14 +189,6 @@ RuntimeOwnerShutdownFinalizerCore::submit_usb_recheck(
         return RuntimeOwnerShutdownUsbResult::RejectedInvalid;
     }
 
-    if (observation.present != initial_usb_.present) {
-        phase_ = Phase::UsbChanged;
-        return RuntimeOwnerShutdownUsbResult::UsbChanged;
-    }
-    if (hard_deadline_reached_ != 0 || poweroff_evidence_ready_ == 0) {
-        phase_ = Phase::EvidenceMissing;
-        return RuntimeOwnerShutdownUsbResult::EvidenceMissing;
-    }
     if (context_.intent == RuntimeOwnerShutdownIntent::Reboot) {
         phase_ = Phase::WatchdogAllowed;
         return RuntimeOwnerShutdownUsbResult::WatchdogAllowed;

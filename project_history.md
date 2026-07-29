@@ -26,6 +26,46 @@
 
 ---
 
+## 📅 2026-07-29: [Mid-review Remediation] RuntimeOwner·Flash·온도 알림·서버 권한 정밀 보강
+
+* **개발 범주**: shutdown/watchdog, RuntimeOwner SMP, Flash transaction, 온도 알림 delivery, Flask device authorization, TDD·독립 리뷰
+* **수정 범위**: firmware RuntimeOwner·sensor·modem·LCD·Flash 계층, boot_v2 host tests, Flask `app.py`·권한 회귀 테스트
+* shutdown finalizer의 최신 유효 USB sample 단일 판정과 deadline 종료 시 추가 cleanup 없는 안전 종료
+* watchdog scratch 2/3의 backend prepare 단일 소비·분류·clear와 `main.cpp` 중복 접근 제거
+* MQTT command 80바이트 허용·81바이트 거절, TEMP2 +5℃ 보정, 성공 응답 뒤 AT settle delay, `AT+CFUN=1` 실패 시 초기화 중단
+* Config request/response exact topic 대조와 malformed·wrong-topic·timeout fail-closed, 마지막 정상 설정·고정 sensor map 보존
+* CRC fallback display validity 기반 LCD 표시와 raw sensor status 진단 보존
+* RuntimeOwner public redacted status의 owner-side snapshot·critical-section cache 게시와 cross-core mutable core 직접 조회 제거
+* scheduler 시작 전 core0 IRQ-safe backend와 scheduler 시작 후 mutex·단일 deadline 기반 Flash operation service 통합
+* Flash mutation 결과 `Applied`·`NotAttempted`·`Unknown` 구분과 logger·command journal·shutdown record readback 재조정
+* alarm queue admission과 물리 MQTT terminal completion 분리, 12바이트 immutable `NormalIntent`의 revision·edge·signed 온도 동결
+* 16칸 lock-free SPSC completion mailbox와 success/failure/timeout/cancel·stale/duplicate·포화 보존 처리
+* 전송 실패 재시도의 최초 edge·온도값 보존과 revision만 갱신, 성공 뒤 반대 edge의 최신 유효 온도 캡처
+* Flask 일반 사용자의 소유 기기·센서 범위 강제와 foreign/missing 동일 차단, admin 범위 유지, token-only fail-closed
+* RLS 비활성 상태에서 일반 사용자 Realtime key 비노출과 DB·EMQX·운영 서버 mutation 0
+* 독립 alarm hotfix 리뷰와 최종 통합 리뷰 Critical/Important 0건
+* fresh Release Host 47/47·알람 core 183 checks·completion bridge 620 checks·Flash behavior 122 checks·shutdown finalizer 204 checks 통과
+* Flask unittest 127/127·모바일 JavaScript 8/8·Python compile·`git diff --check` 통과
+* 첫 실기 Flash에서 USB 단독·5V 안정 상태 모두 `OK` 뒤 정확히 2초 후 config URC tail만 잔존하는 `CONFIG_FRAME_TIMEOUT` 재현
+* MQTT publish의 기본 2초 단순 sleep 중 UART FIFO 유실과 exact parser·1024바이트 누적 buffer·6초 timeout 비원인 판정
+* `KMQTTPUB` callsite 전용 post-delay 0 적용과 즉시 1ms PUBACK drain, 다음 AT 명령의 기존 1초 quiet settle 유지
+* 제품 수정 전 source 계약 RED 3/625·최소 한 줄 수정 뒤 GREEN 625/625 확인
+* `tasks_mqtt.cpp` 보호 SHA 갱신과 완전 신규 Release Host 구성·빌드·47/47 통과
+* 실제 환경값 기반 fresh Pico 2 Release UF2 `/private/tmp/nb-iot-mqtt-fix-firmware.Jftw6G/nb_iot_project.uf2` 생성
+* UF2 524,800바이트·2026-07-29 22:22:55 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`
+* 자동 BOOTSEL 전환·UF2 Flash·시리얼 재연결과 `CONFIG_FRAME_COMPLETE 300 BUFFER_BYTES=101 FRAME_BYTES=60 PAYLOAD_BYTES=8` 확인
+* `CONFIG_LIMIT_OK -7.0,-10.0`·`PERIODIC_READY`·반복 `POWER_PROBE_FLASH_WRITE`·RuntimeOwner fault 0 확인
+* 전원 버튼 입력 뒤 MQTT 세션 1~6 정리·`AT+KCNXDOWN=1`·`AT+CFUN=0`·`AT+CPWROFF`·`SHUTDOWN_RECORD_OK` 확인
+* 최신 USB 연결 판정 기반 `SHUTDOWN_WATCHDOG_COMMIT`·시리얼 1초 내 재연결·새 부팅 성공
+* 종료 대기 중 PWR/STATUS LED 빨간색 점멸 사용자 실물 확인
+* watchdog 재부팅 뒤 `MQTT_PUB_OK`·`CONFIG_FRAME_COMPLETE`·`CONFIG_LIMIT_OK`·`PERIODIC_READY`·`BOOT_DONE` 재확인
+* 통합 후보 수정 54개·신규 23개 전수 privacy 범위 감사와 private handoff·build/cache·환경파일 후보 0건 확인
+* 변경 추가분 PEM·AWS·OpenAI·JWT·Supabase token·credential assignment 패턴 0건 확인
+* `**/.env` Git 제외 보강과 `Segang/project/.env` 제외·`.env.example` 비제외 계약 확인
+* pre-merge fresh Release Host 47/47·Flask unittest 127/127·모바일 JavaScript 8/8·Python compile 통과
+* fresh Pico 2 Release UF2 524,800바이트·2026-07-29 23:04:09 KST·SHA-256 `75ac143059f4cd65cd1641ce77c81e37cc88551f3ce728c38c3795259b49bc57`
+* 작업 worktree 임시 `.env` 제거·추가 비밀값 literal 0건·private handoff Git 제외 유지
+
 ## 📅 2026-07-29: [Operations Closeout] Ubuntu·EMQX·UI 정합성 마감
 
 * **개발 범주**: Ubuntu Flask deployment, EMQX read-only verify, 운영 UI parity, TDD

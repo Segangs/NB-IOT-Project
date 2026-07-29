@@ -2,12 +2,18 @@
 #define NB_IOT_BOOT_V2_RUNTIME_OWNER_ADAPTER_CORE_HPP
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 #include "runtime_owner_core.hpp"
+#include "temperature_alarm_delivery_mailbox.hpp"
 
 namespace boot_v2 {
+
+#if defined(NB_IOT_RUNTIME_OWNER_TASK_TESTING)
+class RuntimeOwnerTaskCoreTestPeer;
+#endif
 
 enum class NormalSubmitResult : std::uint8_t {
     RejectedInvalid = 0,
@@ -84,30 +90,79 @@ enum class NormalIntentKind : std::uint8_t {
 struct NormalIntent {
     NormalIntentKind kind{NormalIntentKind::Invalid};
     std::uint8_t flags{0};
-    std::uint16_t reserved{0};
+    std::int16_t value_deci_celsius{0};
     std::uint32_t subject_id{0};
     std::uint32_t snapshot_revision{0};
 };
 
+inline constexpr std::uint8_t kNormalIntentFlagFrozenValue = 0x01u;
+inline constexpr std::uint8_t kNormalIntentFlagAlarmEdge = 0x02u;
+inline constexpr std::uint8_t kNormalIntentFlagAlarmHigh = 0x04u;
+inline constexpr std::uint8_t kNormalIntentTelemetryFlagMask =
+    kNormalIntentFlagFrozenValue |
+    kNormalIntentFlagAlarmEdge |
+    kNormalIntentFlagAlarmHigh;
+
 [[nodiscard]] constexpr bool runtime_owner_normal_intent_is_canonical(
     const NormalIntent input) noexcept
 {
-    if (input.flags != 0 || input.reserved != 0) {
-        return false;
-    }
     switch (input.kind) {
-    case NormalIntentKind::PublishTelemetry:
+    case NormalIntentKind::PublishTelemetry: {
+        const bool flags_known =
+            (input.flags &
+             static_cast<std::uint8_t>(~kNormalIntentTelemetryFlagMask)) == 0;
+        const bool frozen_value_present =
+            (input.flags & kNormalIntentFlagFrozenValue) != 0;
+        const bool alarm_edge_present =
+            (input.flags & kNormalIntentFlagAlarmEdge) != 0;
+        const bool alarm_high =
+            (input.flags & kNormalIntentFlagAlarmHigh) != 0;
+        return flags_known && frozen_value_present &&
+               (!alarm_high || alarm_edge_present) &&
+               input.subject_id != 0 &&
+               input.snapshot_revision != 0;
+    }
     case NormalIntentKind::PublishAdapterRemoved:
     case NormalIntentKind::PublishAdapterRestored:
-        return input.subject_id != 0 && input.snapshot_revision != 0;
+        return input.flags == 0 && input.value_deci_celsius == 0 &&
+               input.subject_id != 0 &&
+               input.snapshot_revision != 0;
     case NormalIntentKind::RefreshRssi:
     case NormalIntentKind::PullConfig:
     case NormalIntentKind::PullCommand:
-        return input.subject_id == 0 && input.snapshot_revision == 0;
+        return input.flags == 0 && input.value_deci_celsius == 0 &&
+               input.subject_id == 0 &&
+               input.snapshot_revision == 0;
     case NormalIntentKind::Invalid:
     default:
         return false;
     }
+}
+
+[[nodiscard]] constexpr bool runtime_owner_alarm_intent_edge(
+    const NormalIntent input,
+    TemperatureAlarmEdge &edge) noexcept
+{
+    edge = TemperatureAlarmEdge::Invalid;
+    if (!runtime_owner_normal_intent_is_canonical(input) ||
+        input.kind != NormalIntentKind::PublishTelemetry ||
+        (input.subject_id != 1 && input.subject_id != 2)) {
+        return false;
+    }
+
+    constexpr std::uint8_t kClearFlags =
+        kNormalIntentFlagFrozenValue | kNormalIntentFlagAlarmEdge;
+    constexpr std::uint8_t kHighFlags =
+        kClearFlags | kNormalIntentFlagAlarmHigh;
+    if (input.flags == kClearFlags) {
+        edge = TemperatureAlarmEdge::Clear;
+        return true;
+    }
+    if (input.flags == kHighFlags) {
+        edge = TemperatureAlarmEdge::High;
+        return true;
+    }
+    return false;
 }
 
 enum class TrustedReceiptKind : std::uint8_t {
@@ -487,6 +542,13 @@ public:
     [[nodiscard]] DispatchAckResult acknowledge_dispatch(
         std::uint32_t dispatch_sequence) noexcept;
     [[nodiscard]] RuntimeOwnerAdapterView view() const noexcept;
+    [[nodiscard]] TemperatureAlarmDeliveryPopResult
+        try_pop_alarm_delivery(
+            TemperatureAlarmDeliveryEvent &event) noexcept;
+    [[nodiscard]] TemperatureAlarmDeliveryMailboxView
+        alarm_delivery_mailbox_view() const noexcept;
+    [[nodiscard]] bool
+        take_alarm_delivery_overflow_log_pending() noexcept;
 
 private:
     friend class RuntimeOwnerNormalPort;
@@ -495,6 +557,9 @@ private:
     friend class RuntimeOwnerNormalCompletionPort;
 #if defined(NB_IOT_RUNTIME_OWNER_ADAPTER_TESTING)
     friend class RuntimeOwnerAdapterCoreTestPeer;
+#endif
+#if defined(NB_IOT_RUNTIME_OWNER_TASK_TESTING)
+    friend class RuntimeOwnerTaskCoreTestPeer;
 #endif
 
     enum class TrustedIngressPayloadKind : std::uint8_t {
@@ -623,6 +688,7 @@ private:
     void cancel_for_active_critical() noexcept;
     void cancel_for_shutdown() noexcept;
     void quarantine_physical_inflight() noexcept;
+    void emit_alarm_cancellation(NormalIntent intent) noexcept;
     [[nodiscard]] AdapterStepResult shutdown_terminal_step(
         RuntimeOwnerPhase phase) noexcept;
     [[nodiscard]] UrgentRequestResult request_shutdown() noexcept;
@@ -661,6 +727,7 @@ private:
     PendingEffectStorage pending_effects_{};
     LastTrustedReceiptSignature last_trusted_receipt_signature_{};
     LastNormalCompletionSignature last_normal_completion_signature_{};
+    TemperatureAlarmDeliveryMailbox alarm_delivery_mailbox_{};
     AdapterCriticalLedger critical_{};
     std::uint32_t last_normal_enqueue_sequence_{0};
     std::uint32_t last_trusted_ingress_sequence_{0};
@@ -910,6 +977,15 @@ static_assert(has_uint8_underlying_type<AdapterCriticalReason>);
 
 static_assert(has_fixed_dto_contract<AdapterStepResult, 16, 4>);
 static_assert(has_fixed_dto_contract<NormalIntent, 12, 4>);
+static_assert(offsetof(NormalIntent, kind) == 0);
+static_assert(offsetof(NormalIntent, flags) == 1);
+static_assert(offsetof(NormalIntent, value_deci_celsius) == 2);
+static_assert(offsetof(NormalIntent, subject_id) == 4);
+static_assert(offsetof(NormalIntent, snapshot_revision) == 8);
+static_assert(
+    std::is_same<
+        decltype(NormalIntent::value_deci_celsius),
+        std::int16_t>::value);
 static_assert(has_fixed_dto_contract<TrustedReceipt, 28, 4>);
 static_assert(has_fixed_dto_contract<NormalCompletion, 16, 4>);
 static_assert(has_fixed_dto_contract<AdapterDispatch, 48, 4>);
@@ -928,7 +1004,7 @@ static_assert(has_only_nonowning_value_fields<
 static_assert(has_only_nonowning_value_fields<
               decltype(NormalIntent::kind),
               decltype(NormalIntent::flags),
-              decltype(NormalIntent::reserved),
+              decltype(NormalIntent::value_deci_celsius),
               decltype(NormalIntent::subject_id),
               decltype(NormalIntent::snapshot_revision)>);
 

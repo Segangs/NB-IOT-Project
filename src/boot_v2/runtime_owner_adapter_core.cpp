@@ -50,6 +50,25 @@ constexpr bool is_liveness_start_effect(
            effect == RuntimeOwnerEffectKind::PullFollowupConfig;
 }
 
+constexpr TemperatureAlarmTerminalResult
+normal_completion_terminal_result(
+    const NormalCompletionKind kind) noexcept
+{
+    switch (kind) {
+    case NormalCompletionKind::Succeeded:
+        return TemperatureAlarmTerminalResult::Succeeded;
+    case NormalCompletionKind::Failed:
+        return TemperatureAlarmTerminalResult::Failed;
+    case NormalCompletionKind::TimedOut:
+        return TemperatureAlarmTerminalResult::TimedOut;
+    case NormalCompletionKind::Cancelled:
+        return TemperatureAlarmTerminalResult::Cancelled;
+    case NormalCompletionKind::Invalid:
+    default:
+        return TemperatureAlarmTerminalResult::Invalid;
+    }
+}
+
 constexpr bool receipt_requires_physical_inflight(
     const TrustedReceiptKind kind) noexcept
 {
@@ -1025,6 +1044,25 @@ RuntimeOwnerAdapterView RuntimeOwnerAdapterCore::view() const noexcept
     return result;
 }
 
+TemperatureAlarmDeliveryPopResult
+RuntimeOwnerAdapterCore::try_pop_alarm_delivery(
+    TemperatureAlarmDeliveryEvent &event) noexcept
+{
+    return alarm_delivery_mailbox_.try_pop(event);
+}
+
+TemperatureAlarmDeliveryMailboxView
+RuntimeOwnerAdapterCore::alarm_delivery_mailbox_view() const noexcept
+{
+    return alarm_delivery_mailbox_.view();
+}
+
+bool RuntimeOwnerAdapterCore::
+    take_alarm_delivery_overflow_log_pending() noexcept
+{
+    return alarm_delivery_mailbox_.take_overflow_log_pending();
+}
+
 bool RuntimeOwnerAdapterCore::normal_intents_have_same_key(
     const NormalIntent left,
     const NormalIntent right) noexcept
@@ -1032,10 +1070,17 @@ bool RuntimeOwnerAdapterCore::normal_intents_have_same_key(
     if (left.kind != right.kind) {
         return false;
     }
-    return (left.kind != NormalIntentKind::PublishTelemetry &&
-            left.kind != NormalIntentKind::PublishAdapterRemoved &&
-            left.kind != NormalIntentKind::PublishAdapterRestored) ||
-           left.subject_id == right.subject_id;
+    if (left.kind == NormalIntentKind::PublishTelemetry) {
+        return left.flags == right.flags &&
+               left.value_deci_celsius == right.value_deci_celsius &&
+               left.subject_id == right.subject_id &&
+               left.snapshot_revision == right.snapshot_revision;
+    }
+    if (left.kind == NormalIntentKind::PublishAdapterRemoved ||
+        left.kind == NormalIntentKind::PublishAdapterRestored) {
+        return left.subject_id == right.subject_id;
+    }
+    return true;
 }
 
 bool RuntimeOwnerAdapterCore::trusted_receipt_is_canonical(
@@ -1390,11 +1435,30 @@ RuntimeOwnerView RuntimeOwnerAdapterCore::view_after_core_submit() noexcept
     return after;
 }
 
+void RuntimeOwnerAdapterCore::emit_alarm_cancellation(
+    const NormalIntent intent) noexcept
+{
+    TemperatureAlarmEdge edge = TemperatureAlarmEdge::Invalid;
+    if (!runtime_owner_alarm_intent_edge(intent, edge)) {
+        return;
+    }
+    (void)alarm_delivery_mailbox_.try_push({
+        intent.subject_id,
+        intent.snapshot_revision,
+        TemperatureAlarmTerminalResult::Cancelled,
+        edge,
+        0,
+    });
+}
+
 void RuntimeOwnerAdapterCore::quarantine_physical_inflight() noexcept
 {
     if (physical_inflight_.kind == AdapterDispatchKind::None ||
         physical_inflight_cancel_pending_) {
         return;
+    }
+    if (physical_inflight_.kind == AdapterDispatchKind::NormalIntent) {
+        emit_alarm_cancellation(physical_inflight_.normal_intent);
     }
     physical_inflight_cancel_pending_ = true;
     if (physical_inflight_.kind == AdapterDispatchKind::NormalIntent) {
@@ -1407,6 +1471,7 @@ void RuntimeOwnerAdapterCore::quarantine_physical_inflight() noexcept
 void RuntimeOwnerAdapterCore::cancel_non_safety_authorization() noexcept
 {
     if (current_dispatch_.kind == AdapterDispatchKind::NormalIntent) {
+        emit_alarm_cancellation(current_dispatch_.normal_intent);
         increment_saturating(normal_cancelled_count_);
         current_dispatch_ = {};
     } else if (current_dispatch_.kind == AdapterDispatchKind::CoreEffect &&
@@ -1416,6 +1481,11 @@ void RuntimeOwnerAdapterCore::cancel_non_safety_authorization() noexcept
         current_dispatch_ = {};
     }
 
+    for (std::uint8_t offset = 0; offset < normal_count_; ++offset) {
+        const std::uint8_t index = static_cast<std::uint8_t>(
+            (normal_head_ + offset) % kNormalQueueCapacity);
+        emit_alarm_cancellation(normal_queue_[index].intent);
+    }
     add_saturating(normal_cancelled_count_, normal_count_);
     normal_queue_ = {};
     normal_head_ = 0;
@@ -2572,12 +2642,12 @@ AdapterStepResult RuntimeOwnerAdapterCore::step() noexcept
             };
         }
 
-        envelope = {};
-        trusted_head_ = static_cast<std::uint8_t>(
-            (trusted_head_ + 1) % kTrustedQueueCapacity);
-        --trusted_count_;
-        physical_inflight_ = {};
         if (physical_inflight_cancel_pending_) {
+            envelope = {};
+            trusted_head_ = static_cast<std::uint8_t>(
+                (trusted_head_ + 1) % kTrustedQueueCapacity);
+            --trusted_count_;
+            physical_inflight_ = {};
             physical_inflight_cancel_pending_ = false;
             increment_saturating(normal_completion_stale_count_);
             return {
@@ -2590,6 +2660,41 @@ AdapterStepResult RuntimeOwnerAdapterCore::step() noexcept
                 0,
             };
         }
+
+        TemperatureAlarmEdge alarm_edge =
+            TemperatureAlarmEdge::Invalid;
+        if (runtime_owner_alarm_intent_edge(
+                physical_inflight_.normal_intent, alarm_edge)) {
+            const TemperatureAlarmDeliveryEvent delivery{
+                physical_inflight_.normal_intent.subject_id,
+                physical_inflight_.normal_intent.snapshot_revision,
+                normal_completion_terminal_result(completion.kind),
+                alarm_edge,
+                0,
+            };
+            const TemperatureAlarmDeliveryPushResult pushed =
+                alarm_delivery_mailbox_.try_push(delivery);
+            if (pushed ==
+                    TemperatureAlarmDeliveryPushResult::RejectedFull ||
+                pushed ==
+                    TemperatureAlarmDeliveryPushResult::RejectedInvalid) {
+                return {
+                    AdapterStepAction::AwaitingTrustedReceipt,
+                    RuntimeOwnerDisposition::Rejected,
+                    before.phase,
+                    before.phase,
+                    0,
+                    0,
+                    0,
+                };
+            }
+        }
+
+        envelope = {};
+        trusted_head_ = static_cast<std::uint8_t>(
+            (trusted_head_ + 1) % kTrustedQueueCapacity);
+        --trusted_count_;
+        physical_inflight_ = {};
 
         last_normal_completion_signature_ = {
             ingress_sequence,

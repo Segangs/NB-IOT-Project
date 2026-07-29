@@ -140,8 +140,16 @@ void vLcdTask(void *pvParameters)
                 // MQTT 인증 실패 시 온도를 표시하는 하단 줄에 "Unauth" 고정 출력
                 snprintf(temp_str, sizeof(temp_str), "Unauth");
             } else {
-                bool t1_ok = params->status_ch0 == 0 && params->current_temperature > -990.0f;
-                bool t2_ok = params->status_ch1 == 0 && params->current_temperature_ch1 > -990.0f;
+                bool t1_ok =
+                    boot_v2::lcd_temperature_value_visible(
+                        params->status_ch0,
+                        params->display_value_valid_ch0) &&
+                    params->current_temperature > -990.0f;
+                bool t2_ok =
+                    boot_v2::lcd_temperature_value_visible(
+                        params->status_ch1,
+                        params->display_value_valid_ch1) &&
+                    params->current_temperature_ch1 > -990.0f;
 
                 if (t1_ok && t2_ok) {
                     snprintf(temp_str, sizeof(temp_str), "%.1f %.1f\xDF""C",

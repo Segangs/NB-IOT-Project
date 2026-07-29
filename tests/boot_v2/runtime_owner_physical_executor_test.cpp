@@ -338,6 +338,34 @@ void test_liveness_and_normal_completion_tables() noexcept
     }
 }
 
+void test_frozen_telemetry_command_reaches_backend_unchanged() noexcept
+{
+    FakePort port{};
+    FakeBackend backend{};
+    port.command = command_for(
+        RuntimeOwnerDeviceOperationKind::PublishTelemetry,
+        CompletionPolicy::NormalCompletion);
+    port.command.source.normal_intent = {
+        NormalIntentKind::PublishTelemetry,
+        0x07,
+        -166,
+        2,
+        91,
+    };
+    backend.next = success();
+
+    CHECK(runtime_owner_execute_one(port, backend) ==
+          RuntimeOwnerPhysicalStepResult::Completed);
+    CHECK(backend.calls == 1);
+    CHECK(backend.observed.source.normal_intent.kind ==
+          NormalIntentKind::PublishTelemetry);
+    CHECK(backend.observed.source.normal_intent.flags == 0x07);
+    CHECK(backend.observed.source.normal_intent.value_deci_celsius == -166);
+    CHECK(backend.observed.source.normal_intent.subject_id == 2);
+    CHECK(backend.observed.source.normal_intent.snapshot_revision == 91);
+    CHECK(port.normal_succeeded_calls == 1);
+}
+
 void test_snapshot_end_boot_and_fail_closed() noexcept
 {
     FakePort snapshot_port{};
@@ -405,6 +433,7 @@ int main()
     test_layout_and_no_command();
     test_open_transport_ordered_receipts();
     test_liveness_and_normal_completion_tables();
+    test_frozen_telemetry_command_reaches_backend_unchanged();
     test_snapshot_end_boot_and_fail_closed();
     if (g_failures != 0) {
         std::fprintf(stderr, "runtime_owner_physical_executor_test: %zu/%zu failed\n",

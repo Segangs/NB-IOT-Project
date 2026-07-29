@@ -10,6 +10,7 @@ bool mqtt_config_compact_limits_parse(
     float *temp2_upper);
 bool mqtt_kmqtt_data_extract_payload(
     const char *frame,
+    const char *expected_topic,
     char *out,
     size_t out_len,
     size_t *frame_len,
