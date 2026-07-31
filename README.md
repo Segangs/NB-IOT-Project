@@ -26,6 +26,12 @@
 
 ---
 
+## 📅 2026-07-31
+
+* 최종 프로젝트 발표자료 35쪽의 `DOCS/NB-IOT-final-project-presentation-Jang-Segang.pdf` 공개
+* KakaoOTF 미포함 원본을 화면 고정형 PDF로 변환해 GitHub·Windows·모바일 글자 호환성 확보
+* 전체 35쪽 재렌더링과 빈 페이지·잘림·글자 누락 없음 확인
+
 ## 📅 2026-07-29
 
 * 중간 코드 정밀 감사 기반 shutdown 최신 USB 판정·watchdog scratch 단일 소비·MQTT 80/81바이트 경계·TEMP2 +5℃ 보정·`AT+CFUN=1` 실패 중단 보강
