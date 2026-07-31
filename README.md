@@ -28,9 +28,9 @@
 
 ## 📅 2026-07-31
 
-* 최종 프로젝트 발표자료 35쪽의 `DOCS/NB-IOT-final-project-presentation-Jang-Segang.pdf` 공개
-* KakaoOTF 미포함 원본을 화면 고정형 PDF로 변환해 GitHub·Windows·모바일 글자 호환성 확보
-* 전체 35쪽 재렌더링과 빈 페이지·잘림·글자 누락 없음 확인
+* 수정된 최종 프로젝트 발표자료 35쪽의 `DOCS/최종프로젝트 발표(장세강).pdf` 공개
+* KakaoOTF 미포함 원본의 화면 고정형 PDF 변환과 GitHub·Windows·모바일 글자 호환성 확보
+* 전체 35쪽 재렌더링과 빈 페이지·잘림·글자 누락 없음 재확인
 
 ## 📅 2026-07-29
 

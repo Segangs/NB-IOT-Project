@@ -29,12 +29,13 @@
 ## 📅 2026-07-31: [문서 공개] 최종 프로젝트 발표자료
 
 * **개발 범주**: 최종 발표자료 공개와 PDF 호환성 검증
-* **추가 파일**: `DOCS/NB-IOT-final-project-presentation-Jang-Segang.pdf`
+* **교체 파일**: `DOCS/최종프로젝트 발표(장세강).pdf`
 * Keynote 원본 PDF의 KakaoOTF Regular·Bold 글꼴 미포함 상태와 비Mac 환경 글자 누락 가능성 확인
 * macOS PDFKit으로 1920×1080 화면을 고정하고 35쪽 이미지형 공개 PDF로 재구성
-* 원본 60MB에서 공개본 약 9.4MB로 축소하고 GitHub 일반 파일 제한 이내 유지
-* 최종 PDF 35쪽·암호화 없음·JavaScript 없음·SHA-256 `ec39b5377fcad4c43438a7a02e749b640651c5749ca0c503f96d66b00d52ea84` 확인
-* 최종 35쪽 전체 재렌더링에서 빈 페이지·잘림·글자 누락 없음 확인
+* 기존 영문 파일명 공개본 삭제와 수정본의 원래 한글 파일명 유지
+* 원본 약 60MB에서 공개본 약 9.5MiB로 축소하고 GitHub 일반 파일 제한 이내 유지
+* 최종 PDF 35쪽·암호화 없음·JavaScript 없음·SHA-256 `aaa31b7be20875f8d430203e91ad2c095d944c046352f4d6e397de4c7a3246c9` 확인
+* 수정본 35쪽 전체 재렌더링에서 빈 페이지·잘림·글자 누락 없음 확인
 * 기존 비공개 `DOCS` handoff·Codex 작업물 추적 제외 유지와 발표 PDF 단일 강제 추가
 
 ## 📅 2026-07-29: [Mid-review Remediation] RuntimeOwner·Flash·온도 알림·서버 권한 정밀 보강
